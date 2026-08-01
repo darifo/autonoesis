@@ -1,0 +1,16 @@
+{
+  "name": "autonoesis-workspace",
+  "private": true,
+  "description": "Enterprise Governed Self-Evolving Agent Operating System",
+  "scripts": {
+    "build": "pnpm -r --if-present build",
+    "dev": "pnpm -r --parallel --if-present dev",
+    "lint": "pnpm -r --if-present lint",
+    "test": "pnpm -r --if-present test",
+    "typecheck": "pnpm -r --if-present typecheck"
+  },
+  "engines": {
+    "node": ">=22",
+    "pnpm": ">=10"
+  }
+}

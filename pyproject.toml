@@ -1,0 +1,53 @@
+[project]
+name = "autonoesis-workspace"
+version = "0.1.0"
+description = "Enterprise Governed Self-Evolving Agent Operating System"
+requires-python = ">=3.12"
+dependencies = []
+
+[dependency-groups]
+dev = [
+  "mypy>=1.15",
+  "pytest>=8.3",
+  "pytest-asyncio>=0.25",
+  "ruff>=0.11",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = [
+  "apps/api",
+  "apps/worker",
+  "packages/contracts",
+  "packages/domain",
+  "packages/application",
+  "packages/runtime-kernel",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["apps", "packages"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unreachable = true
+explicit_package_bases = true
+mypy_path = [
+  "apps/api/src",
+  "apps/worker/src",
+  "packages/contracts/src",
+  "packages/domain/src",
+  "packages/application/src",
+  "packages/runtime-kernel/src",
+]
+
+[tool.pytest.ini_options]
+addopts = "-ra --strict-config --strict-markers"
+testpaths = ["apps", "packages", "tests"]

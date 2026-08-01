@@ -1,0 +1,18 @@
+# Human-reviewed compatibility matrix. This file is not a package-manager lock.
+# Exact component, protocol, model, and image versions are added only after validation.
+
+schema_version = 1
+reviewed_at = "2026-08-01"
+
+[runtime]
+python = ">=3.12,<3.14"
+node = ">=22"
+
+[protocols]
+cloudevents = "1.0"
+mcp = "2026-07-28"
+a2a = "1.0"
+
+[policy]
+allow_unpinned_production_images = false
+allow_unreviewed_model_routes = false

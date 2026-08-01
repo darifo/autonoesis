@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash -el {0}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: conda-incubator/setup-miniconda@v3
+        with:
+          activate-environment: autonoesis
+          environment-file: environment.yml
+          auto-activate-base: false
+      - name: Install workspace
+        run: UV_PROJECT_ENVIRONMENT="$CONDA_PREFIX" uv sync --inexact --all-packages --dev --locked
+      - name: Lint
+        run: ruff format --check . && ruff check .
+      - name: Type check
+        run: mypy apps packages
+      - name: Test
+        run: pytest

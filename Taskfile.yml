@@ -1,0 +1,72 @@
+version: "3"
+
+vars:
+  API_APP: autonoesis_api.main:app
+
+tasks:
+  bootstrap:
+    desc: Install the Python workspace into the active Conda environment
+    preconditions:
+      - sh: test "${CONDA_DEFAULT_ENV:-}" = "autonoesis"
+        msg: Run `conda activate autonoesis` before using Python tasks
+    cmds:
+      - UV_PROJECT_ENVIRONMENT="$CONDA_PREFIX" uv sync --inexact --all-packages --dev
+
+  format:
+    desc: Format Python sources
+    preconditions:
+      - sh: test "${CONDA_DEFAULT_ENV:-}" = "autonoesis"
+        msg: Run `conda activate autonoesis` before using Python tasks
+    cmds:
+      - ruff format .
+      - ruff check . --fix
+
+  lint:
+    desc: Run static lint checks
+    preconditions:
+      - sh: test "${CONDA_DEFAULT_ENV:-}" = "autonoesis"
+        msg: Run `conda activate autonoesis` before using Python tasks
+    cmds:
+      - ruff format --check .
+      - ruff check .
+
+  typecheck:
+    desc: Run Python type checks
+    preconditions:
+      - sh: test "${CONDA_DEFAULT_ENV:-}" = "autonoesis"
+        msg: Run `conda activate autonoesis` before using Python tasks
+    cmds:
+      - mypy apps packages
+
+  test:
+    desc: Run unit tests
+    preconditions:
+      - sh: test "${CONDA_DEFAULT_ENV:-}" = "autonoesis"
+        msg: Run `conda activate autonoesis` before using Python tasks
+    cmds:
+      - pytest
+
+  check:
+    desc: Run all local quality checks
+    deps: [lint, typecheck, test]
+
+  api:
+    desc: Start the API in development mode
+    preconditions:
+      - sh: test "${CONDA_DEFAULT_ENV:-}" = "autonoesis"
+        msg: Run `conda activate autonoesis` before using Python tasks
+    cmds:
+      - uvicorn {{.API_APP}} --reload --app-dir apps/api/src
+
+  worker:
+    desc: Validate the worker entry point until Temporal bootstrap is configured
+    preconditions:
+      - sh: test "${CONDA_DEFAULT_ENV:-}" = "autonoesis"
+        msg: Run `conda activate autonoesis` before using Python tasks
+    cmds:
+      - python -m autonoesis_worker.main --check
+
+  tree:
+    desc: Show tracked repository files
+    cmds:
+      - git ls-files

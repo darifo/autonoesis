@@ -1,0 +1,6 @@
+{
+  "name": "@autonoesis/ts-sdk",
+  "version": "0.1.0",
+  "private": true,
+  "description": "TypeScript client boundary for Autonoesis"
+}

@@ -1,0 +1,24 @@
+[project]
+name = "autonoesis-api"
+version = "0.1.0"
+description = "Autonoesis control-plane API"
+requires-python = ">=3.12"
+dependencies = [
+  "autonoesis-application",
+  "autonoesis-contracts",
+  "autonoesis-domain",
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.34",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/autonoesis_api"]
+
+[tool.uv.sources]
+autonoesis-application = { workspace = true }
+autonoesis-contracts = { workspace = true }
+autonoesis-domain = { workspace = true }
