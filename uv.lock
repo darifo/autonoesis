@@ -17,6 +17,7 @@ members = [
     "autonoesis-domain",
     "autonoesis-environment",
     "autonoesis-evaluation",
+    "autonoesis-evolution",
     "autonoesis-example-field-service",
     "autonoesis-gateways",
     "autonoesis-governance",
@@ -297,6 +298,17 @@ dependencies = [
 requires-dist = [{ name = "autonoesis-domain", editable = "packages/domain" }]
 
 [[package]]
+name = "autonoesis-evolution"
+version = "0.1.0"
+source = { editable = "packages/evolution" }
+dependencies = [
+    { name = "autonoesis-domain" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "autonoesis-domain", editable = "packages/domain" }]
+
+[[package]]
 name = "autonoesis-example-field-service"
 version = "0.1.0"
 source = { editable = "examples/field-service" }
@@ -334,10 +346,14 @@ version = "0.1.0"
 source = { editable = "packages/governance" }
 dependencies = [
     { name = "autonoesis-domain" },
+    { name = "autonoesis-runtime-kernel" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "autonoesis-domain", editable = "packages/domain" }]
+requires-dist = [
+    { name = "autonoesis-domain", editable = "packages/domain" },
+    { name = "autonoesis-runtime-kernel", editable = "packages/runtime-kernel" },
+]
 
 [[package]]
 name = "autonoesis-improvement"
@@ -420,6 +436,7 @@ name = "autonoesis-worker"
 version = "0.1.0"
 source = { editable = "apps/worker" }
 dependencies = [
+    { name = "autonoesis-adapters" },
     { name = "autonoesis-application" },
     { name = "autonoesis-runtime-kernel" },
     { name = "temporalio" },
@@ -427,6 +444,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "autonoesis-adapters", editable = "packages/adapters" },
     { name = "autonoesis-application", editable = "packages/application" },
     { name = "autonoesis-runtime-kernel", editable = "packages/runtime-kernel" },
     { name = "temporalio", specifier = ">=1.10" },
