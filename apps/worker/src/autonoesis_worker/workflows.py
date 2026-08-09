@@ -42,10 +42,21 @@ class GoalRunWorkflow:
 
     @workflow.run
     async def run(self, command: GoalRunInput) -> str:
+        from autonoesis_worker.activities import (
+            CancelRunInput,
+            ExecuteRunInput,
+            PrepareRunInput,
+            RejectRunInput,
+        )
+
         self._phase = "planning"
         await workflow.execute_activity(
             "prepare_run",
-            command,
+            PrepareRunInput(
+                tenant_id=command.tenant_id,
+                goal_id=command.goal_id,
+                run_id=command.run_id,
+            ),
             start_to_close_timeout=timedelta(minutes=2),
             retry_policy=RetryPolicy(maximum_attempts=3),
         )
@@ -54,26 +65,48 @@ class GoalRunWorkflow:
             await workflow.wait_condition(lambda: self._approval is not None or self._cancelled)
             if self._cancelled:
                 await workflow.execute_activity(
-                    "cancel_run", command, start_to_close_timeout=timedelta(minutes=1)
+                    "cancel_run",
+                    CancelRunInput(
+                        tenant_id=command.tenant_id,
+                        goal_id=command.goal_id,
+                        run_id=command.run_id,
+                    ),
+                    start_to_close_timeout=timedelta(minutes=1),
                 )
                 return "cancelled"
             if self._approval is False:
                 await workflow.execute_activity(
-                    "reject_run", command, start_to_close_timeout=timedelta(minutes=1)
+                    "reject_run",
+                    RejectRunInput(
+                        tenant_id=command.tenant_id,
+                        goal_id=command.goal_id,
+                        run_id=command.run_id,
+                    ),
+                    start_to_close_timeout=timedelta(minutes=1),
                 )
                 return "rejected"
         self._phase = "executing"
         # Side-effect activities own idempotency and unknown-outcome reconciliation.
         await workflow.execute_activity(
             "execute_run",
-            command,
+            ExecuteRunInput(
+                tenant_id=command.tenant_id,
+                goal_id=command.goal_id,
+                run_id=command.run_id,
+            ),
             start_to_close_timeout=timedelta(minutes=30),
             retry_policy=RetryPolicy(maximum_attempts=1),
         )
         self._phase = "evaluating"
+        from autonoesis_worker.activities import EvaluateRunInput
+
         result: str = await workflow.execute_activity(
             "evaluate_run",
-            command,
+            EvaluateRunInput(
+                tenant_id=command.tenant_id,
+                goal_id=command.goal_id,
+                run_id=command.run_id,
+            ),
             start_to_close_timeout=timedelta(minutes=10),
             retry_policy=RetryPolicy(maximum_attempts=2),
         )
@@ -97,10 +130,15 @@ class CandidateLifecycleWorkflow:
 
     @workflow.run
     async def run(self, command: CandidateLifecycleInput) -> str:
+        from autonoesis_worker.activities import EvaluateCandidateInput
+
         self._phase = "evaluating"
         passed: bool = await workflow.execute_activity(
             "evaluate_candidate",
-            command,
+            EvaluateCandidateInput(
+                tenant_id=command.tenant_id,
+                candidate_id=command.candidate_id,
+            ),
             start_to_close_timeout=timedelta(minutes=30),
             retry_policy=RetryPolicy(maximum_attempts=2),
         )
@@ -112,9 +150,16 @@ class CandidateLifecycleWorkflow:
         if self._approval is False:
             self._phase = "rejected"
             return self._phase
+
+        from autonoesis_worker.activities import PromoteCandidateInput
+
         await workflow.execute_activity(
             "promote_candidate",
-            command,
+            PromoteCandidateInput(
+                tenant_id=command.tenant_id,
+                candidate_id=command.candidate_id,
+                stable_version_id=command.candidate_id,
+            ),
             start_to_close_timeout=timedelta(minutes=2),
             retry_policy=RetryPolicy(maximum_attempts=1),
         )

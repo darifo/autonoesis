@@ -1,11 +1,19 @@
 """Replaceable provider and infrastructure adapters."""
 
+from autonoesis_adapters.evidence_store import (
+    EvidenceArtifact,
+    InMemoryObjectStore,
+    MinioEvidenceStore,
+    ObjectStorePort,
+)
 from autonoesis_adapters.governance import (
     DevelopmentPolicy,
     OIDCSettings,
     OIDCValidator,
     OPAPolicyAdapter,
 )
+from autonoesis_adapters.kill_switch_store import SqlKillSwitchStore
+from autonoesis_adapters.mcp import MCPServerAdapter, MCPToolDefinition
 from autonoesis_adapters.memory import (
     InMemoryBudgetLedger,
     InMemoryIdempotencyStore,
@@ -17,6 +25,7 @@ from autonoesis_adapters.models import (
     OpenAICompatibleAdapter,
     OpenAIResponsesAdapter,
 )
+from autonoesis_adapters.outbox import InboxConsumer, OutboxRelay, OutboxWriter
 from autonoesis_adapters.persistence import (
     SqlAlchemyPlatformRepository,
     create_repository,
@@ -27,17 +36,27 @@ from autonoesis_adapters.platform_store import PostgreSQLPlatformStore
 __all__ = [
     "AnthropicMessagesAdapter",
     "DevelopmentPolicy",
+    "EvidenceArtifact",
     "FakeModelAdapter",
     "InMemoryBudgetLedger",
     "InMemoryIdempotencyStore",
+    "InMemoryObjectStore",
     "InMemoryPlatformStore",
+    "InboxConsumer",
+    "MCPServerAdapter",
+    "MCPToolDefinition",
+    "MinioEvidenceStore",
     "OIDCSettings",
     "OIDCValidator",
     "OPAPolicyAdapter",
+    "ObjectStorePort",
     "OpenAICompatibleAdapter",
     "OpenAIResponsesAdapter",
+    "OutboxRelay",
+    "OutboxWriter",
     "PostgreSQLPlatformStore",
     "SqlAlchemyPlatformRepository",
+    "SqlKillSwitchStore",
     "create_repository",
     "metadata",
 ]

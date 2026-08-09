@@ -1,9 +1,92 @@
 """Execution-time governance pipeline for external side effects."""
 
-from dataclasses import dataclass
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from enum import StrEnum
 from typing import Protocol
+from uuid import UUID, uuid4
 
 from autonoesis_domain import Action, ActionStatus, ApprovalRequest, ApprovalStatus
+
+
+class KillSwitchDimension(StrEnum):
+    """The six dimensions at which a kill switch can be activated."""
+
+    TENANT = "tenant"
+    AGENT = "agent"
+    TOOL = "tool"
+    OPERATION = "operation"
+    PROVIDER = "provider"
+    CAPABILITY_PACK = "capability_pack"
+
+
+@dataclass(frozen=True, slots=True)
+class KillSwitchQuery:
+    """Keys used to check whether a context is blocked by any active kill switch."""
+
+    tenant_id: str | None = None
+    agent_id: str | None = None
+    tool_name: str | None = None
+    operation: str | None = None
+    provider: str | None = None
+    capability_pack_id: str | None = None
+
+    def dimensions(self) -> list[tuple[KillSwitchDimension, str]]:
+        pairs: list[tuple[KillSwitchDimension, str]] = []
+        if self.tenant_id is not None:
+            pairs.append((KillSwitchDimension.TENANT, self.tenant_id))
+        if self.agent_id is not None:
+            pairs.append((KillSwitchDimension.AGENT, self.agent_id))
+        if self.tool_name is not None:
+            pairs.append((KillSwitchDimension.TOOL, self.tool_name))
+        if self.operation is not None:
+            pairs.append((KillSwitchDimension.OPERATION, self.operation))
+        if self.provider is not None:
+            pairs.append((KillSwitchDimension.PROVIDER, self.provider))
+        if self.capability_pack_id is not None:
+            pairs.append((KillSwitchDimension.CAPABILITY_PACK, self.capability_pack_id))
+        return pairs
+
+
+class KillSwitchPort(Protocol):
+    """Contract for querying kill switch state."""
+
+    async def is_blocked(self, query: KillSwitchQuery) -> bool:
+        """Return True when any dimension in *query* matches an active switch."""
+
+    async def activate(
+        self,
+        dimension: KillSwitchDimension,
+        target: str,
+        reason: str,
+        activated_by: str,
+    ) -> KillSwitchRecord:
+        """Activate a kill switch for *dimension*:*target*."""
+
+    async def deactivate(
+        self,
+        dimension: KillSwitchDimension,
+        target: str,
+    ) -> KillSwitchRecord | None:
+        """Deactivate the kill switch for *dimension*:*target*."""
+
+    async def list_active(self) -> tuple[KillSwitchRecord, ...]:
+        """Return all currently active kill switches."""
+
+
+@dataclass(frozen=True, slots=True)
+class KillSwitchRecord:
+    """An active kill switch entry."""
+
+    kill_switch_id: UUID = field(default_factory=uuid4)
+    dimension: KillSwitchDimension = KillSwitchDimension.TENANT
+    target: str = ""
+    reason: str = ""
+    activated_by: str = ""
+    activated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    deactivated_at: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,17 +134,40 @@ class IdempotencyPort(Protocol):
 
 
 class GovernedToolGateway:
+    """Enforces identity, policy, budget, idempotency, and kill-switch
+    checks before executing any external side effect.
+
+    Execution pipeline (in order):
+    1. Validate action state (PROPOSED or AWAITING_APPROVAL)
+    2. Kill Switch gate — deny if any matching switch is active
+    3. Policy decision — deny if policy says no
+    4. Approval check — require validated approval if policy demands it
+    5. Budget reservation — fail if run budget is exhausted
+    6. Idempotency check — return cached receipt for duplicate keys
+    7. Executor lookup — fail if no executor registered for the tool
+    8. Execute + verify — return SUCCEEDED or UNKNOWN
+
+    Returns:
+        (updated Action, ToolReceipt).  The Action status will be one of:
+        - SUCCEEDED: side effect confirmed
+        - DENIED: blocked by kill switch or policy
+        - UNKNOWN: executed but verification failed (caller must reconcile)
+    """
+
     def __init__(
         self,
         policy: PolicyPort,
         budget: BudgetPort,
         idempotency: IdempotencyPort,
         executors: dict[str, ToolExecutor],
+        *,
+        kill_switch: KillSwitchPort | None = None,
     ) -> None:
         self._policy = policy
         self._budget = budget
         self._idempotency = idempotency
         self._executors = executors
+        self._kill_switch = kill_switch
 
     async def execute(
         self,
@@ -72,6 +178,23 @@ class GovernedToolGateway:
     ) -> tuple[Action, ToolReceipt]:
         if action.status not in {ActionStatus.PROPOSED, ActionStatus.AWAITING_APPROVAL}:
             raise ValueError("action is not executable from its current state")
+
+        # ── Kill Switch gate ──────────────────────────────────────────
+        if self._kill_switch is not None:
+            blocked = await self._kill_switch.is_blocked(
+                KillSwitchQuery(
+                    tenant_id=str(action.tenant_id),
+                    agent_id=context.agent_id,
+                    tool_name=action.tool_name,
+                    operation=action.operation,
+                )
+            )
+            if blocked:
+                reason = "kill_switch_active"
+                return action.transition_to(ActionStatus.DENIED), ToolReceipt(
+                    external_id="", accepted=False, output=(("reason", reason),)
+                )
+
         decision = await self._policy.authorize(context, action)
         if not decision.allowed:
             return action.transition_to(ActionStatus.DENIED), ToolReceipt("", False, ())

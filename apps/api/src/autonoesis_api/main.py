@@ -38,6 +38,7 @@ from autonoesis_domain import (
     SubjectRef,
     SuccessCriterion,
 )
+from autonoesis_governance import InMemoryKillSwitchStore, KillSwitchDimension
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
@@ -164,6 +165,7 @@ def build_app(store: InMemoryPlatformStore | None = None) -> FastAPI:
     )
     app.state.store = platform_store
     app.state.idempotency = {}
+    app.state.kill_switch = InMemoryKillSwitchStore()
     goal_handler = CreateGoalHandler(platform_store, platform_store)
     run_handler = StartGoalRunHandler(platform_store, platform_store)
     evolution = CandidateLifecycleService(platform_store)
@@ -378,6 +380,69 @@ def build_app(store: InMemoryPlatformStore | None = None) -> FastAPI:
             item
             for item in platform_store.budgets.values()
             if item["tenant_id"] == str(context.tenant_id)
+        ]
+
+    # ── Kill Switch ────────────────────────────────────────────────────
+
+    class KillSwitchActivateRequest(StrictRequest):
+        dimension: str = Field(min_length=1, max_length=32)
+        target: str = Field(min_length=1, max_length=300)
+        reason: str = Field(min_length=1, max_length=1000)
+
+    class KillSwitchDeactivateRequest(StrictRequest):
+        dimension: str = Field(min_length=1, max_length=32)
+        target: str = Field(min_length=1, max_length=300)
+
+    @app.post("/v1/kill-switches", status_code=201, tags=["governance"])
+    async def activate_kill_switch(
+        body: KillSwitchActivateRequest, context: Identity, _: WriteKey
+    ) -> dict[str, Any]:
+        require_role(context, {"platform_admin", "tenant_admin", "operator"})
+        record = await app.state.kill_switch.activate(
+            KillSwitchDimension(body.dimension),
+            body.target,
+            body.reason,
+            str(context.actor_id),
+        )
+        return {
+            "kill_switch_id": str(record.kill_switch_id),
+            "dimension": record.dimension.value,
+            "target": record.target,
+            "reason": record.reason,
+            "activated_by": record.activated_by,
+            "activated_at": record.activated_at.isoformat(),
+        }
+
+    @app.delete("/v1/kill-switches", tags=["governance"])
+    async def deactivate_kill_switch(
+        body: KillSwitchDeactivateRequest, context: Identity, _: WriteKey
+    ) -> dict[str, Any]:
+        require_role(context, {"platform_admin", "tenant_admin", "operator"})
+        record = await app.state.kill_switch.deactivate(
+            KillSwitchDimension(body.dimension), body.target
+        )
+        if record is None:
+            raise HTTPException(status_code=404, detail="no active kill switch for that target")
+        return {
+            "kill_switch_id": str(record.kill_switch_id),
+            "dimension": record.dimension.value,
+            "target": record.target,
+            "deactivated_at": record.deactivated_at.isoformat() if record.deactivated_at else None,
+        }
+
+    @app.get("/v1/kill-switches", tags=["governance"])
+    async def list_kill_switches(context: Identity) -> list[dict[str, Any]]:
+        require_role(context, {"platform_admin", "tenant_admin", "operator", "auditor"})
+        return [
+            {
+                "kill_switch_id": str(r.kill_switch_id),
+                "dimension": r.dimension.value,
+                "target": r.target,
+                "reason": r.reason,
+                "activated_by": r.activated_by,
+                "activated_at": r.activated_at.isoformat(),
+            }
+            for r in await app.state.kill_switch.list_active()
         ]
 
     @app.post("/v1/goals", status_code=201, tags=["goals"])

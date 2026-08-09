@@ -36,6 +36,7 @@ members = [
   "packages/evaluation",
   "packages/gateways",
   "packages/context",
+  "packages/evolution",
   "packages/testkit",
   "examples/field-service",
   "packages/py-sdk",
@@ -54,6 +55,7 @@ python_version = "3.12"
 strict = true
 warn_unreachable = true
 explicit_package_bases = true
+enable_incomplete_feature = ["NewGenericSyntax"]
 mypy_path = [
   "apps/api/src",
   "apps/worker/src",
@@ -71,6 +73,7 @@ mypy_path = [
   "packages/evaluation/src",
   "packages/gateways/src",
   "packages/context/src",
+  "packages/evolution/src",
   "packages/testkit/src",
   "examples/field-service/src",
   "packages/py-sdk/src",
@@ -79,3 +82,8 @@ mypy_path = [
 [tool.pytest.ini_options]
 addopts = "-ra --strict-config --strict-markers"
 testpaths = ["apps", "packages", "tests"]
+asyncio_mode = "auto"
+markers = [
+    "asyncio: mark test as an async test",
+    "integration: mark test as requiring external services",
+]

@@ -29,3 +29,8 @@ autonoesis-application = { workspace = true }
 autonoesis-capability = { workspace = true }
 autonoesis-domain = { workspace = true }
 autonoesis-runtime-kernel = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "aiosqlite>=0.22.1",
+]

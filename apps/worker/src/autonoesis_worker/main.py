@@ -1,19 +1,73 @@
-"""Temporal worker process assembly."""
+"""Temporal worker process assembly with real activity implementations."""
 
 import argparse
 import asyncio
 import os
-from collections.abc import Awaitable, Callable
-from typing import Any
 
+from autonoesis_adapters import InMemoryPlatformStore, PostgreSQLPlatformStore
+from autonoesis_application import CandidateLifecycleService
 from temporalio.client import Client
 from temporalio.worker import Worker
 
-from autonoesis_worker.workflows import CandidateLifecycleWorkflow, GoalRunWorkflow
+from autonoesis_worker.activities import (
+    CancelRunInput,
+    EvaluateCandidateInput,
+    EvaluateRunInput,
+    ExecuteRunInput,
+    PrepareRunInput,
+    PromoteCandidateInput,
+    RejectRunInput,
+    cancel_run,
+    evaluate_candidate,
+    evaluate_run,
+    execute_run,
+    prepare_run,
+    promote_candidate,
+    reject_run,
+)
+from autonoesis_worker.workflows import (
+    CandidateLifecycleWorkflow,
+    GoalRunWorkflow,
+)
 
 
-async def _placeholder_activity(command: object) -> str:
-    raise RuntimeError(f"application activity is not configured for {type(command).__name__}")
+def _build_store() -> InMemoryPlatformStore:
+    database_url = os.getenv("AUTONOESIS_DATABASE_URL")
+    if database_url:
+        return PostgreSQLPlatformStore.from_url(database_url)
+    return InMemoryPlatformStore()
+
+
+async def _prepare(input: PrepareRunInput) -> str:
+    return await prepare_run(input, _build_store())
+
+
+async def _cancel(input: CancelRunInput) -> str:
+    return await cancel_run(input, _build_store())
+
+
+async def _reject(input: RejectRunInput) -> str:
+    return await reject_run(input, _build_store())
+
+
+async def _execute(input: ExecuteRunInput) -> str:
+    return await execute_run(input, _build_store())
+
+
+async def _evaluate(input: EvaluateRunInput) -> str:
+    return await evaluate_run(input, _build_store())
+
+
+async def _evaluate_candidate(input: EvaluateCandidateInput) -> bool:
+    store = _build_store()
+    evolution = CandidateLifecycleService(store)
+    return await evaluate_candidate(input, store, evolution)
+
+
+async def _promote(input: PromoteCandidateInput) -> str:
+    store = _build_store()
+    evolution = CandidateLifecycleService(store)
+    return await promote_candidate(input, store, evolution)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -27,29 +81,20 @@ async def run_worker() -> None:
     namespace = os.getenv("AUTONOESIS_TEMPORAL_NAMESPACE", "default")
     task_queue = os.getenv("AUTONOESIS_TEMPORAL_TASK_QUEUE", "autonoesis")
     client = await Client.connect(target, namespace=namespace)
-    activity_names = (
-        "prepare_run",
-        "cancel_run",
-        "reject_run",
-        "execute_run",
-        "evaluate_run",
-        "evaluate_candidate",
-        "promote_candidate",
-    )
-    activities: list[Callable[..., Awaitable[Any]]] = []
-    for name in activity_names:
 
-        async def activity(command: object, activity_name: str = name) -> str:
-            _ = activity_name
-            return await _placeholder_activity(command)
-
-        activity.__name__ = name
-        activities.append(activity)
     worker = Worker(
         client,
         task_queue=task_queue,
         workflows=[GoalRunWorkflow, CandidateLifecycleWorkflow],
-        activities=activities,
+        activities=[
+            _prepare,
+            _cancel,
+            _reject,
+            _execute,
+            _evaluate,
+            _evaluate_candidate,
+            _promote,
+        ],
     )
     await worker.run()
 

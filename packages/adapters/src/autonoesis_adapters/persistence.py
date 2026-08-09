@@ -201,6 +201,14 @@ audit_events = tenant_table(
     Column("correlation_id", String(36), nullable=False),
     Column("details", JSON, nullable=False),
 )
+kill_switches = tenant_table(
+    "kill_switches",
+    Column("dimension", String(32), nullable=False),
+    Column("target", String(300), nullable=False),
+    Column("reason", String(1000), nullable=False),
+    Column("activated_by", String(300), nullable=False),
+    Column("deactivated_at", DateTime(timezone=True), nullable=True),
+)
 outbox = tenant_table(
     "outbox",
     Column("schema", String(200), nullable=False),

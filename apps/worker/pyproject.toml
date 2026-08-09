@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Autonoesis durable execution worker"
 requires-python = ">=3.12"
 dependencies = [
+  "autonoesis-adapters",
   "autonoesis-application",
   "autonoesis-runtime-kernel",
   "temporalio>=1.10",
@@ -17,5 +18,6 @@ build-backend = "hatchling.build"
 packages = ["src/autonoesis_worker"]
 
 [tool.uv.sources]
+autonoesis-adapters = { workspace = true }
 autonoesis-application = { workspace = true }
 autonoesis-runtime-kernel = { workspace = true }
