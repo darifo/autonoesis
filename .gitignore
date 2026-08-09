@@ -15,6 +15,10 @@ build/
 node_modules/
 .next/
 coverage/
+.playwright-cli/
+test-results/
+*.tsbuildinfo
+.pnpm-store/
 
 # Local environment
 .env
@@ -23,6 +27,7 @@ coverage/
 .DS_Store
 .idea/
 .vscode/
+.zcode/
 
 # Runtime state and credentials
 .autonoesis/

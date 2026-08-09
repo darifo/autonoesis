@@ -11,6 +11,8 @@ dev = [
   "pytest>=8.3",
   "pytest-asyncio>=0.25",
   "ruff>=0.11",
+  "types-jsonschema>=4.25",
+  "types-PyYAML>=6.0",
 ]
 
 [tool.uv]
@@ -24,6 +26,19 @@ members = [
   "packages/domain",
   "packages/application",
   "packages/runtime-kernel",
+  "packages/adapters",
+  "packages/capability",
+  "packages/intelligence",
+  "packages/governance",
+  "packages/environment",
+  "packages/memory",
+  "packages/improvement",
+  "packages/evaluation",
+  "packages/gateways",
+  "packages/context",
+  "packages/testkit",
+  "examples/field-service",
+  "packages/py-sdk",
 ]
 
 [tool.ruff]
@@ -46,6 +61,19 @@ mypy_path = [
   "packages/domain/src",
   "packages/application/src",
   "packages/runtime-kernel/src",
+  "packages/adapters/src",
+  "packages/capability/src",
+  "packages/intelligence/src",
+  "packages/governance/src",
+  "packages/environment/src",
+  "packages/memory/src",
+  "packages/improvement/src",
+  "packages/evaluation/src",
+  "packages/gateways/src",
+  "packages/context/src",
+  "packages/testkit/src",
+  "examples/field-service/src",
+  "packages/py-sdk/src",
 ]
 
 [tool.pytest.ini_options]

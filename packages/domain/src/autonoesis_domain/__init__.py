@@ -1,6 +1,105 @@
-"""Pure domain model for Autonoesis."""
+"""Industry-neutral domain model for governed, evolving AI agents."""
 
-from autonoesis_domain.models import Goal, GoalStatus, Run, RunStatus
+from autonoesis_domain.assets import (
+    AgentDefinition,
+    AgentVersion,
+    AssetStage,
+    LoopPolicy,
+    SideEffectClass,
+    SkillDefinition,
+    ToolDefinition,
+)
+from autonoesis_domain.context import (
+    ContextSnapshot,
+    EnvironmentFact,
+    KnowledgeRef,
+    MemoryRecord,
+    TrustLevel,
+)
+from autonoesis_domain.evaluation import (
+    EvaluationCase,
+    EvaluationSuite,
+    GraderResult,
+    Trial,
+    TrialStatus,
+)
+from autonoesis_domain.execution import (
+    Action,
+    ActionStatus,
+    ApprovalRequest,
+    ApprovalStatus,
+    DecisionKind,
+    DecisionRecord,
+    Evidence,
+    Outcome,
+    OutcomeStatus,
+    Plan,
+    RiskLevel,
+    Task,
+    TaskStatus,
+)
+from autonoesis_domain.goals import (
+    GoalContract,
+    GoalStatus,
+    Run,
+    RunStatus,
+    Session,
+    SessionStatus,
+    SubjectRef,
+    SuccessCriterion,
+)
+from autonoesis_domain.improvement import (
+    CandidateStatus,
+    CandidateVersion,
+    ImprovementProposal,
+    ImprovementTarget,
+    Release,
+)
 from autonoesis_domain.transitions import InvalidStateTransition
 
-__all__ = ["Goal", "GoalStatus", "InvalidStateTransition", "Run", "RunStatus"]
+__all__ = [
+    "Action",
+    "ActionStatus",
+    "AgentDefinition",
+    "AgentVersion",
+    "ApprovalRequest",
+    "ApprovalStatus",
+    "AssetStage",
+    "CandidateStatus",
+    "CandidateVersion",
+    "ContextSnapshot",
+    "DecisionKind",
+    "DecisionRecord",
+    "EnvironmentFact",
+    "EvaluationCase",
+    "EvaluationSuite",
+    "Evidence",
+    "GoalContract",
+    "GoalStatus",
+    "GraderResult",
+    "ImprovementProposal",
+    "ImprovementTarget",
+    "InvalidStateTransition",
+    "KnowledgeRef",
+    "LoopPolicy",
+    "MemoryRecord",
+    "Outcome",
+    "OutcomeStatus",
+    "Plan",
+    "Release",
+    "RiskLevel",
+    "Run",
+    "RunStatus",
+    "Session",
+    "SessionStatus",
+    "SideEffectClass",
+    "SkillDefinition",
+    "SubjectRef",
+    "SuccessCriterion",
+    "Task",
+    "TaskStatus",
+    "ToolDefinition",
+    "Trial",
+    "TrialStatus",
+    "TrustLevel",
+]

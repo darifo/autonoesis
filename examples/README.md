@@ -1,3 +1,3 @@
-# Examples
+# 示例能力包
 
-Greenfield reference agents, workflows, connector stubs, evaluation suites, attack cases, recovery cases, and cost boundaries. Examples never contain real credentials or production samples.
+示例只能依赖公共接口。当前正式示例是 `field-service`；其他目录保留为未来 Harness 或评估实验草案，不属于核心能力。

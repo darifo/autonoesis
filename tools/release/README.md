@@ -1,3 +1,3 @@
-# Release tools
+# 发布工具
 
-Candidate verification, evidence bundle creation, signing, promotion, canary checks, and rollback support.
+未来负责包、镜像、Capability Pack 和 Schema 兼容性验证以及发布证明。

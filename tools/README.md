@@ -1,3 +1,3 @@
-# Repository tools
+# 工程工具
 
-Code generation, local development, validation, and release utilities. Tools must be deterministic where practical and must not silently modify production state.
+保存代码生成、开发检查和发布工具。生成文件必须进入明确的 `generated/` 目录。

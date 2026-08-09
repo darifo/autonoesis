@@ -1,3 +1,3 @@
-# A2A adapter
+# A2A 适配器
 
-Future interoperability boundary for independent remote agent systems with discovery and long-running task lifecycle. It is not used for in-process function calls.
+预留独立 Agent 系统发现、消息和远程任务协议边界。首版不把 A2A 当作内部默认调用协议，也不由 A2A 替代授权。

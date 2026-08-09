@@ -1,10 +1,3 @@
 # Adapters
 
-Replaceable integrations that implement Autonoesis ports. External framework types must not leak into domain or application contracts.
-
-Planned adapters:
-
-- `hermes`, `codex`, `openai-agents`: Harness implementations
-- `honcho`: Memory provider
-- `mcp`, `a2a`: Protocol boundaries
-- `persistence`, `messaging`: Repositories, unit of work, outbox/inbox, event transport
+实现核心端口的可替换基础设施：进程内测试 Store、SQLAlchemy/PostgreSQL、OIDC/JWKS、OPA、OpenAI、Anthropic 和 OpenAI-compatible。任何提供商类型都不能泄漏到领域或应用 API。

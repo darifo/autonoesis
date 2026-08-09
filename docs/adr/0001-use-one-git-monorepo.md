@@ -1,30 +1,19 @@
-# ADR-0001: Use one Git monorepo
+# ADR-0001：采用 Git Monorepo
 
-- Status: accepted
-- Date: 2026-08-01
+- 状态：accepted
+- 日期：2026-08-01
 
-## Context
+## 背景
 
-The platform has several logical planes and deployable applications, but its contracts and domain vocabulary are still evolving together. Splitting repositories now would make atomic contract changes, end-to-end testing, and architecture governance harder.
+平台的逻辑平面、应用和 SDK 共用仍在演进的领域词汇与契约。过早拆分仓库会增加原子契约变更、端到端测试和架构治理难度。
 
-## Decision
+## 决策
 
-Use one Git repository containing independently deployable applications under `apps/` and non-deployable modules under `packages/`.
+使用一个 Git 仓库：`apps/` 保存独立部署应用，`packages/` 保存不可独立部署模块，`examples/` 保存只依赖公开接口的能力包示例。
 
-Use package boundaries, dependency checks, CODEOWNERS, separate images, and separate deployment manifests to preserve ownership and runtime isolation.
+## 后果
 
-## Consequences
-
-- Contract and consumer changes can be reviewed atomically.
-- Local and CI end-to-end tests remain practical.
-- The repository requires strict dependency direction and affected-path CI as it grows.
-- A module can move to another repository only through a superseding ADR and the documented split criteria.
-
-## Alternatives considered
-
-- One large application package: rejected because it hides domain and deployment boundaries.
-- Polyrepo from day one: rejected because contracts and ownership are not yet stable.
-
-## Verification
-
-CI must run workspace tests and prevent domain packages from importing application frameworks or provider SDKs.
+- 契约与消费者可以原子审查；
+- 本地和 CI 端到端测试可行；
+- 必须严格维护依赖方向和按路径检查；
+- 模块只有在团队、生命周期、远程契约和安全/规模收益都稳定后才能拆仓库。

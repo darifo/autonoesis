@@ -1,3 +1,3 @@
-# OpenAI Agents SDK adapter
+# OpenAI Agents Harness 适配器
 
-Future harness adapter for bounded agent loops, tools, handoffs, guardrails, sessions, and traces. SDK sessions and handoffs do not replace Autonoesis Case, Run, delegation, or governance semantics.
+预留 Agents SDK Harness；提供商 Run、Tool Call 和 Trace 会转换为统一运行契约，不进入领域层。

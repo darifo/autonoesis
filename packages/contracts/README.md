@@ -1,3 +1,3 @@
 # Contracts
 
-Stable command, event, API, and error schemas shared across processes and languages. This package defines shape and compatibility, not domain behavior.
+保存跨进程和跨语言稳定契约。契约只描述 Envelope、命令和事件数据，不复制领域行为。破坏语义的变更必须提升主版本。

@@ -1,0 +1,107 @@
+name: autonoesis
+
+services:
+  postgres:
+    image: postgres:${POSTGRES_VERSION:-17-alpine}
+    environment:
+      POSTGRES_USER: autonoesis
+      POSTGRES_PASSWORD: autonoesis
+      POSTGRES_DB: autonoesis
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U autonoesis -d autonoesis"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    ports: ["5432:5432"]
+    volumes: ["postgres-data:/var/lib/postgresql/data"]
+
+  temporal:
+    image: temporalio/auto-setup:${TEMPORAL_VERSION:-1.28.1}
+    depends_on:
+      postgres: {condition: service_healthy}
+    environment:
+      DB: postgres12
+      DB_PORT: 5432
+      POSTGRES_USER: autonoesis
+      POSTGRES_PWD: autonoesis
+      POSTGRES_SEEDS: postgres
+    ports: ["7233:7233"]
+
+  temporal-ui:
+    image: temporalio/ui:${TEMPORAL_UI_VERSION:-2.40.0}
+    depends_on: [temporal]
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+    ports: ["8088:8080"]
+
+  opa:
+    image: openpolicyagent/opa:${OPA_VERSION:-1.4.2}
+    command: ["run", "--server", "--addr=0.0.0.0:8181", "/policies"]
+    volumes:
+      - ../policies:/policies:ro
+    ports: ["8181:8181"]
+
+  minio:
+    image: minio/minio:${MINIO_VERSION:-latest}
+    command: server /data --console-address :9001
+    environment:
+      MINIO_ROOT_USER: autonoesis
+      MINIO_ROOT_PASSWORD: autonoesis-local-only
+    ports: ["9000:9000", "9001:9001"]
+    volumes: ["minio-data:/data"]
+
+  jaeger:
+    image: jaegertracing/all-in-one:${JAEGER_VERSION:-1.69.0}
+    ports: ["16686:16686", "4317"]
+
+  otel-collector:
+    image: otel/opentelemetry-collector:${OTEL_VERSION:-0.128.0}
+    command: ["--config=/etc/otel/config.yaml"]
+    volumes:
+      - ../observability/otel-collector.yaml:/etc/otel/config.yaml:ro
+    depends_on: [jaeger]
+
+  api:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    command: ["sh", "-c", "alembic upgrade head && uvicorn autonoesis_api.main:app --host 0.0.0.0 --port 8000"]
+    depends_on:
+      postgres: {condition: service_healthy}
+      temporal: {condition: service_started}
+      opa: {condition: service_started}
+    environment:
+      AUTONOESIS_AUTH_MODE: development
+      AUTONOESIS_DATABASE_URL: postgresql+psycopg://autonoesis:autonoesis@postgres:5432/autonoesis
+      AUTONOESIS_TEMPORAL_TARGET: temporal:7233
+      AUTONOESIS_TEMPORAL_START: "true"
+      AUTONOESIS_CAPABILITY_PACK: /workspace/examples/field-service/capability-pack.yaml
+      AUTONOESIS_OPA_URL: http://opa:8181
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+    ports: ["8000:8000"]
+
+  worker:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    command: ["python", "-m", "autonoesis_worker.main"]
+    depends_on:
+      temporal: {condition: service_started}
+      postgres: {condition: service_healthy}
+    environment:
+      AUTONOESIS_DATABASE_URL: postgresql+psycopg://autonoesis:autonoesis@postgres:5432/autonoesis
+      AUTONOESIS_TEMPORAL_TARGET: temporal:7233
+      AUTONOESIS_TEMPORAL_TASK_QUEUE: autonoesis
+
+  cockpit:
+    build:
+      context: ../../apps/cockpit
+      dockerfile: Dockerfile
+    depends_on: [api]
+    environment:
+      VITE_AUTONOESIS_API_URL: http://localhost:8000
+    ports: ["4173:4173"]
+
+volumes:
+  postgres-data:
+  minio-data:

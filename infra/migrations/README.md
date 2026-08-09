@@ -1,3 +1,3 @@
-# Migrations
+# 数据库迁移
 
-Database migrations, compatibility checks, forward/rollback procedures, and data backfills. Every destructive migration requires backup and recovery evidence.
+Alembic 管理权威 Schema、租户 RLS 和兼容性。破坏性迁移必须提供备份、回滚或前向修复证据。

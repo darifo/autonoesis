@@ -1,35 +1,18 @@
-# ADR-0000: Record architecture decisions
+# ADR-0000：记录架构决策
 
-- Status: accepted
-- Date: 2026-08-01
+- 状态：accepted
+- 日期：2026-08-01
 
-## Context
+## 背景
 
-Autonoesis combines domain state, durable execution, agent harnesses, external tools, governance, and controlled evolution. Important boundaries can otherwise become implicit and drift across code, deployment, and team ownership.
+Autonoesis 同时包含领域状态、持久执行、模型与 Tool、治理和受控进化。关键边界如果只存在于代码习惯中，会随实现和团队变化发生漂移。
 
-## Decision
+## 决策
 
-Record decisions that affect authority, process boundaries, persistence, protocols, security, tenancy, or release policy as versioned Markdown ADRs.
+所有影响权威归属、进程边界、持久化、协议、安全、租户和发布策略的决策都使用版本化 Markdown ADR。每份 ADR 包含背景、决策、后果、替代方案和验证方式。
 
-Each ADR contains context, decision, consequences, alternatives, and verification. Accepted ADRs are immutable except for clarifications; a new ADR supersedes an old decision.
+## 后果
 
-## Consequences
-
-- Contributors can understand why a boundary exists.
-- Reviewers can identify architectural changes rather than treating them as local refactors.
-- Documentation work becomes part of the definition of done.
-
-## Template
-
-```markdown
-# ADR-NNNN: <decision>
-
-- Status: proposed
-- Date: YYYY-MM-DD
-
-## Context
-## Decision
-## Consequences
-## Alternatives considered
-## Verification
-```
+- 贡献者能够理解边界为什么存在；
+- 审查者可以识别架构变化，而不是把它当成局部重构；
+- 文档与验证成为完成定义的一部分。

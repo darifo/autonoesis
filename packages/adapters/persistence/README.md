@@ -1,3 +1,3 @@
-# Persistence adapters
+# 持久化适配器
 
-Future SQLAlchemy/PostgreSQL repositories, unit of work, migrations, transactional outbox, inbox deduplication, and projections.
+SQLAlchemy/PostgreSQL Repository、事务、乐观锁、RLS、Outbox/Inbox 和幂等记录。PostgreSQL 是已接受业务状态的权威。

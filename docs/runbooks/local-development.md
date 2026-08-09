@@ -1,55 +1,50 @@
-# Local development
+# 本地开发与运行手册
 
-## Bootstrap
+## 初始化
 
 ```bash
 conda env create --file environment.yml
 conda activate autonoesis
 UV_PROJECT_ENVIRONMENT="$CONDA_PREFIX" uv sync --inexact --all-packages --dev
+pnpm install
 ```
 
-For an existing environment, update it with `conda env update --file environment.yml --prune`
-before synchronizing the workspace. Setting `UV_PROJECT_ENVIRONMENT` to `CONDA_PREFIX` installs
-the locked workspace into the active Conda environment instead of creating a repository-local
-`.venv`; `--inexact` preserves packages managed by Conda.
+`--inexact` 保留 Conda 管理的包，不创建仓库内 `.venv`。
 
-If Task is installed:
+## 验证
 
 ```bash
-conda activate autonoesis
-task bootstrap
+ruff format --check .
+ruff check .
+mypy apps packages examples/field-service
+pytest
+pnpm typecheck
+pnpm build
+pnpm --filter @autonoesis/cockpit test
 ```
 
-## Verify
-
-```bash
-task check
-```
-
-Individual checks:
-
-```bash
-task lint
-task typecheck
-task test
-```
-
-## Run API
+## 单进程开发
 
 ```bash
 task api
+task worker
+pnpm --filter @autonoesis/cockpit dev
 ```
 
-Then open `http://127.0.0.1:8000/health/live`.
+API 本地开发模式要求请求携带 `X-Tenant-ID`、`X-Actor-ID`、`X-Roles` 和写请求的 `Idempotency-Key`。这些 Header 不能用于生产身份。
 
-## Worker bootstrap check
+## 完整本地平台
 
 ```bash
-task worker
+docker compose --file infra/compose/docker-compose.yml up --build
 ```
 
-The initial worker command validates configuration only. Temporal connection and workflow registration are added with the first durable-execution vertical slice.
+API 启动前执行 Alembic 迁移；PostgreSQL 保存权威状态，Temporal 保存持久工作流历史。停止服务不会清除 Volume；需要清空本地数据时必须明确执行 Compose Volume 删除命令。
 
-## Local configuration
+## Capability Pack
 
-Copy `.env.example` to `.env`. Do not commit `.env`, credentials, production payloads, or raw traces.
+Field Service Manifest 位于 `examples/field-service/capability-pack.yaml`。新增能力包必须通过 Manifest 测试，并确保核心包不导入示例模块。
+
+## 安全
+
+复制 `.env.example` 为 `.env`。不要提交凭证、生产 Payload、原始客户 Prompt、未脱敏 Trace、私钥或 Evidence 原文。

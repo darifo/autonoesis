@@ -1,3 +1,3 @@
-# Terraform
+# Terraform（后续阶段）
 
-Cloud networks, clusters, databases, object storage, KMS, workload identity, and private connectivity. No secrets are stored in state without an approved encrypted backend.
+预留云资源、网络、身份和托管数据服务配置，不在当前本地 Compose MVP 范围内。

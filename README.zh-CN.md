@@ -1,130 +1,176 @@
-<div align="center">
-  <img src="docs/assets/autonoesis-icon.png" alt="Autonoesis 项目图标" width="168" />
+# Autonoesis
 
-  # Autonoesis
+**企业级受控自进化智能体操作系统**
 
-  **企业级受治理自进化智能体操作系统**
+Autonoesis 不是一个堆叠了 Prompt、工具和长期记忆的"大 Agent"，而是一套对智能运行事实负责的企业平台：
 
-  Enterprise Governed Self-Evolving Agent Operating System
+- **Goal-first**：每一项工作都是可验证的 `GoalContract`，包含成功标准、约束、预算和截止时间。
+- **持久执行**：Goal 跨时间、暂停、审批、取消和进程重启持续推进，通过持久工作流引擎保障。
+- **受控行动**：每个外部副作用在执行时必须通过身份、委托、策略、风险、预算、审批和幂等检查。
+- **证据驱动结果**：工具返回成功只是回执——不是证明。结果通过对权威系统的回读来验证。
+- **受控进化**：改进先成为 Candidate，经独立评估门禁后，通过 Shadow → Canary → Stable 晋升，且可回滚。
 
-  [English](README.md) · **简体中文**
-
-  [![CI](https://github.com/darifo/autonoesis/actions/workflows/ci.yml/badge.svg)](https://github.com/darifo/autonoesis/actions/workflows/ci.yml)
-  [![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-  [![许可证：MIT](https://img.shields.io/badge/License-MIT-0B7285.svg)](LICENSE)
-  [![状态：Phase 0](https://img.shields.io/badge/Status-Phase%200-4F46E5.svg)](docs/roadmap/mvp.md)
-</div>
-
-Autonoesis 是一个面向企业智能体的全新平台。它让智能体能够跨越时间持续运行、从真实结果中学习，并通过受治理、可审计、可逆的发布流程实现演进。
-
-它并不是一个不断膨胀的“超级智能体”。目标、持久化执行、权限、上下文、记忆、工具、证据、评估与发布治理都是明确的系统边界——确保每一项关键操作都有责任主体、策略决策和可验证的结果证据。
-
-## 为什么选择 Autonoesis
-
-| 系统边界 | 保护的内容 |
-| --- | --- |
-| **目标 ≠ 提示词** | 目标在单次模型调用之外持续保留范围、约束、成功标准与风险限制。 |
-| **运行时 ≠ 执行框架** | 运行时控制顺序、隔离、恢复与资源；执行框架只负责完成边界明确的任务。 |
-| **工具 ≠ 权限** | 每一项外部副作用都必须在执行时重新完成授权检查。 |
-| **输出 ≠ 结果** | 是否完成取决于真实系统提供的证据，而不是模型自身的置信度。 |
-| **改进 ≠ 发布** | 候选改进必须通过独立评估、审批、影子/金丝雀验证与回滚门禁。 |
-
-## 系统形态
-
-```mermaid
-flowchart LR
-    G["目标与约束"] --> P["策略与权限"]
-    P --> R["持久化运行时"]
-    R --> H["有界执行框架"]
-    H --> E["结果证据"]
-    E --> V["独立评估"]
-    V --> C["受治理发布"]
-    C -. "可逆改进" .-> R
+```
+Intent → GoalContract → ContextSnapshot → Plan → Durable Run → Task
+→ Governed Action → Evidence → Outcome → Evaluation
+→ ImprovementProposal → Candidate → Shadow/Canary/Stable/Rollback
 ```
 
-PostgreSQL 是已接受业务状态的权威数据源，Temporal 是持久化工作流历史的权威数据源。模型可以提出命令，但只有受治理的应用路径能够修改权威状态。
+[English](README.md) · [架构总览](docs/architecture/overview.md) · [架构决策记录](docs/adr/README.md) · [路线图](docs/roadmap/mvp.md)
 
-## 当前状态
+---
 
-> **Phase 0 — 架构基线与契约**
+## 核心承诺
 
-当前实现建立了依赖方向、稳定术语、健康检查端点、Worker 入口，以及契约、领域和运行时之间的边界。提供商集成与基础设施将保持延后，直到端到端垂直切片证明其边界合理。
+| 承诺 | 工程含义 |
+|---|---|
+| 持久智能体 | 任务不依赖一次 HTTP、对话或 Worker 进程存活 |
+| 显式授权 | 身份、委托、权限、预算和审批均为显式对象，而非 Prompt 指令 |
+| 证据驱动结果 | 工具回执不是证明；通过权威系统回读验证真实世界结果 |
+| 受控进化 | 改进先成为 Candidate，通过独立评估和发布门禁后才可 Stable |
+| 可替换智能 | 模型、Harness、Memory Provider、MCP/A2A 实现均为可替换适配器 |
+| 企业级隔离 | 租户在身份、数据、凭证、运行时、网络、预算和发布维度全面隔离 |
 
-## 仓库结构
-
-```text
-autonoesis/
-├── apps/                 # API、Worker、Cockpit 与预留的 Gateway 边界
-├── packages/             # 领域、契约、应用、运行时与适配器
-├── infra/                # 交付、策略、可观测性与数据库迁移
-├── examples/             # 参考智能体与评估套件
-├── docs/                 # 架构、ADR、契约、威胁模型与运行手册
-└── tools/                # 开发、代码生成与发布工具
-```
-
-初始部署由 API、Worker 和 Cockpit 三个进程组成。Gateway 逻辑首先存在于共享包中，只有当安全性、规模或复用需求足以抵消运维成本时，才拆分为独立进程。
+---
 
 ## 快速开始
 
-### 前置条件
-
-- [Conda](https://docs.conda.io/)——通过 `environment.yml` 安装 Python 和 `uv`
-- Node.js 22+ 与 pnpm——用于 Cockpit 工作区
-- [Task](https://taskfile.dev/)——仓库级命令入口
-- Docker 或其他兼容 OCI 的运行时——用于后续基础设施开发
-
-### 初始化并验证
-
 ```bash
-conda env create --file environment.yml
+# 创建并激活 Conda 环境
+conda env create -f environment.yml
 conda activate autonoesis
+
+# 安装 Python 工作空间
 task bootstrap
+
+# 安装 TypeScript 工作空间
+pnpm install
+
+# 运行质量检查
 task check
 ```
 
-### 本地运行
+启动完整本地平台：
 
 ```bash
-# 启动支持热重载的 API
-task api
-
-# 检查 Worker 初始化与配置
-task worker
+docker compose --file infra/compose/docker-compose.yml up --build
 ```
 
-API 健康检查地址为 `http://127.0.0.1:8000/health/live`。
+- API 文档：http://localhost:8000/docs
+- 控制台：http://localhost:4173
+- Temporal UI：http://localhost:8088
 
-<details>
-<summary><strong>不使用 Task 时的命令</strong></summary>
+单进程开发：
 
 ```bash
-conda env create --file environment.yml
-conda activate autonoesis
-UV_PROJECT_ENVIRONMENT="$CONDA_PREFIX" uv sync --inexact --all-packages --dev
-
-ruff format --check .
-ruff check .
-mypy apps packages
-pytest
+task api                               # FastAPI 热重载
+pnpm --filter @autonoesis/cockpit dev  # React 开发服务器
 ```
 
-</details>
+---
 
-## 文档
+## 架构一览
 
-| 主题 | 指南 |
-| --- | --- |
-| 架构 | [架构概览](docs/architecture/overview.md) · [仓库边界](docs/architecture/repository-layout.md) |
-| 决策 | [架构决策记录](docs/adr/README.md) |
-| 工程实践 | [本地开发](docs/runbooks/local-development.md) · [贡献指南](CONTRIBUTING.md) |
-| 接口 | [契约规则](docs/contracts/README.md) |
-| 交付 | [MVP 路线图](docs/roadmap/mvp.md) |
-| 安全 | [威胁模型](docs/threat-models/README.md) · [安全策略](SECURITY.md) |
+Autonoesis 将责任组织为**八个逻辑平面**——不是八个微服务：
+
+| 平面 | 回答的核心问题 | 当前实现 |
+|---|---|---|
+| Interaction | 请求从哪来，是谁，通过什么渠道 | FastAPI、Cockpit、SDK |
+| Intelligence | 目标是什么，应如何规划和决策 | Goal Manager、Planner、Decision、能力选择器 |
+| Runtime | 计划如何跨时间可靠推进 | 持久工作流、Harness、检查点、工作空间 |
+| Environment | 此刻外部世界的可验证状态是什么 | 事实注册、投影、时效、仿真 |
+| Context | 这次运行应该看到什么 | 检索、ACL 过滤、排序、冲突、压缩、快照 |
+| Integration | 如何安全连接模型、工具和其他 Agent | Model Gateway、Tool Gateway、MCP Host、A2A Gateway |
+| Data & Evidence | 如何保存状态、历史、证据和可观测数据 | PostgreSQL、对象存储、事件总线、审计、遥测 |
+| Governance | Agent 凭什么行动，谁能审批和接管 | 身份、委托、策略、审批、预算、Kill Switch |
+
+当前部署为三个进程：**API**、**Worker** 和 **Cockpit**。
+
+---
+
+## 仓库结构
+
+```
+autonoesis/
+├── apps/
+│   ├── api/          # HTTP/SSE/Webhook 控制面
+│   ├── worker/       # 持久工作流/Activity/Harness Worker
+│   ├── cockpit/      # 运营、审批、证据、评估和发布控制台
+│   └── gateway/      # 独立 Model/Tool 数据面（达到拆分条件后）
+├── packages/
+│   ├── domain/       # 纯领域对象、状态机和不变量
+│   ├── contracts/    # 跨进程 Schema、Envelope、错误目录
+│   ├── application/  # Command/Query Handler、UoW、事务边界
+│   ├── capability/   # Capability Pack Manifest、发现、安装和验证
+│   ├── intelligence/ # Goal 澄清、Planning、Decision、能力选择
+│   ├── runtime-kernel/ # Orchestrator、Harness SPI、Workspace、Checkpoint
+│   ├── context/      # 检索、ACL、时效、冲突、压缩、Snapshot
+│   ├── environment/  # Environment Fact、投影、刷新、仿真
+│   ├── memory/       # Memory SPI、Ledger、Write Gate、删除传播
+│   ├── gateways/     # Model、Tool、MCP、A2A、Channel 统一边界
+│   ├── governance/   # Identity、Delegation、Policy、Approval、Budget、Audit
+│   ├── evaluation/   # EvaluationCase、Suite、Trial、Harness、Grader
+│   ├── improvement/  # Analysis、Proposal、Candidate、Release、Rollback
+│   ├── adapters/     # Provider / Protocol / Persistence 适配器
+│   └── testkit/      # Fake Provider、攻击套件、契约测试支撑
+├── sdk/              # Python / TypeScript 客户端 SDK
+├── examples/         # 仅依赖公开接口的参考 Capability Pack
+├── infra/            # Compose、Helm、IaC、Policy、OTel、Supply Chain
+├── docs/             # Architecture、ADR、Contracts、Threat Models、Runbooks
+└── tools/            # Codegen、Schema Check、Release、Dev CLI
+```
+
+**依赖方向**：`apps → application → domain` · `domain` 不得依赖框架 · `core` 不得反向依赖 `examples`
+
+---
+
+## 核心领域模型
+
+| 对象 | 语义 |
+|---|---|
+| `SubjectRef` | 外部权威业务对象的稳定引用 |
+| `GoalContract` | 一个可管理、可验证的目标合同，含成功标准、约束、预算和截止时间 |
+| `Session` | 交互连续性，不是执行生命周期 |
+| `Run` | 一次独立核算、恢复和审计的执行 |
+| `Plan` | 版本化 Task DAG 及其前提假设 |
+| `Task` | 无外部副作用语义的可调度工作单元 |
+| `DecisionRecord` | 为什么执行、拒绝、升级或重规划 |
+| `Action` | 最小可治理副作用边界 |
+| `Evidence` | 对真实世界状态的可引用观测 |
+| `Outcome` | 成功标准是否在现实中成立 |
+| `CandidateVersion` | 未经生产发布门禁的能力新版本 |
+
+---
+
+## 实施阶段
+
+| 阶段 | 状态 | 重点 |
+|---|---|---|
+| **Phase 0** | ✅ 完成 | 领域语言、核心对象、状态机、Monorepo 骨架、ADR 模板 |
+| **Phase 1** | ✅ 完成 | API、PostgreSQL、持久工作流、Cockpit、模型/工具适配器、参考 Capability Pack |
+| **Phase 2** | 🚧 规划中 | 统一 Model/Tool Gateway、凭证 Broker、证据对账、SLO、Kill Switch |
+| **Phase 3** | 📋 规划中 | 上下文装配、Memory Write Gate、Multi-Agent、长任务压缩 |
+| **Phase 4** | 📋 规划中 | 受控自进化、Candidate 管线、Shadow/Canary、自动回滚 |
+
+---
+
+## 文档索引
+
+- [架构总览](docs/architecture/overview.md)
+- [领域模型](docs/architecture/domain-model.md)
+- [运行时与执行流](docs/architecture/runtime-and-flows.md)
+- [部署架构](docs/architecture/deployment.md)
+- [仓库与依赖边界](docs/architecture/repository-layout.md)
+- [架构决策记录](docs/adr/README.md)
+- [API 与事件契约](docs/contracts/README.md)
+- [威胁模型](docs/threat-models/README.md)
+- [运行手册](docs/runbooks/local-development.md)
+- [MVP 路线图](docs/roadmap/mvp.md)
 
 ## 参与贡献
 
-Autonoesis 坚持架构优先。请优先提交范围小、易审查并且能够维护权限与依赖边界的改动。开始实现前请阅读 [AGENTS.md](AGENTS.md) 和相关 ADR，并在发起 Pull Request 前运行 `task check`。
+参见 [CONTRIBUTING.md](CONTRIBUTING.md) 和 [AGENTS.md](AGENTS.md) 了解架构规则、工程流程和完成定义。
 
 ## 许可证
 
-本项目采用 [MIT 许可证](LICENSE) 发布。
+基于 [MIT License](LICENSE) 发布。

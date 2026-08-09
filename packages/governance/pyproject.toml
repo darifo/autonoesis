@@ -1,0 +1,18 @@
+[project]
+name = "autonoesis-governance"
+version = "0.1.0"
+description = "Identity, delegation, policy, approval, budget, and audit for Autonoesis"
+requires-python = ">=3.12"
+dependencies = [
+  "autonoesis-domain",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/autonoesis_governance"]
+
+[tool.uv.sources]
+autonoesis-domain = { workspace = true }

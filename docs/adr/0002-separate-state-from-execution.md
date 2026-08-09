@@ -1,30 +1,19 @@
-# ADR-0002: Separate authoritative state from durable execution
+# ADR-0002：分离业务权威状态与持久执行
 
-- Status: accepted
-- Date: 2026-08-01
+- 状态：accepted
+- 日期：2026-08-01
 
-## Context
+## 背景
 
-Long-running agent tasks must survive failures, approvals, cancellation, and retries. Workflow history is optimized for deterministic continuation, while enterprise business state needs relational constraints, explicit ownership, querying, retention, and audit semantics.
+长任务必须跨故障、审批、取消和重试继续运行。Workflow History 适合确定性恢复，企业业务状态则需要关系约束、明确所有者、查询、保留和审计语义。
 
-## Decision
+## 决策
 
-- PostgreSQL is authoritative for Case, Goal, Plan, Decision, Run, Task, Action, Approval, Outcome, Evidence metadata, and Release records.
-- Temporal is authoritative for workflow history, timers, retries, signals, and continuation.
-- State changes and event publication use transactional outbox; consumers use inbox/idempotency records.
-- A workflow never treats its private history as proof that the external business outcome occurred.
+- PostgreSQL 是 Goal、Plan、Decision、Run、Task、Action、Approval、Outcome、Evidence 元数据和 Release 的权威；
+- Temporal 是 Workflow History、Timer、Retry、Signal 和 Continuation 的权威；
+- 状态变更与事件发布使用 Transactional Outbox，消费者使用 Inbox 和 Idempotency Record；
+- Workflow 私有历史不能证明外部业务 Outcome 已经发生。
 
-## Consequences
+## 后果与验证
 
-- Recovery and business truth remain explicit.
-- Dual-write coordination requires outbox/inbox patterns and reconciliation.
-- Workflow code must be deterministic and avoid direct unversioned domain writes.
-
-## Alternatives considered
-
-- Store all state in workflow history: rejected for business authority and query limitations.
-- Store orchestration only in database jobs: rejected for durable timers, signals, and recovery complexity.
-
-## Verification
-
-Integration tests must cover process restart, duplicate delivery, timeout with unknown outcome, cancellation, and resume after authorization changes.
+需要处理双写协调和对账；Workflow 代码必须确定性。集成测试覆盖进程重启、重复投递、超时未知、取消和授权变化后的恢复。

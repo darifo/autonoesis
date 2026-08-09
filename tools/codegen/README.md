@@ -1,3 +1,3 @@
-# Code generation
+# 代码生成
 
-Future OpenAPI, AsyncAPI, schema, Python, and TypeScript generators. Generated outputs are reproducible and clearly marked.
+未来从 OpenAPI 和事件 Schema 生成 Python/TypeScript 类型与客户端，生成物不可手工编辑。

@@ -1,3 +1,3 @@
-# Compose
+# 本地 Compose
 
-Local PostgreSQL, Temporal, NATS, object storage, policy, and observability services will be added when the first durable vertical slice defines exact versions and health checks.
+`docker-compose.yml` 启动 PostgreSQL、Temporal、OPA、MinIO、Jaeger、API、Worker 和 Cockpit，用于完整本地开发与恢复测试。

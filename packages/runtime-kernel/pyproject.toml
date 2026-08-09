@@ -3,7 +3,7 @@ name = "autonoesis-runtime-kernel"
 version = "0.1.0"
 description = "Runtime and harness ports for Autonoesis"
 requires-python = ">=3.12"
-dependencies = ["autonoesis-contracts"]
+dependencies = ["autonoesis-contracts", "autonoesis-domain"]
 
 [build-system]
 requires = ["hatchling"]
@@ -14,3 +14,4 @@ packages = ["src/autonoesis_runtime"]
 
 [tool.uv.sources]
 autonoesis-contracts = { workspace = true }
+autonoesis-domain = { workspace = true }

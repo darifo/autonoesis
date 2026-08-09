@@ -1,0 +1,20 @@
+[project]
+name = "autonoesis-gateways"
+version = "0.1.0"
+description = "Model, Tool, MCP, A2A, and Channel unified boundaries for Autonoesis"
+requires-python = ">=3.12"
+dependencies = [
+  "autonoesis-domain",
+  "autonoesis-contracts",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/autonoesis_gateways"]
+
+[tool.uv.sources]
+autonoesis-domain = { workspace = true }
+autonoesis-contracts = { workspace = true }

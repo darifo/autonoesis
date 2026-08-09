@@ -1,6 +1,12 @@
 {
-  "name": "@autonoesis/ts-sdk",
+  "name": "@autonoesis/sdk",
   "version": "0.1.0",
   "private": true,
-  "description": "TypeScript client boundary for Autonoesis"
+  "type": "module",
+  "exports": "./src/client.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc"
+  },
+  "devDependencies": {"typescript": "^5.8.0"}
 }

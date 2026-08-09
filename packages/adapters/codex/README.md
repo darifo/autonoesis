@@ -1,3 +1,3 @@
-# Codex adapter
+# Codex Harness 适配器
 
-Future `Harness` implementation for isolated repository and coding tasks. Repository policy, sandbox, approval, artifact, and validation evidence remain explicit Autonoesis inputs and outputs.
+预留将 Codex 接入统一 Harness 的边界。Codex 的内部会话和模型不能泄漏为 Autonoesis 领域对象。

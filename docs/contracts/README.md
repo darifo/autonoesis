@@ -1,31 +1,29 @@
-# Contract rules
+# API 与事件契约
 
-Contracts define stable messages across processes, languages, and release versions. They do not contain domain behavior.
+跨进程、跨语言和跨版本契约只表达数据，不承载领域行为。
 
-## Initial object chain
+## 对象链
 
 ```text
-Request → Case → Goal → Plan → Decision → Run → Task → Action
-                                              ↓
-                              Artifact → Outcome → Evidence
+Request → Goal → ContextSnapshot → Plan → Decision → Run → Task → Action
+                                                        ↓
+                                    Artifact → Evidence → Outcome
+                                                        ↓
+                               Evaluation → Candidate → Release
 ```
 
-## Envelope requirements
+## Envelope
 
-Every command and event will eventually include:
+每个命令和事件必须携带：消息 ID、关联 ID、因果 ID、租户、Actor、Principal、Schema 名称与版本、创建时间、Trace Context、数据分类和保留信息。可能产生副作用的命令必须携带稳定幂等键。
 
-- unique message and correlation identifiers;
-- tenant, actor, delegation, and causation references;
-- schema name and version;
-- creation time and trace context;
-- idempotency key where side effects are possible;
-- data classification and retention metadata where applicable.
+## HTTP 规则
 
-## Compatibility
+- 租户和身份来自 OIDC 上下文，不接受正文声明；
+- 写请求要求 `Idempotency-Key`；
+- 更新使用乐观锁版本或 `If-Match`；
+- 错误 Envelope 包含 code、message、retryable、next_action 和关联 ID；
+- 客户端不能直接执行 Action，只能提交 Goal、审批或治理命令。
 
-- Adding an optional field may be backward compatible.
-- Removing or renaming fields, adding required fields, or changing meaning requires a new major schema version.
-- Event meanings are immutable.
-- Generated Python and TypeScript models live under `packages/contracts/generated/` and are not hand-edited.
+## 兼容性
 
-The current Python contract types are bootstrap types, not a frozen public protocol.
+新增可选字段可能向后兼容；删除、重命名、增加必填字段或改变语义必须提升主版本。事件含义不可修改。生成模型放在显式 `generated/` 目录，不手工编辑。

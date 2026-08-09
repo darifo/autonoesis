@@ -1,3 +1,3 @@
-# Messaging adapters
+# 消息适配器
 
-Future CloudEvents and NATS JetStream transport. Delivery infrastructure does not become authoritative state.
+负责版本化 Envelope、Outbox 发布、Inbox 去重和因果顺序，不拥有领域状态。首版不引入额外消息中间件。

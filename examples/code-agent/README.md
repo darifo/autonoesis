@@ -1,3 +1,3 @@
-# Code agent example
+# Code Agent 示例草案
 
-Reserved reference for an isolated coding workflow with explicit repository scope, validation evidence, review, and reversible delivery.
+未来用于验证 Sandbox、代码 Harness、测试 Evidence 和受保护分支 Outcome。本轮不实现。

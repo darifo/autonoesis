@@ -1,3 +1,3 @@
-# Evaluation suites
+# 通用评估套件草案
 
-Reserved deterministic and model-graded cases for normal, adversarial, duplicate, recovery, authorization, memory-poisoning, and rollback scenarios.
+未来保存跨能力包复用的注入、租户隔离、恢复、成本和轨迹质量案例。

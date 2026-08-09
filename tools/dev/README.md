@@ -1,3 +1,3 @@
-# Development tools
+# 开发工具
 
-Local environment validation, fixture loading, and developer diagnostics.
+保存依赖边界检查、能力包校验、Fixture 和本地诊断命令。

@@ -1,3 +1,3 @@
-# Helm
+# Helm（后续阶段）
 
-Charts for independently deployable applications and their policy/telemetry configuration. Production images must be digest-pinned.
+本轮不交付生产 Kubernetes。未来 Chart 必须覆盖 Secret、Ingress、扩缩容、备份、网络策略和升级回滚。

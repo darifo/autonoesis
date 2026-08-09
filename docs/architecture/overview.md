@@ -1,64 +1,120 @@
-# Architecture overview
+# Autonoesis Architecture Overview
 
-> Enterprise Governed Self-Evolving Agent Operating System
->
-> 企业级受治理自进化智能体操作系统
+> Status: baseline · Last reviewed: 2026-08-09 · Applicable version: 0.1.0
 
-Autonoesis separates control, execution, and evidence so no component can simultaneously propose an action, execute its side effect, and declare the real-world outcome successful.
+## 1. System Responsibility
 
-## Logical planes
+Autonoesis is an industry-agnostic, AI-native agent runtime base. It does not own external business system state—customers, orders, devices, medical records, contracts, or projects. Instead, it references these authoritative objects via `SubjectRef` and takes responsibility for the facts of intelligent execution: Goal, Run, Plan, Decision, Action, Evidence, Outcome, and governed evolution.
 
-```mermaid
-flowchart LR
-    CHANNEL["Web / API / Webhook / Schedule"] --> INTERACTION["Interaction"]
-    INTERACTION --> CONTROL["Case & Goal Control"]
-    CONTROL --> INTELLIGENCE["Intelligence<br/>Goal / Plan / Decision"]
-    INTELLIGENCE --> RUNTIME["Runtime<br/>Workflow / Harness / Workspace"]
-    RUNTIME --> CONTEXT["Context"]
-    CONTEXT --> ENVIRONMENT["Environment Facts"]
-    CONTEXT --> MEMORY["Knowledge & Memory"]
-    RUNTIME --> INTEGRATION["Integration<br/>Model / Tool / MCP / A2A"]
-    INTEGRATION --> EXTERNAL["Models / Enterprise Systems / Remote Agents"]
-    GOVERNANCE["Governance"] -. policy .-> CONTROL
-    GOVERNANCE -. authorization .-> RUNTIME
-    GOVERNANCE -. authorization .-> INTEGRATION
-    INTERACTION -. telemetry .-> DATA["Data & Evidence"]
-    RUNTIME -. trajectory .-> DATA
-    INTEGRATION -. invocation .-> DATA
-    DATA --> EVALUATION["Evaluation"]
-    EVALUATION --> IMPROVEMENT["Candidate / Shadow / Canary / Stable"]
-    IMPROVEMENT --> RUNTIME
-```
-
-The eight logical planes are architectural responsibilities, not eight services. Initial physical deployment is intentionally smaller:
-
-| Process | Responsibility |
-|---|---|
-| `autonoesis-api` | Interaction, domain control plane, governance APIs, context queries |
-| `autonoesis-worker` | Durable workflows, task execution, harnesses, evaluation workers |
-| `autonoesis-cockpit` | Operator, approval, evidence, evaluation, and release UI |
-| `autonoesis-gateway` | Reserved boundary; separated only for security, scale, or reuse |
-
-## Three flows
-
-1. **Control flow**: Request → Case/Goal → Plan → Decision → Run Command → State Transition.
-2. **Execution flow**: Task → Harness → Model/Skill → Tool Proposal → Authorization → Action → Tool Result.
-3. **Evidence flow**: Snapshot/Decision/Invocation/Artifact/Environment State → Outcome Evidence → Evaluation → Release Evidence.
-
-## Authority
-
-- PostgreSQL is the authoritative store for accepted domain state.
-- Temporal owns durable workflow history and continuation, not business truth.
-- Object storage owns immutable artifacts and evidence payloads; PostgreSQL owns their metadata and references.
-- Event transport is delivery infrastructure, not an authority.
-- Models, vector stores, traces, and memory providers are derived or advisory systems.
-
-## Evolution loop
+Core closed loop:
 
 ```text
-Run → Trajectory → Outcome Evidence → Evaluation → Reflection
-    → Candidate → Verification → Approval → Shadow/Canary
-    → Stable Release or Rollback
+Intent → GoalContract → ContextSnapshot → Plan → Decision
+→ Durable Run → Task → Governed Action → Evidence → Outcome
+→ Evaluation → ImprovementProposal → Candidate → Stable / Rollback
 ```
 
-Identity, tenant isolation, audit retention, and authorization policy are never self-released. They require explicit human-controlled governance changes.
+## 2. Eight Logical Planes
+
+Planes are logical responsibility boundaries, not mandatory physical deployment units. The current deployment uses three processes: API, Worker, and Cockpit.
+
+| Plane | Core Question | Current Implementation |
+|---|---|---|
+| Interaction | Where do requests come from, who is the caller, how are they normalized? | FastAPI, Cockpit, Python/TS SDK |
+| Intelligence | What is the goal, and how should we plan and decide? | Goal Manager, Planner, Decision, Capability Selector |
+| Runtime | How does the plan advance reliably across time? | Durable Workflow, Harness, Checkpoint, Workspace |
+| Environment | What is the verifiable state of the outside world right now? | Fact Registry, Projection, Freshness, Simulation |
+| Context | What should this run see? | Retrieval, ACL Filter, Rank, Conflict, Compression, Snapshot |
+| Integration | How do we safely connect models, tools, and other agents? | Model Gateway, Tool Gateway, MCP Host, A2A Gateway |
+| Data & Evidence | How do we persist state, history, evidence, and telemetry? | PostgreSQL, Object Store, Event Bus, Audit, Telemetry |
+| Governance | On what authority does an agent act, and who can approve or take over? | Identity, Delegation, Policy, Approval, Budget, Kill Switch |
+
+## 3. Three Flows That Must Not Be Confused
+
+| Flow | Primary Path | Inviolable Boundary |
+|---|---|---|
+| Control | Request → Goal → Plan → Decision → Run Command → State Transition | Model output cannot directly become authoritative state |
+| Execution | Task → Harness → Model/Skill → Tool Proposal → Action → Result | Tool calls must pass execution-time governance |
+| Evidence | Snapshot/Decision/Invocation/Artifact/Fact → Evidence → Outcome → Evaluation | The generator cannot independently prove its own success |
+
+## 4. Goal-First Business Model
+
+The core provides no generic `Case`. `GoalContract` is the single business driver, containing:
+
+- Goal Type and versioned input payload
+- One or more external `SubjectRef` references
+- Desired Outcome, success criteria, and required Evidence
+- Owner, risk tier, constraints, budget limit, and deadline
+- Current status with optimistic lock versioning
+
+External systems map their business entities to Goals as they see fit. A CRM might map a complaint to multiple Goals; an ERP might map an order to fulfillment, exception-handling, and review Goals. How business entities are aggregated is the external system's concern—not the platform's.
+
+## 5. Capability Pack
+
+Industry capabilities are installed through versioned Capability Packs (`capability-pack.yaml`). A manifest declares:
+
+- Goal Types with JSON Schema
+- Agent, Skill, and Tool definitions
+- Policies, default budgets, and risk requirements
+- Evaluation Suites with test cases
+- Python Entry Point for complex behavior
+
+Installation validates: API version, SemVer, strict field and JSON Schema checks, manifest/entry point version matching, identifier uniqueness, dependency integrity, tenant authorization, and audit recording.
+
+## 6. Authoritative State & Durable Workflows
+
+| Store | Authoritative For | Not Authoritative For |
+|---|---|---|
+| PostgreSQL | Goal, Run, Action, Approval, Outcome, Evaluation, Release metadata | Large Artifact bodies |
+| Durable Workflow Engine | Workflow events, Timers, Signals, Retries, Replay history | Business authoritative state |
+| Object Store | Immutable Evidence/Artifact payloads, reports, transcripts | Queryable state machines |
+| Event Bus | Event delivery and subscriptions | Long-term authoritative state |
+| Search/Vector | Rebuildable retrieval projections | Authoritative Knowledge/Memory/State |
+
+Temporal Activities that modify business state must call Application transactions. External writes use stable idempotency keys. After timeout, Actions enter `Unknown`—query real state first, then decide success, failure, compensation, or human takeover.
+
+## 7. Workflow vs. Agent Loop
+
+Default to deterministic Workflow. Agent Loop is only used when the next Task step depends on open-ended observation and cannot be pre-enumerated. Each Agent Loop must fix:
+
+- Agent Version, Context Snapshot ID
+- Visible Tool set and operable resource scope
+- Maximum turns, tokens, cost, time, concurrency, and sub-agent depth
+- Success, failure, blockage, escalation, and emergency termination conditions
+- Observable transcript to preserve vs. hidden reasoning to discard
+
+Model output is always a structured proposal. It cannot directly mutate authoritative state or acquire permissions.
+
+## 8. Model & Tool Gateway
+
+**Model Gateway**: Hard-filter by capability, data region, and risk first. Then select by quality, latency, cost, quota, and historical success rate. Fallback in explicit, auditable order.
+
+**Tool Gateway** enforces a fixed execution pipeline:
+
+```text
+Identity → Delegation → Policy Decision → Schema Validation → Risk Classification
+→ Budget/Quota Check → Exact-Parameter Approval → Credential Brokering
+→ Idempotency Reservation → Execute in Egress/Sandbox → Normalize Result
+→ Verify Effect → Record Evidence and Audit
+```
+
+Approval binds to Action parameter digest. Any parameter change requires re-approval. Tool returns `accepted` before `verify` reads the authoritative system.
+
+## 9. Governed Evolution
+
+Post-run Analysis proposes an `ImprovementProposal`. Allowed targets: Agent Instruction, Skill, Prompt Asset, Model Route. Forbidden: identity, policy, tenant isolation, security classification, audit retention, production code, and infrastructure.
+
+Candidate generator, grader, and approver must be separate. The pipeline is:
+
+```text
+Draft → Evaluating → Awaiting Approval → Approved → Stable
+Stable → Rolled Back
+```
+
+Each Stable retains a pointer to the previous Stable for rollback.
+
+## 10. Deployment
+
+Local Compose runs PostgreSQL, Temporal, OPA, MinIO, OpenTelemetry/Jaeger, API, Worker, and Cockpit. Kubernetes, Shadow/Canary, and automatic traffic experiments are post-MVP production phases.
+
+See [deployment.md](deployment.md) for detailed deployment architecture.

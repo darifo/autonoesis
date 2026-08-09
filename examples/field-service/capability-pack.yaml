@@ -1,0 +1,22 @@
+api_version: autonoesis/v1alpha1
+pack_id: field-service
+version: 0.1.0
+python_entry_point: field_service.plugin:create_plugin
+goal_types:
+  - goal_type: field-service.restore-equipment
+    input_schema:
+      type: object
+      additionalProperties: false
+      required: [customer_id, equipment_id, symptom]
+      properties:
+        customer_id: {type: string, minLength: 1}
+        equipment_id: {type: string, minLength: 1}
+        symptom: {type: string, minLength: 1}
+    agent: field-service-diagnosis
+    evaluation_suite: field-service-recovery
+    default_policy: field-service-production-write
+    default_budget: 1000
+skills: [field-service-diagnosis]
+tools: [field-service-read-telemetry, field-service-create-repair-order]
+policies: [field-service-production-write]
+evaluation_suites: [field-service-recovery]

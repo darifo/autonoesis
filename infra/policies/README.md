@@ -1,3 +1,3 @@
-# Policies
+# 策略
 
-OPA bundles, sandbox profiles, egress rules, data classification, and release policies. Policy decisions are versioned and auditable.
+OPA Bundle、Sandbox、网络出口、数据分类和发布门禁。策略决策必须版本化并进入审计。

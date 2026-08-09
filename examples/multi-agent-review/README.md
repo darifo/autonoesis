@@ -1,3 +1,3 @@
-# Multi-agent review example
+# 多 Agent Review 草案
 
-Reserved Builder/Reviewer workflow demonstrating isolated context, independent permissions, explicit disagreement, and evidence-based synthesis.
+只有职责、权限、上下文或并行收益能够通过评估证明时才引入多 Agent。本轮不实现角色堆叠示例。

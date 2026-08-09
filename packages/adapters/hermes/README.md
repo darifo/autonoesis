@@ -1,3 +1,3 @@
-# Hermes adapter
+# Hermes Harness 适配器
 
-Future `Harness` implementation for bounded Hermes tasks. It receives an Autonoesis TaskRequest, context snapshot, workspace, and scoped tool capabilities, then returns a TaskResult, artifacts, telemetry, and tool proposals.
+预留可替换 Harness，不迁移或复制已废弃 Hermes 项目的领域行为。

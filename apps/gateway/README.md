@@ -1,5 +1,3 @@
-# Gateway
+# Gateway 进程预留边界
 
-Reserved independent deployment boundary for model, tool, MCP, A2A, channel, secret-broker, and egress-policy data planes.
-
-During the initial phase, gateway logic is implemented in `packages/gateways` and assembled into API or Worker. Activate this process only through an ADR demonstrating a distinct security domain, scaling curve, shared-product need, or language/runtime requirement.
+Model 与 Tool Gateway 当前作为共享运行时和适配器模块存在。只有当凭证隔离、网络边界、规模或独立发布收益足够明确时，才通过 ADR 拆成独立进程。
