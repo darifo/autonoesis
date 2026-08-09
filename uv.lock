@@ -12,11 +12,20 @@ members = [
     "autonoesis-api",
     "autonoesis-application",
     "autonoesis-capability",
+    "autonoesis-context",
     "autonoesis-contracts",
     "autonoesis-domain",
+    "autonoesis-environment",
+    "autonoesis-evaluation",
     "autonoesis-example-field-service",
+    "autonoesis-gateways",
+    "autonoesis-governance",
+    "autonoesis-improvement",
+    "autonoesis-intelligence",
+    "autonoesis-memory",
     "autonoesis-runtime-kernel",
     "autonoesis-sdk",
+    "autonoesis-testkit",
     "autonoesis-worker",
     "autonoesis-workspace",
 ]
@@ -228,6 +237,17 @@ requires-dist = [
 ]
 
 [[package]]
+name = "autonoesis-context"
+version = "0.1.0"
+source = { editable = "packages/context" }
+dependencies = [
+    { name = "autonoesis-domain" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "autonoesis-domain", editable = "packages/domain" }]
+
+[[package]]
 name = "autonoesis-contracts"
 version = "0.1.0"
 source = { editable = "packages/contracts" }
@@ -236,6 +256,28 @@ source = { editable = "packages/contracts" }
 name = "autonoesis-domain"
 version = "0.1.0"
 source = { editable = "packages/domain" }
+
+[[package]]
+name = "autonoesis-environment"
+version = "0.1.0"
+source = { editable = "packages/environment" }
+dependencies = [
+    { name = "autonoesis-domain" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "autonoesis-domain", editable = "packages/domain" }]
+
+[[package]]
+name = "autonoesis-evaluation"
+version = "0.1.0"
+source = { editable = "packages/evaluation" }
+dependencies = [
+    { name = "autonoesis-domain" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "autonoesis-domain", editable = "packages/domain" }]
 
 [[package]]
 name = "autonoesis-example-field-service"
@@ -253,6 +295,65 @@ requires-dist = [
     { name = "autonoesis-domain", editable = "packages/domain" },
     { name = "autonoesis-runtime-kernel", editable = "packages/runtime-kernel" },
 ]
+
+[[package]]
+name = "autonoesis-gateways"
+version = "0.1.0"
+source = { editable = "packages/gateways" }
+dependencies = [
+    { name = "autonoesis-contracts" },
+    { name = "autonoesis-domain" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "autonoesis-contracts", editable = "packages/contracts" },
+    { name = "autonoesis-domain", editable = "packages/domain" },
+]
+
+[[package]]
+name = "autonoesis-governance"
+version = "0.1.0"
+source = { editable = "packages/governance" }
+dependencies = [
+    { name = "autonoesis-domain" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "autonoesis-domain", editable = "packages/domain" }]
+
+[[package]]
+name = "autonoesis-improvement"
+version = "0.1.0"
+source = { editable = "packages/improvement" }
+dependencies = [
+    { name = "autonoesis-domain" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "autonoesis-domain", editable = "packages/domain" }]
+
+[[package]]
+name = "autonoesis-intelligence"
+version = "0.1.0"
+source = { editable = "packages/intelligence" }
+dependencies = [
+    { name = "autonoesis-domain" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "autonoesis-domain", editable = "packages/domain" }]
+
+[[package]]
+name = "autonoesis-memory"
+version = "0.1.0"
+source = { editable = "packages/memory" }
+dependencies = [
+    { name = "autonoesis-domain" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "autonoesis-domain", editable = "packages/domain" }]
 
 [[package]]
 name = "autonoesis-runtime-kernel"
@@ -279,6 +380,23 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [{ name = "httpx", specifier = ">=0.28" }]
+
+[[package]]
+name = "autonoesis-testkit"
+version = "0.1.0"
+source = { editable = "packages/testkit" }
+dependencies = [
+    { name = "autonoesis-application" },
+    { name = "autonoesis-contracts" },
+    { name = "autonoesis-domain" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "autonoesis-application", editable = "packages/application" },
+    { name = "autonoesis-contracts", editable = "packages/contracts" },
+    { name = "autonoesis-domain", editable = "packages/domain" },
+]
 
 [[package]]
 name = "autonoesis-worker"
