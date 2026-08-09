@@ -7,7 +7,8 @@ import os
 from autonoesis_adapters import InMemoryPlatformStore, PostgreSQLPlatformStore
 from autonoesis_application import CandidateLifecycleService
 from temporalio.client import Client
-from temporalio.worker import Worker
+from temporalio import activity
+from temporalio.worker import UnsandboxedWorkflowRunner, Worker
 
 from autonoesis_worker.activities import (
     CancelRunInput,
@@ -38,32 +39,39 @@ def _build_store() -> InMemoryPlatformStore:
     return InMemoryPlatformStore()
 
 
+@activity.defn(name="prepare_run")
 async def _prepare(input: PrepareRunInput) -> str:
     return await prepare_run(input, _build_store())
 
 
+@activity.defn(name="cancel_run")
 async def _cancel(input: CancelRunInput) -> str:
     return await cancel_run(input, _build_store())
 
 
+@activity.defn(name="reject_run")
 async def _reject(input: RejectRunInput) -> str:
     return await reject_run(input, _build_store())
 
 
+@activity.defn(name="execute_run")
 async def _execute(input: ExecuteRunInput) -> str:
     return await execute_run(input, _build_store())
 
 
+@activity.defn(name="evaluate_run")
 async def _evaluate(input: EvaluateRunInput) -> str:
     return await evaluate_run(input, _build_store())
 
 
+@activity.defn(name="evaluate_candidate")
 async def _evaluate_candidate(input: EvaluateCandidateInput) -> bool:
     store = _build_store()
     evolution = CandidateLifecycleService(store)
     return await evaluate_candidate(input, store, evolution)
 
 
+@activity.defn(name="promote_candidate")
 async def _promote(input: PromoteCandidateInput) -> str:
     store = _build_store()
     evolution = CandidateLifecycleService(store)
@@ -86,6 +94,7 @@ async def run_worker() -> None:
         client,
         task_queue=task_queue,
         workflows=[GoalRunWorkflow, CandidateLifecycleWorkflow],
+        workflow_runner=UnsandboxedWorkflowRunner(),
         activities=[
             _prepare,
             _cancel,

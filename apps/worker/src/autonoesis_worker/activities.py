@@ -9,13 +9,11 @@ These replace the placeholder stubs from Phase 1.  Every activity:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
 from uuid import UUID
 
-if TYPE_CHECKING:
-    from autonoesis_adapters import InMemoryPlatformStore
-    from autonoesis_application import CandidateLifecycleService
-    from autonoesis_runtime import GovernedToolGateway, ModelGateway
+from temporalio import activity
+
+from autonoesis_adapters import InMemoryPlatformStore
 
 
 # ── Activity inputs ──────────────────────────────────────────────────────────
@@ -74,10 +72,10 @@ class PromoteCandidateInput:
 # ── Activity implementations ─────────────────────────────────────────────────
 
 
+@activity.defn
 async def prepare_run(
     input: PrepareRunInput,
     store: InMemoryPlatformStore,
-    model_gateway: ModelGateway | None = None,
 ) -> str:
     """Build a Plan for the Run and persist it.
 
@@ -93,6 +91,7 @@ async def prepare_run(
     return "planned"
 
 
+@activity.defn
 async def cancel_run(
     input: CancelRunInput,
     store: InMemoryPlatformStore,
@@ -108,6 +107,7 @@ async def cancel_run(
     return "cancelled"
 
 
+@activity.defn
 async def reject_run(
     input: RejectRunInput,
     store: InMemoryPlatformStore,
@@ -123,10 +123,10 @@ async def reject_run(
     return "rejected"
 
 
+@activity.defn
 async def execute_run(
     input: ExecuteRunInput,
     store: InMemoryPlatformStore,
-    gateway: GovernedToolGateway | None = None,
 ) -> str:
     """Execute the Run's Plan: process Tasks and governed Actions.
 
@@ -151,6 +151,7 @@ async def execute_run(
     return "succeeded"
 
 
+@activity.defn
 async def evaluate_run(
     input: EvaluateRunInput,
     store: InMemoryPlatformStore,
@@ -163,10 +164,10 @@ async def evaluate_run(
     return run.status.value
 
 
+@activity.defn
 async def evaluate_candidate(
     input: EvaluateCandidateInput,
     store: InMemoryPlatformStore,
-    evolution: CandidateLifecycleService | None = None,
 ) -> bool:
     """Run the evaluation suite against a Candidate.
 
@@ -194,10 +195,10 @@ async def evaluate_candidate(
     return True
 
 
+@activity.defn
 async def promote_candidate(
     input: PromoteCandidateInput,
     store: InMemoryPlatformStore,
-    evolution: CandidateLifecycleService | None = None,
 ) -> str:
     """Promote an approved Candidate to Stable and create a Release."""
     if evolution is not None:
