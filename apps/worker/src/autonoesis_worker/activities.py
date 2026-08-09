@@ -11,10 +11,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from uuid import UUID
 
-from temporalio import activity
-
 from autonoesis_adapters import InMemoryPlatformStore
-
+from autonoesis_application import CandidateLifecycleService
+from temporalio import activity
 
 # ── Activity inputs ──────────────────────────────────────────────────────────
 
@@ -168,6 +167,7 @@ async def evaluate_run(
 async def evaluate_candidate(
     input: EvaluateCandidateInput,
     store: InMemoryPlatformStore,
+    evolution: CandidateLifecycleService | None,
 ) -> bool:
     """Run the evaluation suite against a Candidate.
 
@@ -199,6 +199,7 @@ async def evaluate_candidate(
 async def promote_candidate(
     input: PromoteCandidateInput,
     store: InMemoryPlatformStore,
+    evolution: CandidateLifecycleService | None,
 ) -> str:
     """Promote an approved Candidate to Stable and create a Release."""
     if evolution is not None:

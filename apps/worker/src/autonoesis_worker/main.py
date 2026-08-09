@@ -6,8 +6,8 @@ import os
 
 from autonoesis_adapters import InMemoryPlatformStore, PostgreSQLPlatformStore
 from autonoesis_application import CandidateLifecycleService
-from temporalio.client import Client
 from temporalio import activity
+from temporalio.client import Client
 from temporalio.worker import UnsandboxedWorkflowRunner, Worker
 
 from autonoesis_worker.activities import (
