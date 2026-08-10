@@ -1,6 +1,6 @@
 # Autonoesis Architecture Overview
 
-> Status: baseline · Last reviewed: 2026-08-09 · Applicable version: 0.1.0
+> Status: baseline · Last reviewed: 2026-08-10 · Applicable version: 0.1.0
 
 ## 1. System Responsibility
 
@@ -118,3 +118,14 @@ Each Stable retains a pointer to the previous Stable for rollback.
 Local Compose runs PostgreSQL, Temporal, OPA, MinIO, OpenTelemetry/Jaeger, API, Worker, and Cockpit. Kubernetes, Shadow/Canary, and automatic traffic experiments are post-MVP production phases.
 
 See [deployment.md](deployment.md) for detailed deployment architecture.
+
+## Further Reading
+
+| Document | Content |
+|----------|---------|
+| [platform-positioning.md](platform-positioning.md) | Platform positioning, competitive differentiation, enterprise deployment model |
+| [integration-guide.md](integration-guide.md) | SOP/SPI architecture, how to connect business systems step-by-step |
+| [application-scenarios.md](application-scenarios.md) | Industry use cases with full architectural walkthrough (maintenance, compliance, procurement) |
+| [domain-model.md](domain-model.md) | Core domain objects, state machines, and entity relationships |
+| [runtime-and-flows.md](runtime-and-flows.md) | Workflow vs. Agent Loop, failure recovery, execution flows |
+| [deployment.md](deployment.md) | Infrastructure layout, Docker Compose, production evolution |
