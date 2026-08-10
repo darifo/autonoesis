@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1a1a2e"/>
+      <stop offset="100%" style="stop-color:#16213e"/>
+    </linearGradient>
+    <linearGradient id="core" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#4f8cf7"/>
+      <stop offset="100%" style="stop-color:#2563eb"/>
+    </linearGradient>
+    <linearGradient id="orbit" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#7c3aed"/>
+      <stop offset="100%" style="stop-color:#4f8cf7"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#4f8cf7"/>
+      <stop offset="100%" style="stop-color:#7c3aed"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background circle -->
+  <circle cx="200" cy="200" r="195" fill="url(#bg)"/>
+  <circle cx="200" cy="200" r="195" fill="none" stroke="#1e293b" stroke-width="2"/>
+
+  <!-- Outer ring segments — governance framework -->
+  <circle cx="200" cy="200" r="170" fill="none" stroke="#334155" stroke-width="1" stroke-dasharray="8 4" opacity="0.5"/>
+  <circle cx="200" cy="200" r="150" fill="none" stroke="#334155" stroke-width="1" stroke-dasharray="4 6" opacity="0.3"/>
+
+  <!-- Hexagon — governance / control -->
+  <g transform="translate(200,200)" filter="url(#glow)">
+    <polygon points="0,-110 95,-55 95,55 0,110 -95,55 -95,-55"
+             fill="none" stroke="url(#core)" stroke-width="2.5" opacity="0.9"/>
+    <polygon points="0,-95 82,-47.5 82,47.5 0,95 -82,47.5 -82,-47.5"
+             fill="none" stroke="url(#core)" stroke-width="1.5" opacity="0.4"/>
+  </g>
+
+  <!-- Stylized "A" letterform — Autonoesis -->
+  <g transform="translate(200,200)" filter="url(#glow)">
+    <!-- Left leg of A -->
+    <line x1="-38" y1="40" x2="0" y2="-60" stroke="url(#core)" stroke-width="6" stroke-linecap="round"/>
+    <!-- Right leg of A -->
+    <line x1="38" y1="40" x2="0" y2="-60" stroke="url(#core)" stroke-width="6" stroke-linecap="round"/>
+    <!-- Crossbar of A — governance gate -->
+    <line x1="-22" y1="5" x2="22" y2="5" stroke="url(#orbit)" stroke-width="4" stroke-linecap="round"/>
+    <!-- Top accent — intelligence / evolution direction -->
+    <circle cx="0" cy="-65" r="5" fill="#7c3aed" opacity="0.9"/>
+  </g>
+
+  <!-- Orbiting element — self-evolution cycle -->
+  <g transform="translate(200,200)">
+    <ellipse cx="0" cy="0" rx="130" ry="40" fill="none" stroke="url(#accent)" stroke-width="1.5"
+             stroke-dasharray="80 60" opacity="0.5" transform="rotate(-15)"/>
+    <circle cx="115" cy="-35" r="6" fill="#7c3aed" opacity="0.8"/>
+    <circle cx="-115" cy="35" r="4" fill="#4f8cf7" opacity="0.6"/>
+  </g>
+
+  <!-- Text -->
+  <text x="200" y="340" text-anchor="middle" font-family="system-ui,-apple-system,sans-serif"
+        font-size="36" font-weight="700" fill="url(#accent)" letter-spacing="6">AUTONOESIS</text>
+  <text x="200" y="368" text-anchor="middle" font-family="system-ui,-apple-system,sans-serif"
+        font-size="11" fill="#64748b" letter-spacing="8">AGENT OPERATING SYSTEM</text>
+</svg>
