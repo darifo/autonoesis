@@ -208,9 +208,9 @@ L4_PRIVILEGED:
 
 ```python
 # packages/evolution/finops.py - CostTracker
-tracker.record(CostEntry(category=CostCategory.MODEL_TOKEN,    amount=0.05))
+tracker.record(CostEntry(category=CostCategory.MODEL_TOKEN, amount=0.05))
 tracker.record(CostEntry(category=CostCategory.TOOL_EXECUTION, amount=0.10))
-tracker.record(CostEntry(category=CostCategory.SANDBOX_TIME,   amount=0.02))
+tracker.record(CostEntry(category=CostCategory.SANDBOX_TIME, amount=0.02))
 
 summary = await tracker.summarize_goal(goal_id)
 # summary.total_cost = 0.17

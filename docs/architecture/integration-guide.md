@@ -85,10 +85,7 @@ The domain model enforces that **write tools must declare idempotency**
 (`assets.py:96-105`):
 
 ```python
-if (
-    self.side_effect in {REVERSIBLE_WRITE, HIGH_IMPACT_WRITE, PRIVILEGED}
-    and not self.idempotent
-):
+if self.side_effect in {REVERSIBLE_WRITE, HIGH_IMPACT_WRITE, PRIVILEGED} and not self.idempotent:
     raise ValueError("write tools must declare an idempotent execution contract")
 ```
 
@@ -123,12 +120,12 @@ frameworks that call an API and assume success.
 
 ```python
 ToolReceipt(
-    external_id="PO-88421",        # ID in the external system
-    accepted=True,                 # Was the call accepted?
-    output=(                       # Key-value result pairs
+    external_id="PO-88421",  # ID in the external system
+    accepted=True,  # Was the call accepted?
+    output=(  # Key-value result pairs
         ("po_number", "PO-88421"),
         ("status", "created"),
-    )
+    ),
 )
 ```
 
@@ -137,6 +134,7 @@ ToolReceipt(
 ```python
 from autonoesis_runtime import ToolExecutor, ToolReceipt
 import httpx
+
 
 class SapPOExecutor:
     """Implements ToolExecutor Protocol for SAP Purchase Order creation."""
@@ -224,11 +222,11 @@ gateway = GovernedToolGateway(
     budget=budget_ledger,
     idempotency=idempotency_store,
     executors={
-        "sap-create-po":  SapPOExecutor(sap_url, sap_creds),
-        "sap-cancel-po":  SapPOExecutor(sap_url, sap_creds),  # compensation
+        "sap-create-po": SapPOExecutor(sap_url, sap_creds),
+        "sap-cancel-po": SapPOExecutor(sap_url, sap_creds),  # compensation
         "iot-platform-read": MqttExecutor(broker_url),
         "cmm-create-workorder": RestExecutor(cmm_url, cmm_creds),
-        "bank-transfer":      SwiftExecutor(bank_gw_url),
+        "bank-transfer": SwiftExecutor(bank_gw_url),
     },
     kill_switch=kill_switch_store,
 )
