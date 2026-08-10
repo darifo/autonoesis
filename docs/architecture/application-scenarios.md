@@ -259,3 +259,45 @@ agent behavior.
 Every table carries `tenant_id`. Every API request carries `X-Tenant-ID`.
 Cross-tenant access returns 404 (not 403 — no information leakage about
 whether the resource exists).
+
+---
+
+## What Ships vs. What You Build
+
+The scenarios above demonstrate the architecture, but they mix built-in
+capabilities with industry-specific custom development:
+
+| Component | Ships with Autonoesis | You Build |
+|---|---|---|
+| `GoalContract`, `Plan`, `Action`, `Evidence`, `Outcome` | ✅ Domain model | — |
+| `GovernedToolGateway` (8-step pipeline) | ✅ Runtime kernel | — |
+| `GoalRunWorkflow`, `CandidateLifecycleWorkflow` | ✅ Worker | — |
+| `EvaluationHarness`, `DeploymentPipeline` | ✅ Evolution package | — |
+| `field-service` example Pack (YAML + 10 eval cases) | ✅ Reference only | Connect to real IoT/CMMS |
+| Tool Adapters (SAP, MQTT, REST, SWIFT) | — | ✅ Implement `ToolExecutor` Protocol |
+| Evaluation Cases (your definition of "good") | — | ✅ Define in YAML |
+| Policies (OPA Rego rules) | — | ✅ Write compliance rules |
+| OIDC Integration (Keycloak/Okta) | — | ✅ Configure IdP |
+
+> **Note on Scenario A (maintenance)**: The `field-service.restore-equipment`
+> Goal Type, `vibration-analysis` Skill, and `cmm-create-workorder` Tool are
+> defined in `examples/field-service/capability-pack.yaml` — a **reference
+> implementation** that demonstrates the Capability Pack format. It includes
+> 10 evaluation cases but does not connect to real IoT hardware or CMMS
+> systems. You would create your own Pack with adapters wired to your actual
+> infrastructure.
+
+> **Note on Scenario C (compensation)**: The L2 `compensation` field on
+> `ToolDefinition` declares a compensating tool name. At present,
+> compensation must be triggered by custom logic in the Activity or by the
+> `UnknownReconciler` — the `GovernedToolGateway` does not automatically
+> invoke it. Automatic compensation on verification failure is planned.
+
+---
+
+## See Also
+
+- [Integration Guide](integration-guide.md) — step-by-step for connecting business systems
+- [Platform Positioning](platform-positioning.md) — when Autonoesis is the right choice
+- [Runtime & Flows](runtime-and-flows.md) — Workflow vs. Agent Loop execution model
+- [Domain Model](domain-model.md) — core entities and state machines

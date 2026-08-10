@@ -9,12 +9,14 @@ Autonoesis is a **general-purpose Enterprise Agent Platform runtime base**. It i
 enterprises build *on top of* to create governed, auditable, self-improving
 intelligent agents for their specific business domains.
 
-**Think of it as**: Kubernetes for containers → Autonoesis for AI agents.
+**Think of it as**: What Kubernetes is to container orchestration,
+Autonoesis aims to be for AI agent execution — a universal runtime base that
+handles scheduling, recovery, and governance, while you define the domain logic.
 
-Kubernetes does not know your business logic, but it provides scheduling,
-self-healing, rolling updates, and resource isolation. Autonoesis does not know
-your industry, but it provides Goal execution, tool governance, evidence chains,
-and controlled self-evolution.
+Kubernetes does not know your business application, but it provides scheduling,
+self-healing, and resource isolation. Autonoesis does not know your industry,
+but it provides Goal execution, tool governance, evidence chains, and
+controlled self-evolution.
 
 ---
 
@@ -90,13 +92,13 @@ the world** and must **prove it did the right thing**.
 └─────────────────────────────────────────────────┘
 ```
 
-### Deployment Sizes
+### Deployment Sizes *(estimated targets, not yet benchmarked)*
 
 | Scale | Configuration | Typical Use |
 |---|---|---|
 | **Dev/Test** | Docker Compose, 16 GB | 1-5 Agents, local development |
 | **Small Production** | 2× nodes, 64 GB each | 5-20 Agents, <500 Goals/day, single tenant |
-| **Medium Production** | PostgreSQL HA + Temporal Cluster | 20-100 Agents, <5000 Goals/day, multi-tenant |
+| **Medium Production** | PostgreSQL HA + Temporal Cluster | 20-100 Agents, <5 000 Goals/day, multi-tenant |
 | **Large Production** | Kubernetes + Helm, auto-scaling | >100 Agents, dedicated DB/Temporal clusters |
 
 ### What the Enterprise Brings
@@ -140,7 +142,18 @@ Autonoesis provides the **platform**. The enterprise provides:
 └─────────────────────────────────────────────────────┘
 ```
 
-The platform does **not** touch your business data, does **not** enforce your
-business rules, and does **not** connect to your external systems. It guarantees
-that whatever you choose to do, the **execution is governed, the evidence is
-immutable, and the evolution is safe**.
+The platform does **not** embed industry-specific schema or business logic,
+and does **not** initiate connections to your external systems. It *does* persist
+business data as part of the evidence chain (`GoalContract.input_payload`,
+`Evidence.observed_state`), but only in a schema-agnostic way — the platform
+never interprets the meaning of your data. It guarantees that whatever you
+choose to do, the **execution is governed, the evidence is immutable, and
+the evolution is safe**.
+
+---
+
+## See Also
+
+- [Integration Guide](integration-guide.md) — SOP/SPI architecture, how to connect business systems
+- [Application Scenarios](application-scenarios.md) — industry use cases with full walkthrough
+- [Domain Model](domain-model.md) — core entities and state machines

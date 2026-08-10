@@ -67,17 +67,44 @@ tools:
     compensation: "sap-cancel-po"       # Rollback tool name
 ```
 
-### SideEffectClass — The 5 Risk Levels
+> **Note on `adapter`**: This field is **declarative metadata** — it documents
+> which protocol the tool uses, but does **not** drive routing at runtime. The
+> actual routing is done by the `tool_name → ToolExecutor` mapping in the
+> Gateway's `executors` dict (see Step 3).
 
-Defined in `packages/domain/src/autonoesis_domain/assets.py:15-20`:
+> **Note on `compensation`**: The `compensation` field declares the *name* of
+> a compensating tool (e.g., `"sap-cancel-po"`). At present, the
+> `GovernedToolGateway` does **not** automatically trigger compensation on
+> failure. The `CompensationExecutor` (`packages/gateways/tool_reconciliation.py`)
+> provides the execution logic, but the trigger must be implemented by the
+> caller (e.g., in the `UnknownReconciler` or in custom error-handling logic
+> within the Activity). Full automatic compensation is a planned Phase 3 feature.
 
-| Level | Enum Value | Examples | Gateway Behavior |
+### SideEffectClass vs RiskLevel — Two Related Enums
+
+The platform uses **two separate enums** for risk classification, at different
+layers:
+
+| Layer | Enum (domain location) | Member naming | Used by |
 |---|---|---|---|
-| **L0** | `COMPUTE` | Local calculation, data transformation | Sandbox only |
-| **L1** | `READ` | Query APIs, read databases | ACL + audit |
-| **L2** | `REVERSIBLE_WRITE` | Create drafts, reversible config | Policy + idempotency + verification + compensation |
-| **L3** | `HIGH_IMPACT_WRITE` | Payments, publishing, deletions | Exact-parameter approval binding + strong evidence |
-| **L4** | `PRIVILEGED` | IAM changes, infra modifications | Default deny autonomous; dedicated controlled process |
+| **Tool declaration** | `SideEffectClass` (`assets.py:15`) | `COMPUTE`, `READ`, `REVERSIBLE_WRITE`, `HIGH_IMPACT_WRITE`, `PRIVILEGED` | `ToolDefinition.side_effect` |
+| **Runtime action** | `RiskLevel` (`execution.py:21`) | `L0_COMPUTE`, `L1_READ`, `L2_REVERSIBLE_WRITE`, `L3_HIGH_IMPACT_WRITE`, `L4_PRIVILEGED` | `Action.risk_level` |
+
+They are semantically identical — the `L0`–`L4` prefix on `RiskLevel`
+exists only for disambiguation in the `Action` context. When building an
+adapter that reads `action.risk_level.value`, you will get values like
+`"l2_reversible_write"` (with the `l2_` prefix). When declaring a tool in
+YAML, use the unprefixed form: `side_effect: "reversible_write"`.
+
+### The 5 Risk Levels
+
+| Level | SideEffectClass | RiskLevel | Examples | Gateway Behavior |
+|---|---|---|---|---|
+| **L0** | `COMPUTE` | `L0_COMPUTE` | Local calculation | Sandbox only |
+| **L1** | `READ` | `L1_READ` | Query APIs, read DBs | ACL + audit |
+| **L2** | `REVERSIBLE_WRITE` | `L2_REVERSIBLE_WRITE` | Drafts, config | Policy + idempotency + verification |
+| **L3** | `HIGH_IMPACT_WRITE` | `L3_HIGH_IMPACT_WRITE` | Payments, publishing | Approval binding + strong evidence |
+| **L4** | `PRIVILEGED` | `L4_PRIVILEGED` | IAM, infra | Default deny; dedicated process |
 
 ### Domain-Level Enforcement
 
@@ -91,6 +118,13 @@ if self.side_effect in {REVERSIBLE_WRITE, HIGH_IMPACT_WRITE, PRIVILEGED} and not
 
 This is a hard constraint — it is impossible to register a write-capable
 tool without idempotency.
+
+> **Schema validation status**: The `input_schema` declared on `ToolDefinition`
+> defines the expected parameter shape, but **validation is not yet enforced
+> by the Gateway at tool invocation time**. Goal-level `input_schema` is
+> validated in `CreateGoalHandler`. Tool-level schema enforcement in the
+> Gateway pipeline is planned for a future release. Currently, adapters
+> should perform their own parameter validation in `execute()`.
 
 ---
 
@@ -131,22 +165,34 @@ ToolReceipt(
 
 ### Complete Example: SAP Purchase Order Adapter
 
+> **Credential management**: In production, inject credentials via environment
+> variables, a secrets manager (HashiCorp Vault, AWS Secrets Manager), or the
+> platform's credential brokering layer
+> (`docs/contracts/tool-invocation.md`, step 10). The example below uses
+> constructor injection for clarity.
+
+> **Tool version**: The `Action` domain model does **not** carry a `tool_version`
+> field. Versioning is the adapter's responsibility — either use a separate
+> adapter class per version, or maintain an internal version map.
+
 ```python
 from autonoesis_runtime import ToolExecutor, ToolReceipt
-import httpx
+from uuid import uuid4
+import httpx, os
 
 
 class SapPOExecutor:
     """Implements ToolExecutor Protocol for SAP Purchase Order creation."""
 
-    def __init__(self, base_url: str, credentials: dict):
+    def __init__(self, base_url: str):
         self._url = base_url
-        self._auth = credentials
+        self._token = os.getenv("SAP_API_TOKEN", "")
 
     async def execute(self, action: Action) -> ToolReceipt:
         params = dict(action.parameters)
 
-        # Build the 19-field Invocation Envelope
+        # Build the 19-field Invocation Envelope.
+        # tool_version is maintained by the adapter, not passed via Action.
         envelope = {
             "invocation_id": str(uuid4()),
             "action_id": str(action.action_id),
@@ -154,7 +200,7 @@ class SapPOExecutor:
             "run_id": str(action.run_id),
             "task_id": str(action.task_id),
             "tool": action.tool_name,
-            "tool_version": "2.1",
+            "tool_version": "2.1",  # adapter-maintained, not from Action
             "operation": action.operation,
             "arguments": params,
             "argument_digest": action.parameter_digest,
@@ -169,7 +215,7 @@ class SapPOExecutor:
                 json=envelope,
                 headers={
                     "Idempotency-Key": action.idempotency_key,
-                    "Authorization": f"Bearer {self._auth['token']}",
+                    "Authorization": f"Bearer {self._token}",
                 },
                 timeout=30.0,
             )
@@ -317,3 +363,12 @@ To add a new protocol adapter (e.g., SOAP, GraphQL, NATS, Kafka):
    - Verification failure → `ActionStatus.UNKNOWN`
 
 No changes to domain, application, or runtime-kernel packages are needed.
+
+---
+
+## See Also
+
+- [Application Scenarios](application-scenarios.md) — real-world use cases with full architecture walkthrough
+- [Platform Positioning](platform-positioning.md) — when to use Autonoesis vs. generic frameworks
+- [Tool Invocation Contract](../contracts/tool-invocation.md) — the full 13-step pipeline specification
+- [Domain Model](domain-model.md) — `ToolDefinition`, `Action`, and entity relationships
