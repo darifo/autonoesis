@@ -13,10 +13,12 @@ from autonoesis_domain import (
     Evidence,
     GoalContract,
     ImprovementProposal,
+    MemoryRecord,
     Release,
     Run,
     Trial,
 )
+from autonoesis_runtime import TenantTelemetryRecord
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from autonoesis_adapters.persistence import SqlAlchemyPlatformRepository, create_repository
@@ -127,6 +129,28 @@ class PostgreSQLPlatformStore:
 
     async def list_evidence(self, tenant_id: UUID) -> tuple[Evidence, ...]:
         return await self.repository.list_evidence(tenant_id)
+
+    async def add_memory(self, item: MemoryRecord) -> None:
+        await self.repository.add_memory(item)
+
+    async def list_memory(self, tenant_id: UUID) -> tuple[MemoryRecord, ...]:
+        return await self.repository.list_memory(tenant_id)
+
+    async def add_telemetry(self, item: TenantTelemetryRecord) -> None:
+        await self.repository.add_telemetry(item)
+
+    async def list_telemetry(self, tenant_id: UUID) -> tuple[TenantTelemetryRecord, ...]:
+        return await self.repository.list_telemetry(tenant_id)
+
+    async def register_tenant_namespace(
+        self, tenant_id: UUID, resource_kind: str, logical_name: str, physical_namespace: str
+    ) -> dict[str, str]:
+        return await self.repository.register_tenant_namespace(
+            tenant_id, resource_kind, logical_name, physical_namespace
+        )
+
+    async def list_tenant_namespaces(self, tenant_id: UUID) -> tuple[dict[str, str], ...]:
+        return await self.repository.list_tenant_namespaces(tenant_id)
 
     async def add_trial(self, trial: Trial) -> None:
         await self.repository.add_trial(trial)

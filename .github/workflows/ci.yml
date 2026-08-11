@@ -95,6 +95,7 @@ jobs:
           AUTONOESIS_TEST_DATABASE_URL: postgresql+psycopg://autonoesis_api:autonoesis-ci-only@localhost:5432/autonoesis
           AUTONOESIS_TEST_ADMIN_DATABASE_URL: postgresql+psycopg://autonoesis:autonoesis@localhost:5432/autonoesis
           AUTONOESIS_TEST_DISPATCH_DATABASE_URL: postgresql+psycopg://autonoesis_outbox:autonoesis-ci-only@localhost:5432/autonoesis
+          AUTONOESIS_TEST_BREAKGLASS_DATABASE_URL: postgresql+psycopg://autonoesis_breakglass_login:autonoesis-ci-only@localhost:5432/autonoesis
           AUTONOESIS_TEST_OPA_URL: http://localhost:8181
           AUTONOESIS_TEST_MINIO_URL: http://localhost:9000
           AUTONOESIS_TEST_MINIO_ACCESS_KEY: autonoesis

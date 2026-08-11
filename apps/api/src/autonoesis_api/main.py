@@ -16,9 +16,11 @@ from autonoesis_adapters import (
     OIDCValidator,
     PostgreSQLPlatformStore,
     SqlKillSwitchStore,
+    SqlPlatformKillSwitchStore,
 )
 from autonoesis_application import (
     ActivateGoal,
+    AuditEvent,
     CandidateLifecycleService,
     CommandContext,
     ConcurrencyConflict,
@@ -52,10 +54,12 @@ from autonoesis_domain import (
     Trial,
 )
 from autonoesis_governance import InMemoryKillSwitchStore, KillSwitchDimension
+from autonoesis_runtime import IsolationRiskPool, TenantNamespaces
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from temporalio.client import Client
 
 
@@ -194,8 +198,20 @@ def error_response(
 PlatformStore = InMemoryPlatformStore | PostgreSQLPlatformStore
 
 
-def build_app(store: PlatformStore | None = None) -> FastAPI:
+def build_app(
+    store: PlatformStore | None = None, platform_kill_switch: Any | None = None
+) -> FastAPI:
     platform_store = store or InMemoryPlatformStore()
+    breakglass_engine = None
+    if platform_kill_switch is None and isinstance(platform_store, PostgreSQLPlatformStore):
+        breakglass_url = os.getenv("AUTONOESIS_BREAKGLASS_DATABASE_URL")
+        if breakglass_url:
+            breakglass_engine = create_async_engine(breakglass_url, pool_pre_ping=True)
+            platform_kill_switch = SqlPlatformKillSwitchStore(
+                async_sessionmaker(breakglass_engine, expire_on_commit=False)
+            )
+    if platform_kill_switch is None and isinstance(platform_store, InMemoryPlatformStore):
+        platform_kill_switch = InMemoryKillSwitchStore()
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -215,6 +231,8 @@ def build_app(store: PlatformStore | None = None) -> FastAPI:
         yield
         if isinstance(platform_store, PostgreSQLPlatformStore):
             await platform_store.close()
+        if breakglass_engine is not None:
+            await breakglass_engine.dispose()
 
     app = FastAPI(
         title="Autonoesis API",
@@ -233,8 +251,9 @@ def build_app(store: PlatformStore | None = None) -> FastAPI:
     app.state.kill_switch = (
         SqlKillSwitchStore(platform_store.repository.sessions)
         if isinstance(platform_store, PostgreSQLPlatformStore)
-        else InMemoryKillSwitchStore()
+        else platform_kill_switch or InMemoryKillSwitchStore()
     )
+    app.state.platform_kill_switch = platform_kill_switch
 
     def kill_switch_for(context: IdentityContext) -> Any:
         if isinstance(app.state.kill_switch, SqlKillSwitchStore):
@@ -246,7 +265,25 @@ def build_app(store: PlatformStore | None = None) -> FastAPI:
 
     @app.exception_handler(RecordNotFound)
     @app.exception_handler(TenantBoundaryViolation)
-    async def hidden_record(_: Request, __: Exception) -> JSONResponse:
+    async def hidden_record(request: Request, __: Exception) -> JSONResponse:
+        requester = getattr(request.state, "identity", None)
+        if isinstance(requester, IdentityContext):
+            try:
+                correlation_id = UUID(request.headers.get("X-Correlation-ID", str(uuid4())))
+            except ValueError:
+                correlation_id = uuid4()
+            await platform_store.repository.record_audit(
+                AuditEvent(
+                    tenant_id=requester.tenant_id,
+                    actor_id=requester.actor_id,
+                    principal_id=requester.principal_id,
+                    event_type="security.tenant_scope_lookup_denied",
+                    object_type="http_resource",
+                    object_id=sha256(request.url.path.encode()).hexdigest(),
+                    correlation_id=correlation_id,
+                    details={"method": request.method, "result": "not_found"},
+                )
+            )
         return error_response(
             404,
             "record_not_found",
@@ -309,7 +346,9 @@ def build_app(store: PlatformStore | None = None) -> FastAPI:
                 for role in request.headers.get("X-Roles", "operator").split(",")
                 if role.strip()
             )
-            return IdentityContext(tenant_id, actor_id, principal_id, roles)
+            resolved = IdentityContext(tenant_id, actor_id, principal_id, roles)
+            request.state.identity = resolved
+            return resolved
         authorization = request.headers.get("Authorization", "")
         if not authorization.startswith("Bearer "):
             raise HTTPException(401, "bearer token is required")
@@ -320,7 +359,9 @@ def build_app(store: PlatformStore | None = None) -> FastAPI:
                 jwks_url=os.environ["AUTONOESIS_OIDC_JWKS_URL"],
             )
         )
-        return validator.validate(authorization.removeprefix("Bearer "))
+        resolved = validator.validate(authorization.removeprefix("Bearer "))
+        request.state.identity = resolved
+        return resolved
 
     def require_role(context: IdentityContext, allowed: set[str]) -> None:
         if not context.roles.intersection(allowed):
@@ -484,13 +525,21 @@ def build_app(store: PlatformStore | None = None) -> FastAPI:
         dimension: str = Field(min_length=1, max_length=32)
         target: str = Field(min_length=1, max_length=300)
 
+    class BreakGlassKillSwitchRequest(StrictRequest):
+        reason: str = Field(min_length=20, max_length=1000)
+
     @app.post("/v1/kill-switches", status_code=201, tags=["governance"])
     async def activate_kill_switch(
         body: KillSwitchActivateRequest, context: Identity, _: WriteKey
     ) -> dict[str, Any]:
         require_role(context, {"platform_admin", "tenant_admin", "operator"})
+        dimension = KillSwitchDimension(body.dimension)
+        if dimension is KillSwitchDimension.PLATFORM:
+            raise PermissionError("platform control requires the break-glass endpoint")
+        if dimension is KillSwitchDimension.TENANT and body.target != str(context.tenant_id):
+            raise TenantBoundaryViolation("tenant kill switch target is outside the current scope")
         record = await kill_switch_for(context).activate(
-            KillSwitchDimension(body.dimension),
+            dimension,
             body.target,
             body.reason,
             str(context.actor_id),
@@ -509,9 +558,12 @@ def build_app(store: PlatformStore | None = None) -> FastAPI:
         body: KillSwitchDeactivateRequest, context: Identity, _: WriteKey
     ) -> dict[str, Any]:
         require_role(context, {"platform_admin", "tenant_admin", "operator"})
-        record = await kill_switch_for(context).deactivate(
-            KillSwitchDimension(body.dimension), body.target
-        )
+        dimension = KillSwitchDimension(body.dimension)
+        if dimension is KillSwitchDimension.PLATFORM:
+            raise PermissionError("platform control requires the break-glass endpoint")
+        if dimension is KillSwitchDimension.TENANT and body.target != str(context.tenant_id):
+            raise TenantBoundaryViolation("tenant kill switch target is outside the current scope")
+        record = await kill_switch_for(context).deactivate(dimension, body.target)
         if record is None:
             raise HTTPException(status_code=404, detail="no active kill switch for that target")
         return {
@@ -535,6 +587,87 @@ def build_app(store: PlatformStore | None = None) -> FastAPI:
             }
             for r in await kill_switch_for(context).list_active()
         ]
+
+    @app.post("/v1/platform/break-glass/kill-switch", status_code=201, tags=["platform-security"])
+    async def activate_platform_kill_switch(
+        body: BreakGlassKillSwitchRequest,
+        context: Identity,
+        _: WriteKey,
+        ticket: Annotated[str, Header(alias="X-Break-Glass-Ticket")],
+    ) -> dict[str, Any]:
+        require_role(context, {"break_glass"})
+        if len(ticket.strip()) < 8 or app.state.platform_kill_switch is None:
+            raise PermissionError("a configured break-glass identity and ticket are required")
+        correlation_id = uuid4()
+        reason = f"ticket={ticket.strip()}; {body.reason}"
+        if isinstance(app.state.platform_kill_switch, SqlPlatformKillSwitchStore):
+            record = await app.state.platform_kill_switch.activate(
+                reason, context.actor_id, context.principal_id, correlation_id
+            )
+        else:
+            record = await app.state.platform_kill_switch.activate(
+                KillSwitchDimension.PLATFORM, "platform", reason, str(context.actor_id)
+            )
+            await platform_store.repository.record_audit(
+                AuditEvent(
+                    context.tenant_id,
+                    context.actor_id,
+                    context.principal_id,
+                    "platform.kill_switch.activated",
+                    "platform",
+                    str(record.kill_switch_id),
+                    correlation_id,
+                    {"ticket": ticket.strip()},
+                )
+            )
+        return {
+            "kill_switch_id": str(record.kill_switch_id),
+            "dimension": "platform",
+            "target": "platform",
+            "activated_at": record.activated_at.isoformat(),
+        }
+
+    @app.delete("/v1/platform/break-glass/kill-switch", tags=["platform-security"])
+    async def deactivate_platform_kill_switch(
+        body: BreakGlassKillSwitchRequest,
+        context: Identity,
+        _: WriteKey,
+        ticket: Annotated[str, Header(alias="X-Break-Glass-Ticket")],
+    ) -> dict[str, Any]:
+        require_role(context, {"break_glass"})
+        if len(ticket.strip()) < 8 or app.state.platform_kill_switch is None:
+            raise PermissionError("a configured break-glass identity and ticket are required")
+        correlation_id = uuid4()
+        reason = f"ticket={ticket.strip()}; {body.reason}"
+        if isinstance(app.state.platform_kill_switch, SqlPlatformKillSwitchStore):
+            record = await app.state.platform_kill_switch.deactivate(
+                reason, context.actor_id, context.principal_id, correlation_id
+            )
+        else:
+            record = await app.state.platform_kill_switch.deactivate(
+                KillSwitchDimension.PLATFORM, "platform"
+            )
+            if record is not None:
+                await platform_store.repository.record_audit(
+                    AuditEvent(
+                        context.tenant_id,
+                        context.actor_id,
+                        context.principal_id,
+                        "platform.kill_switch.deactivated",
+                        "platform",
+                        str(record.kill_switch_id),
+                        correlation_id,
+                        {"ticket": ticket.strip()},
+                    )
+                )
+        if record is None:
+            raise HTTPException(404, "no active platform kill switch")
+        return {
+            "kill_switch_id": str(record.kill_switch_id),
+            "dimension": "platform",
+            "target": "platform",
+            "deactivated_at": record.deactivated_at.isoformat() if record.deactivated_at else None,
+        }
 
     @app.post("/v1/goals", status_code=201, tags=["goals"])
     async def create_goal(
@@ -597,16 +730,35 @@ def build_app(store: PlatformStore | None = None) -> FastAPI:
             RequestRun(goal_id),
         )
         if os.getenv("AUTONOESIS_TEMPORAL_START", "false").lower() == "true":
-            client = await Client.connect(os.getenv("AUTONOESIS_TEMPORAL_TARGET", "localhost:7233"))
+            goal = await platform_store.get_goal(context.tenant_id, goal_id)
+            boundaries = TenantNamespaces(context.tenant_id)
+            risk_pool = IsolationRiskPool.from_risk_tier(goal.risk_tier.value)
+            isolated = os.getenv("AUTONOESIS_TENANT_ISOLATED_WORKFLOWS", "true").lower() == "true"
+            namespace = (
+                boundaries.workflow_namespace(risk_pool)
+                if isolated
+                else os.getenv("AUTONOESIS_TEMPORAL_NAMESPACE", "default")
+            )
+            task_queue = (
+                boundaries.workflow_task_queue(risk_pool)
+                if isolated
+                else os.getenv("AUTONOESIS_TEMPORAL_TASK_QUEUE", "autonoesis")
+            )
+            client = await Client.connect(
+                os.getenv("AUTONOESIS_TEMPORAL_TARGET", "localhost:7233"), namespace=namespace
+            )
             await client.start_workflow(
                 "GoalRunWorkflow",
                 {
                     "tenant_id": str(context.tenant_id),
                     "goal_id": str(goal_id),
                     "run_id": str(run.run_id),
+                    "deadline_epoch_seconds": goal.deadline.timestamp(),
+                    "requires_approval": goal.risk_tier.value in {"high", "critical"},
+                    "risk_tier": goal.risk_tier.value,
                 },
-                id=f"goal-run-{run.run_id}",
-                task_queue=os.getenv("AUTONOESIS_TEMPORAL_TASK_QUEUE", "autonoesis"),
+                id=boundaries.workflow_id(run.run_id),
+                task_queue=task_queue,
             )
         return run_view(run)
 

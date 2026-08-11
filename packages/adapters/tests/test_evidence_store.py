@@ -102,6 +102,23 @@ async def test_unsupported_artifact_uri_is_rejected() -> None:
         await store.retrieve_verified(item)
 
 
+@pytest.mark.asyncio
+async def test_forged_cross_tenant_or_bucket_location_is_hidden() -> None:
+    store = MinioEvidenceStore(InMemoryObjectStore())
+    original = await store.store(descriptor(store, b"tenant-owned"), b"tenant-owned", "text/plain")
+    other_tenant = uuid4()
+    forged_tenant = replace(original, tenant_id=other_tenant)
+    forged_bucket = replace(
+        original,
+        artifact_uri=original.artifact_uri.replace("autonoesis-evidence", "other-bucket"),
+    )
+
+    with pytest.raises(LookupError, match="tenant namespace"):
+        await store.retrieve_verified(forged_tenant)
+    with pytest.raises(LookupError, match="tenant namespace"):
+        await store.retrieve_verified(forged_bucket)
+
+
 def test_admission_classifies_pii_and_rejects_secrets_before_write() -> None:
     policy = EvidenceAdmissionPolicy()
     assert (

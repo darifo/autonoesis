@@ -1,6 +1,11 @@
 """Framework-independent runtime and harness ports."""
 
 from autonoesis_runtime.harness import Harness, TaskRequest, TaskResult, TaskStatus
+from autonoesis_runtime.isolation import (
+    IsolationRiskPool,
+    TenantNamespaces,
+    TenantTelemetryRecord,
+)
 from autonoesis_runtime.models import (
     ModelAdapter,
     ModelGateway,
@@ -49,6 +54,7 @@ __all__ = [
     "GatewayResult",
     "GovernedToolGateway",
     "Harness",
+    "IsolationRiskPool",
     "KillSwitchDimension",
     "KillSwitchPort",
     "KillSwitchQuery",
@@ -68,6 +74,8 @@ __all__ = [
     "TaskRequest",
     "TaskResult",
     "TaskStatus",
+    "TenantNamespaces",
+    "TenantTelemetryRecord",
     "ToolCatalogPort",
     "ToolReceipt",
     "ToolResultStatus",

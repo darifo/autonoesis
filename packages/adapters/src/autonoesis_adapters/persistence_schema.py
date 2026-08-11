@@ -9,6 +9,7 @@ from sqlalchemy import (
     CheckConstraint,
     Column,
     DateTime,
+    Float,
     ForeignKey,
     ForeignKeyConstraint,
     Index,
@@ -16,6 +17,7 @@ from sqlalchemy import (
     MetaData,
     String,
     Table,
+    Text,
     UniqueConstraint,
     text,
 )
@@ -82,6 +84,36 @@ tenants = Table(
     metadata,
     Column("id", String(36), primary_key=True),
     Column("name", String(200), nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+)
+platform_kill_switches = Table(
+    "platform_kill_switches",
+    metadata,
+    Column("id", String(36), primary_key=True),
+    Column("target", String(32), nullable=False),
+    Column("reason", String(1000), nullable=False),
+    Column("activated_by", String(36), nullable=False),
+    Column("deactivated_at", DateTime(timezone=True), nullable=True),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    CheckConstraint("target = 'platform'", name="target"),
+)
+Index(
+    "uq_active_platform_kill_switch",
+    platform_kill_switches.c.target,
+    unique=True,
+    postgresql_where=text("deactivated_at IS NULL"),
+    sqlite_where=text("deactivated_at IS NULL"),
+)
+platform_audit_events = Table(
+    "platform_audit_events",
+    metadata,
+    Column("id", String(36), primary_key=True),
+    Column("actor_id", String(36), nullable=False),
+    Column("principal_id", String(36), nullable=False),
+    Column("event_type", String(200), nullable=False),
+    Column("object_id", String(200), nullable=False),
+    Column("correlation_id", String(36), nullable=False),
+    Column("reason", String(1000), nullable=False),
     Column("created_at", DateTime(timezone=True), nullable=False),
 )
 
@@ -358,6 +390,46 @@ evaluation_trials = tenant_table(
         name="uq_trial_fixed_conditions",
     ),
     status_check("pending", "running", "passed", "failed", "invalid"),
+)
+memory_records = tenant_table(
+    "memory_records",
+    Column("scope", String(300), nullable=False),
+    Column("content", Text, nullable=False),
+    Column("provenance", JSON, nullable=False),
+    Column("confidence", Float, nullable=False),
+    Column("expires_at", DateTime(timezone=True), nullable=False),
+    Column("approved_by", String(36), nullable=False),
+    CheckConstraint("confidence >= 0 AND confidence <= 1", name="confidence_range"),
+)
+telemetry_records = tenant_table(
+    "telemetry_records",
+    Column("signal_type", String(32), nullable=False),
+    Column("trace_id", String(64), nullable=False),
+    Column("payload", JSON, nullable=False),
+    Column("occurred_at", DateTime(timezone=True), nullable=False),
+    CheckConstraint("signal_type IN ('trace', 'log', 'metric')", name="signal_type"),
+)
+tenant_resource_namespaces = tenant_table(
+    "tenant_resource_namespaces",
+    Column("resource_kind", String(32), nullable=False),
+    Column("logical_name", String(200), nullable=False),
+    Column("physical_namespace", String(500), nullable=False),
+    UniqueConstraint(
+        "tenant_id",
+        "resource_kind",
+        "logical_name",
+        name="uq_tenant_resource_logical_name",
+    ),
+    UniqueConstraint(
+        "resource_kind",
+        "physical_namespace",
+        name="uq_tenant_resource_physical_namespace",
+    ),
+    CheckConstraint(
+        "resource_kind IN ('object', 'cache', 'search', 'vector', 'topic', 'workflow', "
+        "'telemetry', 'evaluation_dataset', 'audit_export')",
+        name="resource_kind",
+    ),
 )
 improvement_proposals = tenant_table(
     "improvement_proposals",

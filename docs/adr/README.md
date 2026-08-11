@@ -23,3 +23,4 @@ ADRs record decisions affecting authoritative ownership, process boundaries, pro
 - [ADR-0016: Make Temporal Run Orchestration Recoverable and Deterministic](0016-durable-temporal-run-orchestration.md)
 - [ADR-0017: Require Immutable Evidence and Independent Outcome Verification](0017-trusted-evidence-outcome-audit-chain.md)
 - [ADR-0018: Require Real-Component E2E and Archived CI Evidence](0018-real-component-e2e-and-ci-evidence.md)
+- [ADR-0019: Enforced Tenant Namespaces and Break-glass Control](0019-enforced-tenant-namespaces-and-breakglass.md)

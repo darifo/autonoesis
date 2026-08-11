@@ -17,6 +17,7 @@ The Kill Switch can be activated at multiple granularities:
 
 | Dimension | Effect |
 |---|---|
+| **Platform** | All governed Actions across tenants are halted through the Break-glass path |
 | **Tenant** | All Goals, Runs, and Actions for the tenant are halted |
 | **Agent** | All Runs using the specified agent version are halted |
 | **Tool** | All Actions targeting the specified tool are blocked |
@@ -48,14 +49,16 @@ Idempotency-Key: <uuid>
 }
 ```
 
-### Via Database (Emergency)
+Platform-wide activation is deliberately unavailable from this endpoint. Use
+`POST /v1/platform/break-glass/kill-switch` with the independent `break_glass` identity,
+`Idempotency-Key`, `X-Break-Glass-Ticket`, and a reviewed incident reason. See
+[Tenant Isolation and Break-glass](tenant-isolation.md).
 
-If the API is unavailable:
+### Database emergency access
 
-```sql
-INSERT INTO kill_switches (dimension, target, reason, activated_by, activated_at)
-VALUES ('tool', 'payment-gateway', 'Emergency halt', '<operator_id>', NOW());
-```
+Do not use an application, tenant-admin, migration, relay, or database-superuser session to
+modify platform control. If the API is unavailable, use the separately monitored Break-glass
+login and the audited operational procedure in the tenant-isolation runbook.
 
 ## What Happens
 

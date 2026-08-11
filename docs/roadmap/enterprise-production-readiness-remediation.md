@@ -438,15 +438,15 @@ P1 依赖 P0 的可信执行事实。没有真实 Outcome 和 Evidence，不得�
 
 #### 实施任务
 
-- [ ] Capability Pack、Agent、Skill、Tool、Policy、Budget、Evaluation、Memory 和 Release 全部租户化；
-- [ ] 数据库连接使用非超级用户、非 BYPASSRLS 应用角色；
-- [ ] 所有租户表启用并测试 RLS；
-- [ ] Object Store 使用租户前缀或独立 Bucket Policy；
-- [ ] Cache、Search、Vector 和消息主题使用租户命名空间；
-- [ ] Workflow Namespace、Task Queue 和 Worker Pool 支持按风险与租户隔离；
-- [ ] Trace、Log、Metric、Evaluation Dataset 和 Audit Export 执行租户过滤；
-- [ ] Kill Switch 区分平台级和租户级权限，Tenant Admin 不能控制其他租户；
-- [ ] 跨租户访问统一返回不可枚举的结果并记录安全审计。
+- [x] Capability Pack、Agent、Skill、Tool、Policy、Budget、Evaluation、Memory 和 Release 全部租户化；
+- [x] 数据库连接使用非超级用户、非 BYPASSRLS 应用角色；
+- [x] 所有租户表启用并测试 RLS；
+- [x] Object Store 使用租户前缀或独立 Bucket Policy；
+- [x] Cache、Search、Vector 和消息主题使用租户命名空间；
+- [x] Workflow Namespace、Task Queue 和 Worker Pool 支持按风险与租户隔离；
+- [x] Trace、Log、Metric、Evaluation Dataset 和 Audit Export 执行租户过滤；
+- [x] Kill Switch 区分平台级和租户级权限，Tenant Admin 不能控制其他租户；
+- [x] 跨租户访问统一返回不可枚举的结果并记录安全审计。
 
 #### 验收
 
@@ -454,6 +454,11 @@ P1 依赖 P0 的可信执行事实。没有真实 Outcome 和 Evidence，不得�
 - 任意租户同名 Asset 不互相覆盖；
 - 平台超级管理员操作必须使用单独受审计的 Break-glass 路径；
 - 本地和测试环境不得以数据库超级用户模拟生产隔离。
+
+验证证据：`tests/security/test_tenant_isolation_matrix.py` 在两个真实 Tenant 上使用
+`autonoesis_api`（`NOSUPERUSER NOBYPASSRLS`）、PostgreSQL 17、MinIO 和 Temporal 执行完整攻击矩阵；
+Tenant Authority 的初始化使用独立管理连接，不参与任何隔离断言。平台 Kill Switch 仅由独立
+`autonoesis_breakglass_login` 操作并写入 `platform_audit_events`。
 
 ### P1-02 企业身份、委托与审批
 

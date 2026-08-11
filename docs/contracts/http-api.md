@@ -30,6 +30,8 @@ payload: object
 
 - Tenant and identity must come from verified request context (OIDC JWT or development headers). Body claims are never accepted.
 - Development mode supports `X-Tenant-ID`, `X-Actor-ID`, `X-Principal-ID`, `X-Roles` headers. Production uses OIDC-validated JWTs.
+- Platform emergency control additionally requires a `break_glass` identity and
+  `X-Break-Glass-Ticket`; ordinary platform and tenant roles cannot write its database tables.
 
 ### Idempotency
 
@@ -66,6 +68,10 @@ actually persisted; the API never fabricates an audit URI:
 }
 ```
 
+Unknown and cross-tenant resources return the same `record_not_found` response. Both append a
+hashed-path `security.tenant_scope_lookup_denied` event to the requesting tenant's audit chain;
+the response never reveals whether the target exists elsewhere.
+
 ### Client Constraints
 
 - Clients may submit Goal creation, approval decisions, and governance commands.
@@ -99,6 +105,8 @@ actually persisted; the API never fabricates an audit URI:
 | `GET` | `/v1/policies` | List policies |
 | `POST` | `/v1/budgets` | Create a budget |
 | `GET` | `/v1/budgets` | List budgets |
+| `POST` | `/v1/platform/break-glass/kill-switch` | Activate the audited platform-wide stop |
+| `DELETE` | `/v1/platform/break-glass/kill-switch` | Deactivate the audited platform-wide stop |
 | `POST` | `/v1/goals` | Create a goal (idempotent) |
 | `GET` | `/v1/goals` | List goals |
 | `GET` | `/v1/goals/{goal_id}` | Get goal details |

@@ -11,10 +11,11 @@ from autonoesis_runtime import (
     KillSwitchQuery,
     KillSwitchRecord,
 )
-from sqlalchemy import and_, func, or_, select, update
+from sqlalchemy import and_, func, insert, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from autonoesis_adapters.persistence import kill_switches
+from autonoesis_adapters.persistence_schema import platform_audit_events, platform_kill_switches
 
 
 class SqlKillSwitchStore:
@@ -55,6 +56,13 @@ class SqlKillSwitchStore:
         if not conditions:
             return False
         async with self._sessions() as session:
+            platform_blocked = await session.scalar(
+                select(platform_kill_switches.c.id)
+                .where(platform_kill_switches.c.deactivated_at.is_(None))
+                .limit(1)
+            )
+            if platform_blocked is not None:
+                return True
             await self._scope(session, tenant_id)
             result = await session.execute(
                 select(kill_switches.c.id)
@@ -71,6 +79,8 @@ class SqlKillSwitchStore:
         activated_by: str,
     ) -> KillSwitchRecord:
         tenant_id = self._required_tenant()
+        if dimension is KillSwitchDimension.PLATFORM:
+            raise PermissionError("platform switch requires the Break-glass store")
         now = datetime.now(UTC)
         record = KillSwitchRecord(
             kill_switch_id=uuid4(),
@@ -103,6 +113,8 @@ class SqlKillSwitchStore:
         target: str,
     ) -> KillSwitchRecord | None:
         tenant_id = self._required_tenant()
+        if dimension is KillSwitchDimension.PLATFORM:
+            raise PermissionError("platform switch requires the Break-glass store")
         now = datetime.now(UTC)
         async with self._sessions.begin() as session:
             await self._scope(session, tenant_id)
@@ -169,3 +181,143 @@ class SqlKillSwitchStore:
                 )
                 for row in rows
             )
+
+
+class SqlPlatformKillSwitchStore:
+    """Break-glass-only platform switch with a separate append-only audit surface."""
+
+    def __init__(self, sessions: async_sessionmaker[AsyncSession]) -> None:
+        self._sessions = sessions
+
+    async def activate(
+        self,
+        reason: str,
+        actor_id: UUID,
+        principal_id: UUID,
+        correlation_id: UUID,
+    ) -> KillSwitchRecord:
+        now, switch_id = datetime.now(UTC), uuid4()
+        async with self._sessions.begin() as session:
+            existing = await session.scalar(
+                select(platform_kill_switches.c.id)
+                .where(platform_kill_switches.c.deactivated_at.is_(None))
+                .limit(1)
+            )
+            if existing is not None:
+                raise ValueError("the platform kill switch is already active")
+            await session.execute(
+                insert(platform_kill_switches).values(
+                    id=str(switch_id),
+                    target="platform",
+                    reason=reason,
+                    activated_by=str(actor_id),
+                    deactivated_at=None,
+                    created_at=now,
+                )
+            )
+            await self._audit(
+                session,
+                "platform.kill_switch.activated",
+                switch_id,
+                reason,
+                actor_id,
+                principal_id,
+                correlation_id,
+                now,
+            )
+        return KillSwitchRecord(
+            switch_id,
+            KillSwitchDimension.PLATFORM,
+            "platform",
+            reason,
+            str(actor_id),
+            now,
+        )
+
+    async def deactivate(
+        self,
+        reason: str,
+        actor_id: UUID,
+        principal_id: UUID,
+        correlation_id: UUID,
+    ) -> KillSwitchRecord | None:
+        now = datetime.now(UTC)
+        async with self._sessions.begin() as session:
+            row = (
+                (
+                    await session.execute(
+                        select(platform_kill_switches)
+                        .where(platform_kill_switches.c.deactivated_at.is_(None))
+                        .with_for_update()
+                        .limit(1)
+                    )
+                )
+                .mappings()
+                .one_or_none()
+            )
+            if row is None:
+                return None
+            await session.execute(
+                update(platform_kill_switches)
+                .where(platform_kill_switches.c.id == row["id"])
+                .values(deactivated_at=now)
+            )
+            await self._audit(
+                session,
+                "platform.kill_switch.deactivated",
+                UUID(row["id"]),
+                reason,
+                actor_id,
+                principal_id,
+                correlation_id,
+                now,
+            )
+        return KillSwitchRecord(
+            UUID(row["id"]),
+            KillSwitchDimension.PLATFORM,
+            "platform",
+            row["reason"],
+            row["activated_by"],
+            row["created_at"],
+            now,
+        )
+
+    async def list_audit(self) -> tuple[dict[str, Any], ...]:
+        async with self._sessions() as session:
+            rows = (
+                (
+                    await session.execute(
+                        select(platform_audit_events).order_by(
+                            platform_audit_events.c.created_at,
+                            platform_audit_events.c.id,
+                        )
+                    )
+                )
+                .mappings()
+                .all()
+            )
+            return tuple(dict(row) for row in rows)
+
+    @staticmethod
+    async def _audit(
+        session: AsyncSession,
+        event_type: str,
+        object_id: UUID,
+        reason: str,
+        actor_id: UUID,
+        principal_id: UUID,
+        correlation_id: UUID,
+        created_at: datetime,
+    ) -> None:
+        await session.execute(
+            insert(platform_audit_events).values(
+                id=str(uuid4()),
+                actor_id=str(actor_id),
+                principal_id=str(principal_id),
+                event_type=event_type,
+                object_id=str(object_id),
+                correlation_id=str(correlation_id),
+                reason=reason,
+                created_at=created_at,
+            )
+        )

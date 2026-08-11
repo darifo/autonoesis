@@ -86,9 +86,11 @@ services:
       AUTONOESIS_AUTH_MODE: development
       AUTONOESIS_DATABASE_URL: postgresql+psycopg://autonoesis_api:autonoesis-local-only@postgres:5432/autonoesis
       AUTONOESIS_MIGRATION_DATABASE_URL: postgresql+psycopg://autonoesis_migrator:autonoesis-local-only@postgres:5432/autonoesis
+      AUTONOESIS_BREAKGLASS_DATABASE_URL: postgresql+psycopg://autonoesis_breakglass_login:autonoesis-local-only@postgres:5432/autonoesis
       AUTONOESIS_MIGRATION_ROLE: autonoesis_migration
       AUTONOESIS_TEMPORAL_TARGET: temporal:7233
       AUTONOESIS_TEMPORAL_START: "true"
+      AUTONOESIS_TENANT_ISOLATED_WORKFLOWS: "false"
       AUTONOESIS_CAPABILITY_PACK: /workspace/examples/field-service/capability-pack.yaml
       AUTONOESIS_BOOTSTRAP_TENANT_ID: 00000000-0000-0000-0000-000000000001
       AUTONOESIS_OPA_URL: http://opa:8181

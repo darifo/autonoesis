@@ -165,7 +165,7 @@ class MinioEvidenceStore:
         actual = sha256(content).hexdigest()
         if actual != descriptor.content_digest or len(content) != descriptor.size_bytes:
             raise ValueError("Evidence content does not match its immutable descriptor")
-        bucket, key = self._location(descriptor.artifact_uri)
+        bucket, key = self._location_for(descriptor)
         version = await self._store.put(
             bucket,
             key,
@@ -182,7 +182,7 @@ class MinioEvidenceStore:
         return replace(descriptor, version_id=version)
 
     async def retrieve_verified(self, descriptor: EvidenceArtifactDescriptor) -> bytes:
-        bucket, key = self._location(descriptor.artifact_uri)
+        bucket, key = self._location_for(descriptor)
         content = await self._store.get(bucket, key, descriptor.version_id)
         if content is None:
             raise LookupError("Evidence artifact is missing")
@@ -194,7 +194,7 @@ class MinioEvidenceStore:
         now = datetime.now(UTC)
         if now < descriptor.retained_until:
             raise PermissionError("Evidence object retention period has not expired")
-        bucket, key = self._location(descriptor.artifact_uri)
+        bucket, key = self._location_for(descriptor)
         version = await self._store.delete(bucket, key, descriptor.version_id)
         proof = sha256(
             (
@@ -210,6 +210,16 @@ class MinioEvidenceStore:
         if parsed.scheme != "s3" or not parsed.netloc or not parsed.path.strip("/"):
             raise ValueError(f"unsupported Evidence artifact URI: {uri}")
         return parsed.netloc, parsed.path.lstrip("/")
+
+    def _location_for(self, descriptor: EvidenceArtifactDescriptor) -> tuple[str, str]:
+        bucket, key = self._location(descriptor.artifact_uri)
+        expected = (
+            f"tenants/{descriptor.tenant_id}/evidence/{descriptor.evidence_id}/"
+            f"{descriptor.content_digest}"
+        )
+        if bucket != self._bucket or key != expected:
+            raise LookupError("Evidence artifact is unavailable in the tenant namespace")
+        return bucket, key
 
 
 class InMemoryObjectStore:

@@ -89,6 +89,15 @@ class TestInMemoryKillSwitchStore:
             await store2.deactivate(dim, target)
             assert await store2.is_blocked(query) is False, f"failed for {dim.value}"
 
+    @pytest.mark.asyncio
+    async def test_platform_switch_blocks_every_tenant(self, store) -> None:
+        await store.activate(
+            KillSwitchDimension.PLATFORM, "platform", "platform incident", "break-glass"
+        )
+
+        assert await store.is_blocked(KillSwitchQuery(tenant_id="tenant-1")) is True
+        assert await store.is_blocked(KillSwitchQuery(tenant_id="tenant-2")) is True
+
 
 class TestKillSwitchInGateway:
     @staticmethod

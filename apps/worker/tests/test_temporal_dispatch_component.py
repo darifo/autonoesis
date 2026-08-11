@@ -158,7 +158,7 @@ async def test_dispatch_recovers_failed_start_and_reconciles_closed_mismatch() -
         await store.add_run(run, _audit(goal, "run.requested", run.run_id))
 
         dispatch_store = PostgreSQLRunDispatchStore(
-            async_sessionmaker(dispatch_engine, expire_on_commit=False)
+            async_sessionmaker(dispatch_engine, expire_on_commit=False), tenant_id=tenant_id
         )
         temporal = TemporalRunWorkflowControl(client, task_queue)
         dispatcher = RunWorkflowDispatcher(dispatch_store, FailFirstStart(temporal))
@@ -179,7 +179,9 @@ async def test_dispatch_recovers_failed_start_and_reconciles_closed_mismatch() -
             assert await dispatcher.poll_once() == 0
             assert len(await dispatch_store.list_pending()) == 1
             assert await dispatcher.poll_once() == 1
-            handle = client.get_workflow_handle(workflow_id_for_run(str(run.run_id)))
+            handle = client.get_workflow_handle(
+                workflow_id_for_run(str(tenant_id), str(run.run_id))
+            )
             assert await handle.result() == "succeeded"
 
         assert await dispatch_store.list_pending() == ()

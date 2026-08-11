@@ -1,9 +1,11 @@
+import asyncio
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 from autonoesis_adapters import InMemoryPlatformStore
 from autonoesis_api.main import build_app
 from autonoesis_domain import ApprovalRequest
+from autonoesis_runtime import KillSwitchQuery
 from fastapi.testclient import TestClient
 
 
@@ -189,6 +191,54 @@ def test_cross_tenant_goal_is_hidden() -> None:
     response = client.get(f"/v1/goals/{uuid4()}", headers=headers(tenant_id, actor_id))
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "record_not_found"
+    assert store.audits[-1].event_type == "security.tenant_scope_lookup_denied"
+    assert store.audits[-1].tenant_id == tenant_id
+    assert str(response.request.url.path) not in store.audits[-1].object_id
+
+
+def test_tenant_admin_cannot_target_another_tenants_kill_switch() -> None:
+    tenant_id, other_tenant, actor_id = uuid4(), uuid4(), uuid4()
+    store = InMemoryPlatformStore()
+    client = TestClient(build_app(store))
+    response = client.post(
+        "/v1/kill-switches",
+        json={"dimension": "tenant", "target": str(other_tenant), "reason": "hostile"},
+        headers=headers(tenant_id, actor_id, "cross-tenant-kill-switch"),
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "record_not_found"
+    assert store.audits[-1].event_type == "security.tenant_scope_lookup_denied"
+
+
+def test_platform_kill_switch_requires_separate_audited_break_glass_path() -> None:
+    tenant_id, actor_id = uuid4(), uuid4()
+    store = InMemoryPlatformStore()
+    app = build_app(store)
+    client = TestClient(app)
+    identity = headers(tenant_id, actor_id)
+
+    ordinary = client.post(
+        "/v1/kill-switches",
+        json={"dimension": "platform", "target": "platform", "reason": "ordinary path"},
+        headers={**identity, "Idempotency-Key": "ordinary-platform-switch"},
+    )
+    assert ordinary.status_code == 403
+
+    break_glass = client.post(
+        "/v1/platform/break-glass/kill-switch",
+        json={"reason": "verified platform-wide incident response"},
+        headers={
+            **identity,
+            "X-Roles": "break_glass",
+            "Idempotency-Key": "break-glass-platform-switch",
+            "X-Break-Glass-Ticket": "SEC-12345",
+        },
+    )
+    assert break_glass.status_code == 201
+    assert break_glass.json()["dimension"] == "platform"
+    assert store.audits[-1].event_type == "platform.kill_switch.activated"
+    assert asyncio.run(app.state.kill_switch.is_blocked(KillSwitchQuery(tenant_id=str(tenant_id))))
 
 
 def test_authentication_errors_use_the_common_envelope() -> None:

@@ -10,6 +10,7 @@ class GoalRunInput:
     run_id: str
     deadline_epoch_seconds: float
     requires_approval: bool = False
+    risk_tier: str = "low"
     continuation_count: int = 0
     max_continuations: int = 100
 

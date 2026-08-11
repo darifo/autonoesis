@@ -8,5 +8,7 @@ CREATE ROLE autonoesis_worker LOGIN PASSWORD 'autonoesis-local-only' IN ROLE aut
 CREATE ROLE autonoesis_outbox LOGIN PASSWORD 'autonoesis-local-only' IN ROLE autonoesis_relay;
 CREATE ROLE autonoesis_auditor LOGIN PASSWORD 'autonoesis-local-only' IN ROLE autonoesis_audit;
 CREATE ROLE autonoesis_migrator LOGIN PASSWORD 'autonoesis-local-only' IN ROLE autonoesis_migration;
+CREATE ROLE autonoesis_breakglass_login LOGIN PASSWORD 'autonoesis-local-only'
+    IN ROLE autonoesis_breakglass;
 
 GRANT autonoesis_migration TO autonoesis, autonoesis_migrator;

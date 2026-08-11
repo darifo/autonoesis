@@ -37,6 +37,7 @@ from autonoesis_domain import (
     ImprovementProposal,
     JsonObject,
     LoopPolicy,
+    MemoryRecord,
     Outcome,
     Plan,
     Release,
@@ -47,6 +48,7 @@ from autonoesis_domain import (
     Task,
     Trial,
 )
+from autonoesis_runtime import TenantNamespaces, TenantTelemetryRecord
 from sqlalchemy import func, insert, select, text, update
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
@@ -107,6 +109,7 @@ from autonoesis_adapters.persistence_schema import (
     goals,
     idempotency_records,
     improvement_proposals,
+    memory_records,
     outcomes,
     plans,
     policy_versions,
@@ -114,6 +117,8 @@ from autonoesis_adapters.persistence_schema import (
     runs,
     skill_versions,
     tasks,
+    telemetry_records,
+    tenant_resource_namespaces,
     tool_versions,
 )
 from autonoesis_adapters.persistence_schema import inbox as inbox
@@ -418,7 +423,7 @@ class SqlAlchemyPlatformRepository:
                     goal_id=str(run.goal_id),
                     agent_version_id=str(run.agent_version_id),
                     status=run.status.value,
-                    temporal_workflow_id=f"goal-run-{run.run_id}",
+                    temporal_workflow_id=TenantNamespaces(run.tenant_id).workflow_id(run.run_id),
                     definition=run_payload(run),
                     optimistic_version=run.optimistic_version,
                     created_at=run.created_at,
@@ -535,6 +540,125 @@ class SqlAlchemyPlatformRepository:
         if row is None:
             raise RecordNotFound(f"context for run {run_id} was not found")
         return context_snapshot_from_row(dict(row))
+
+    async def add_memory(self, item: MemoryRecord) -> None:
+        now = datetime.now(UTC)
+        async with self._sessions.begin() as session:
+            await self._scope_tenant(session, item.tenant_id)
+            await session.execute(
+                insert(memory_records).values(
+                    id=str(item.memory_id),
+                    tenant_id=str(item.tenant_id),
+                    scope=item.scope,
+                    content=item.content,
+                    provenance=list(item.provenance),
+                    confidence=item.confidence,
+                    expires_at=item.expires_at,
+                    approved_by=str(item.approved_by),
+                    optimistic_version=1,
+                    created_at=now,
+                )
+            )
+            await self._record_fact(
+                session, item.tenant_id, "memory.recorded", "memory", item.memory_id, 1, now
+            )
+
+    async def list_memory(self, tenant_id: UUID) -> tuple[MemoryRecord, ...]:
+        rows = await self._list_rows(memory_records, tenant_id)
+        return tuple(
+            MemoryRecord(
+                tenant_id=UUID(row["tenant_id"]),
+                scope=row["scope"],
+                content=row["content"],
+                provenance=tuple(row["provenance"]),
+                confidence=float(row["confidence"]),
+                expires_at=row["expires_at"],
+                approved_by=UUID(row["approved_by"]),
+                memory_id=UUID(row["id"]),
+            )
+            for row in rows
+        )
+
+    async def add_telemetry(self, item: TenantTelemetryRecord) -> None:
+        now = datetime.now(UTC)
+        async with self._sessions.begin() as session:
+            await self._scope_tenant(session, item.tenant_id)
+            await session.execute(
+                insert(telemetry_records).values(
+                    id=str(uuid4()),
+                    tenant_id=str(item.tenant_id),
+                    signal_type=item.signal_type,
+                    trace_id=item.trace_id,
+                    payload=item.payload,
+                    occurred_at=now,
+                    optimistic_version=1,
+                    created_at=now,
+                )
+            )
+
+    async def list_telemetry(self, tenant_id: UUID) -> tuple[TenantTelemetryRecord, ...]:
+        rows = await self._list_rows(telemetry_records, tenant_id)
+        return tuple(
+            TenantTelemetryRecord(
+                tenant_id=UUID(row["tenant_id"]),
+                signal_type=row["signal_type"],
+                trace_id=row["trace_id"],
+                payload=row["payload"],
+            )
+            for row in rows
+        )
+
+    async def register_tenant_namespace(
+        self, tenant_id: UUID, resource_kind: str, logical_name: str, physical_namespace: str
+    ) -> dict[str, str]:
+        now = datetime.now(UTC)
+        async with self._sessions.begin() as session:
+            await self._scope_tenant(session, tenant_id)
+            existing = (
+                (
+                    await session.execute(
+                        select(tenant_resource_namespaces).where(
+                            tenant_resource_namespaces.c.tenant_id == str(tenant_id),
+                            tenant_resource_namespaces.c.resource_kind == resource_kind,
+                            tenant_resource_namespaces.c.logical_name == logical_name,
+                        )
+                    )
+                )
+                .mappings()
+                .one_or_none()
+            )
+            if existing is not None:
+                if existing["physical_namespace"] != physical_namespace:
+                    raise ConcurrencyConflict("tenant resource namespace is already frozen")
+            else:
+                await session.execute(
+                    insert(tenant_resource_namespaces).values(
+                        id=str(uuid4()),
+                        tenant_id=str(tenant_id),
+                        resource_kind=resource_kind,
+                        logical_name=logical_name,
+                        physical_namespace=physical_namespace,
+                        optimistic_version=1,
+                        created_at=now,
+                    )
+                )
+        return {
+            "tenant_id": str(tenant_id),
+            "resource_kind": resource_kind,
+            "logical_name": logical_name,
+            "physical_namespace": physical_namespace,
+        }
+
+    async def list_tenant_namespaces(self, tenant_id: UUID) -> tuple[dict[str, str], ...]:
+        return tuple(
+            {
+                "tenant_id": row["tenant_id"],
+                "resource_kind": row["resource_kind"],
+                "logical_name": row["logical_name"],
+                "physical_namespace": row["physical_namespace"],
+            }
+            for row in await self._list_rows(tenant_resource_namespaces, tenant_id)
+        )
 
     async def add_plan(self, plan: Plan) -> None:
         now = datetime.now(UTC)

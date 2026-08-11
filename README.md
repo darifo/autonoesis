@@ -181,8 +181,9 @@ Adapters implement ports defined by domain/application/runtime-kernel.
 ## Delivery Status
 
 Legacy MVP phases recorded implementation breadth, not production readiness. Their
-current evidence has been recalibrated below. The P0 reference baseline is complete; P1/P2
-enterprise governance and production operations remain in progress.
+current evidence has been recalibrated below. The P0 reference baseline and P1-01 real
+two-tenant isolation matrix are complete; the remaining P1/P2 enterprise governance and
+production operations remain in progress.
 
 | Legacy Phase | Current Maturity | Production Readiness Gap |
 |---|---|---|

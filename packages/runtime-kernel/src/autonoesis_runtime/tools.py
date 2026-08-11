@@ -12,6 +12,7 @@ from autonoesis_domain import Action, ActionStatus, ApprovalRequest, ApprovalSta
 
 
 class KillSwitchDimension(StrEnum):
+    PLATFORM = "platform"
     TENANT = "tenant"
     AGENT = "agent"
     TOOL = "tool"
@@ -31,6 +32,7 @@ class KillSwitchQuery:
 
     def dimensions(self) -> list[tuple[KillSwitchDimension, str]]:
         values = (
+            (KillSwitchDimension.PLATFORM, "platform"),
             (KillSwitchDimension.TENANT, self.tenant_id),
             (KillSwitchDimension.AGENT, self.agent_id),
             (KillSwitchDimension.TOOL, self.tool_name),

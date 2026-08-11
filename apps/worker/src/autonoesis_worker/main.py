@@ -3,9 +3,11 @@
 import argparse
 import asyncio
 import os
+from uuid import UUID
 
 from autonoesis_adapters import PostgreSQLPlatformStore
 from autonoesis_application import CandidateLifecycleService
+from autonoesis_runtime import IsolationRiskPool, TenantNamespaces
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from temporalio import activity
 from temporalio.client import Client
@@ -114,15 +116,31 @@ def build_parser() -> argparse.ArgumentParser:
 
 async def run_worker() -> None:
     target = os.getenv("AUTONOESIS_TEMPORAL_TARGET", "localhost:7233")
-    namespace = os.getenv("AUTONOESIS_TEMPORAL_NAMESPACE", "default")
-    task_queue = os.getenv("AUTONOESIS_TEMPORAL_TASK_QUEUE", "autonoesis")
+    tenant_value = os.getenv("AUTONOESIS_WORKER_TENANT_ID")
+    tenant_id = UUID(tenant_value) if tenant_value else None
+    risk_pool = (
+        IsolationRiskPool(os.getenv("AUTONOESIS_WORKER_RISK_POOL", "read"))
+        if tenant_id is not None
+        else None
+    )
+    boundaries = TenantNamespaces(tenant_id) if tenant_id is not None else None
+    namespace = os.getenv(
+        "AUTONOESIS_TEMPORAL_NAMESPACE",
+        boundaries.workflow_namespace(risk_pool) if boundaries and risk_pool else "default",
+    )
+    task_queue = os.getenv(
+        "AUTONOESIS_TEMPORAL_TASK_QUEUE",
+        boundaries.workflow_task_queue(risk_pool) if boundaries and risk_pool else "autonoesis",
+    )
     client = await Client.connect(target, namespace=namespace)
     dispatch_database_url = os.environ["AUTONOESIS_DISPATCH_DATABASE_URL"]
     dispatch_engine = create_async_engine(dispatch_database_url, pool_pre_ping=True)
     dispatch_store = PostgreSQLRunDispatchStore(
-        async_sessionmaker(dispatch_engine, expire_on_commit=False)
+        async_sessionmaker(dispatch_engine, expire_on_commit=False), tenant_id=tenant_id
     )
-    workflow_control = TemporalRunWorkflowControl(client, task_queue)
+    workflow_control = TemporalRunWorkflowControl(
+        client, task_queue, tenant_id=tenant_id, risk_pool=risk_pool
+    )
     dispatcher = RunWorkflowDispatcher(dispatch_store, workflow_control)
     reconciler = RunWorkflowReconciler(dispatch_store, workflow_control)
 

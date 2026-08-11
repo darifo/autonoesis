@@ -13,14 +13,14 @@ OPA、KMS MinIO、参考纵向 E2E、依赖/Secret 扫描，以及 Cockpit 单�
 测试结果生成哈希清单并由 CI 保留 30 天。
 
 这些证据支持 P0 参考纵向切片、PostgreSQL 权威存储、HTTP/Application 用例、Governed Tool
-Gateway、Temporal 耐久编排和 Evidence/Outcome/Audit 可信链的 `integrated` 声明；其余能力
-最高仍为 `unit-tested`，没有任何能力达到 `production-proven`。
+Gateway、Temporal 耐久编排、Evidence/Outcome/Audit 可信链和 P1-01 多维租户隔离的
+`integrated` 声明；其余能力最高仍为 `unit-tested`，没有任何能力达到 `production-proven`。
 
 ## 生产限制
 
-- PostgreSQL 已有冻结迁移、租户复合外键、角色、RLS 和组件测试，但尚无生产备份恢复、容量、故障和滚动升级演练；
+- PostgreSQL 已有冻结迁移、租户复合外键、全租户表强制 RLS、非 BYPASSRLS 应用角色和双租户攻击矩阵，但尚无生产备份恢复、容量、故障和滚动升级演练；
 - Temporal 已有 Outbox Dispatcher、固定 Workflow ID、DB/Workflow Reconciler、Replay、Worker
-  重启和故障注入组件测试；尚无生产 Namespace 隔离、HA/备份、积压容量和滚动升级演练；
+  重启、租户化 Workflow ID/Queue/Worker Pool 和故障注入组件测试；尚无生产 Namespace 预配、HA/备份、积压容量和滚动升级演练；
 - Tool Gateway 已使用 PostgreSQL 原子协调预算与幂等 Reservation，并以真实 OPA 验证策略；
   但生产 Credential Broker、网络层出口策略及第三方系统端到端写入仍未演练；
 - Evidence 已通过真实 MinIO 的 SSE-S3、版本、Tenant 前缀、COMPLIANCE Object Lock、Saga、
@@ -29,6 +29,9 @@ Gateway、Temporal 耐久编排和 Evidence/Outcome/Audit 可信链的 `integrat
 - OPA Policy 组件测试已进入 CI，但尚未完成策略发布、回滚和不可用故障演练；
 - API 未持久化错误返回空 Audit Ref；已提交事件返回带摘要的真实 Ref，但错误审计全面覆盖
   和外部 WORM 导出尚未完成；
+- P1-01 使用真实 PostgreSQL、MinIO 和 Temporal 验证 API、DB、Object、Workflow、Telemetry、
+  Memory、Evaluation 和 Release 的双租户隔离，并建立独立 Break-glass 路径；外部
+  Search/Vector/Telemetry 后端、生产 Bucket Policy 与长期攻防演练仍未完成；
 - Candidate/Shadow/Canary 已持久化 Deployment/Release，但没有真实流量双跑、分流、观察窗口和独立 Release Executor；
 - Cockpit 使用静态演示数据，不从公共 API 获取运营指标；
 - Compose 含本地默认凭证和公开测试 KMS key；MinIO 镜像已固定摘要，但配置不满足生产

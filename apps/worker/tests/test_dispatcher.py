@@ -1,23 +1,30 @@
 """Tests for recoverable Outbox dispatch and DB/Temporal reconciliation."""
 
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from uuid import UUID, uuid4
 
 import pytest
+from autonoesis_runtime import IsolationRiskPool
 from autonoesis_worker.contracts import GoalRunInput
 from autonoesis_worker.dispatcher import (
     ReconciliationRun,
     RunDispatchRequest,
     RunWorkflowDispatcher,
     RunWorkflowReconciler,
+    TemporalRunWorkflowControl,
     WorkflowObservation,
     workflow_id_for_run,
 )
 
+TENANT_ID = "00000000-0000-0000-0000-000000000001"
+RUN_ID = "00000000-0000-0000-0000-000000000002"
 
-def command(run_id: str = "run-1") -> GoalRunInput:
+
+def command(run_id: str = RUN_ID) -> GoalRunInput:
     return GoalRunInput(
-        "tenant-1",
-        "goal-1",
+        TENANT_ID,
+        "00000000-0000-0000-0000-000000000003",
         run_id,
         (datetime.now(UTC) + timedelta(hours=1)).timestamp(),
     )
@@ -54,7 +61,7 @@ class MemoryWorkflowControl:
         if self.failures:
             self.failures -= 1
             raise ConnectionError("Temporal unavailable")
-        workflow_id = workflow_id_for_run(item.run_id)
+        workflow_id = workflow_id_for_run(item.tenant_id, item.run_id)
         self.started.add(workflow_id)
         self.observations[workflow_id] = WorkflowObservation(True, True, "running")
         return workflow_id
@@ -74,7 +81,7 @@ async def test_failed_start_leaves_outbox_for_recovery() -> None:
     assert len(store.pending) == 1
     assert await dispatcher.poll_once() == 1
     assert store.pending == []
-    assert workflows.started == {"goal-run-run-1"}
+    assert workflows.started == {workflow_id_for_run(TENANT_ID, RUN_ID)}
 
 
 @pytest.mark.asyncio
@@ -88,7 +95,7 @@ async def test_fixed_id_deduplicates_when_start_succeeds_before_outbox_mark() ->
         await dispatcher.poll_once()
     assert await dispatcher.poll_once() == 1
     assert workflows.start_calls == 2
-    assert workflows.started == {"goal-run-run-1"}
+    assert workflows.started == {workflow_id_for_run(TENANT_ID, RUN_ID)}
 
 
 @pytest.mark.asyncio
@@ -101,13 +108,32 @@ async def test_reconciler_recovers_missing_and_reports_closed_workflow() -> None
     assert recovered[0].kind == "missing_workflow"
     assert recovered[0].recovered is True
 
-    workflows.observations["goal-run-run-1"] = WorkflowObservation(True, False, "failed")
+    workflow_id = workflow_id_for_run(TENANT_ID, RUN_ID)
+    workflows.observations[workflow_id] = WorkflowObservation(True, False, "failed")
     finding = await reconciler.reconcile_once()
     assert finding[0].kind == "closed_workflow_with_active_run"
     assert finding[0].recovered is False
     assert "Temporal=failed" in finding[0].detail
 
     store.active = [ReconciliationRun(command(), "cancelled")]
-    workflows.observations["goal-run-run-1"] = WorkflowObservation(True, True, "running")
+    workflows.observations[workflow_id] = WorkflowObservation(True, True, "running")
     reverse = await reconciler.reconcile_once()
     assert reverse[0].kind == "running_workflow_with_terminal_or_manual_run"
+
+
+@pytest.mark.asyncio
+async def test_worker_pool_rejects_another_tenant_or_risk_pool() -> None:
+    class UnusedClient:
+        async def start_workflow(self, *args: object, **kwargs: object) -> None:
+            raise AssertionError("tenant boundary must reject before Temporal")
+
+    control = TemporalRunWorkflowControl(
+        UnusedClient(),  # type: ignore[arg-type]
+        "isolated",
+        tenant_id=UUID(TENANT_ID),
+        risk_pool=IsolationRiskPool.READ,
+    )
+    with pytest.raises(PermissionError, match="another tenant"):
+        await control.start(replace(command(), tenant_id=str(uuid4())))
+    with pytest.raises(PermissionError, match="risk tier"):
+        await control.start(replace(command(), risk_tier="critical"))

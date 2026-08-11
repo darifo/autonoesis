@@ -15,13 +15,17 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'autonoesis_audit') THEN
         CREATE ROLE autonoesis_audit NOLOGIN NOBYPASSRLS;
     END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'autonoesis_breakglass') THEN
+        CREATE ROLE autonoesis_breakglass NOLOGIN NOBYPASSRLS;
+    END IF;
 END
 $$;
 
 GRANT CONNECT ON DATABASE autonoesis TO
-    autonoesis_migration, autonoesis_app, autonoesis_relay, autonoesis_audit;
+    autonoesis_migration, autonoesis_app, autonoesis_relay, autonoesis_audit,
+    autonoesis_breakglass;
 GRANT USAGE ON SCHEMA public TO
-    autonoesis_app, autonoesis_relay, autonoesis_audit;
+    autonoesis_app, autonoesis_relay, autonoesis_audit, autonoesis_breakglass;
 GRANT ALL ON SCHEMA public TO autonoesis_migration;
 
 ALTER DEFAULT PRIVILEGES FOR ROLE autonoesis_migration IN SCHEMA public

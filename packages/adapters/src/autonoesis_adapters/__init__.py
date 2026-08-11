@@ -22,7 +22,7 @@ from autonoesis_adapters.governance import (
     OIDCValidator,
     OPAPolicyAdapter,
 )
-from autonoesis_adapters.kill_switch_store import SqlKillSwitchStore
+from autonoesis_adapters.kill_switch_store import SqlKillSwitchStore, SqlPlatformKillSwitchStore
 from autonoesis_adapters.mcp import MCPServerAdapter, MCPToolDefinition
 from autonoesis_adapters.memory import (
     InMemoryBudgetLedger,
@@ -77,6 +77,7 @@ __all__ = [
     "RegistryControlledEgress",
     "SqlAlchemyPlatformRepository",
     "SqlKillSwitchStore",
+    "SqlPlatformKillSwitchStore",
     "StaticToolCatalog",
     "create_repository",
     "metadata",
