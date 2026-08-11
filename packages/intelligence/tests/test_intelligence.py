@@ -15,9 +15,9 @@ from autonoesis_intelligence import (
 
 
 def _make_goal(**overrides: object) -> object:
-    from datetime import UTC, datetime
+    from datetime import UTC, datetime, timedelta
 
-    from autonoesis_domain import GoalContract
+    from autonoesis_domain import BudgetAmount, GoalContract, JsonObject, RiskTier
 
     return GoalContract(
         tenant_id=uuid4(),
@@ -30,10 +30,10 @@ def _make_goal(**overrides: object) -> object:
         ),
         constraints=(),
         owner_id=uuid4(),
-        risk_tier="low",
-        budget_limit=100,
-        deadline=datetime.now(UTC),
-        input_payload={},
+        risk_tier=RiskTier.LOW,
+        budget_limit=BudgetAmount(100),
+        deadline=datetime.now(UTC) + timedelta(minutes=5),
+        input_payload=JsonObject.from_value({}),
     )
 
 

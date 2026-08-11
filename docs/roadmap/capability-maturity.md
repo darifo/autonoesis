@@ -19,13 +19,13 @@
 
 | 能力 | 当前成熟度 | 已有证据 | 达到下一等级仍缺少 |
 |---|---|---|---|
-| 领域语言与基础状态机 | `unit-tested` | `packages/domain/tests/`；CI `python` job | P0-02 完整不变量、非法迁移和冻结契约 |
+| 领域语言与基础状态机 | `unit-tested` | P0-02 冻结契约；`packages/domain/tests/`；CI `python` job | P0-03 持久化映射与 P0-04 纵向集成 |
 | Capability Pack Manifest | `unit-tested` | `packages/capability/tests/`；CI `python` job | 签名、SBOM、隔离安装和真实供应链测试 |
 | Goal/Run Application 用例 | `unit-tested` | `packages/application/tests/`（InMemory） | 完整纵向用例、事务 Outbox、PostgreSQL 组件测试 |
 | HTTP API/SDK | `unit-tested` | `apps/api/tests/`（InMemory）；CI `python` job | Consumer Contract、生产 Repository 装配和多副本一致性 |
 | PostgreSQL 权威存储 | `modeled` | SQLAlchemy metadata、Alembic revision `0001` | P0-03 Repository、显式迁移、角色/约束、真实 PostgreSQL CI |
 | Temporal 耐久编排 | `modeled` | 两个 Workflow 类型和 Activity 单元测试 | Dispatcher、Reconciler、Replay、Signal 权威复核和崩溃恢复 |
-| Governed Tool Gateway | `unit-tested` | 内存 Policy/Budget/Idempotency 测试 | 完整 Envelope、原子 Reservation、执行时授权和受控出口 |
+| Governed Tool Gateway | `unit-tested` | 完整 Envelope 与 Approval 绑定、内存 Policy/Budget/Idempotency 测试 | 原子 Reservation、执行时授权和受控出口 |
 | Identity/Policy/Approval | `unit-tested` | OIDC Validator 和审批逻辑单元测试 | 进程级 JWKS、委托撤销、OPA 组件测试、职责分离 |
 | Evidence/Outcome/Audit | `unit-tested` | 内存 Object Store 摘要测试 | MinIO、可信 Readback、Evidence Saga、真实 Audit Ref |
 | Context/Environment/Memory | `unit-tested` | 对应包的隔离测试 | 持久化、ACL/来源权威、冲突处理和删除传播集成 |

@@ -30,11 +30,15 @@ from autonoesis_domain import (
     AgentDefinition,
     AgentVersion,
     AssetStage,
+    BudgetUnit,
     CandidateVersion,
+    DataClassification,
+    ExecutionMode,
     GoalContract,
     ImprovementProposal,
     ImprovementTarget,
     LoopPolicy,
+    RiskTier,
     SubjectRef,
     SuccessCriterion,
 )
@@ -92,10 +96,17 @@ class GoalRequest(StrictRequest):
     success_criteria: tuple[CriterionRequest, ...] = Field(min_length=1)
     constraints: tuple[str, ...] = ()
     owner_id: UUID
-    risk_tier: str = "medium"
+    risk_tier: RiskTier = RiskTier.MEDIUM
     budget_limit: int | None = Field(default=None, ge=1)
+    budget_unit: BudgetUnit = BudgetUnit.COST_UNITS
     deadline: datetime
     input_payload: dict[str, Any]
+    delegation_id: UUID | None = None
+    maximum_classification: DataClassification = DataClassification.INTERNAL
+    allowed_regions: tuple[str, ...] = ()
+    retention_days: int = Field(default=30, ge=1)
+    execution_mode: ExecutionMode = ExecutionMode.SUPERVISED
+    max_concurrent_runs: int = Field(default=1, ge=1)
 
 
 class ImprovementProposalRequest(StrictRequest):
@@ -465,8 +476,15 @@ def build_app(store: InMemoryPlatformStore | None = None) -> FastAPI:
                 owner_id=body.owner_id,
                 risk_tier=body.risk_tier,
                 budget_limit=body.budget_limit,
+                budget_unit=body.budget_unit,
                 deadline=body.deadline,
                 input_payload=body.input_payload,
+                delegation_id=body.delegation_id,
+                maximum_classification=body.maximum_classification,
+                allowed_regions=body.allowed_regions,
+                retention_days=body.retention_days,
+                execution_mode=body.execution_mode,
+                max_concurrent_runs=body.max_concurrent_runs,
                 correlation_id=uuid4(),
             ),
         )
@@ -639,12 +657,33 @@ def build_app(store: InMemoryPlatformStore | None = None) -> FastAPI:
 
     @app.post("/v1/candidates/{candidate_id}/promote", tags=["improvement"])
     async def promote_candidate(
-        candidate_id: UUID, body: PromotionRequest, context: Identity, _: WriteKey
+        candidate_id: UUID, context: Identity, _: WriteKey
     ) -> dict[str, Any]:
         require_role(context, {"platform_admin", "tenant_admin", "approver"})
-        release = await evolution.promote(context, candidate_id, body.stable_version_id)
+        deployment = await evolution.begin_shadow(context, candidate_id)
+        return {
+            "deployment_id": deployment.deployment_id,
+            "candidate_id": deployment.candidate_id,
+            "status": deployment.status,
+        }
+
+    @app.post("/v1/deployments/{deployment_id}/canary", tags=["improvement"])
+    async def promote_deployment_to_canary(
+        deployment_id: UUID, context: Identity, _: WriteKey
+    ) -> dict[str, Any]:
+        require_role(context, {"platform_admin", "tenant_admin", "approver"})
+        deployment = await evolution.promote_to_canary(context, deployment_id)
+        return {"deployment_id": deployment.deployment_id, "status": deployment.status}
+
+    @app.post("/v1/deployments/{deployment_id}/stable", tags=["improvement"])
+    async def promote_deployment_to_stable(
+        deployment_id: UUID, body: PromotionRequest, context: Identity, _: WriteKey
+    ) -> dict[str, Any]:
+        require_role(context, {"platform_admin", "tenant_admin", "approver"})
+        release = await evolution.release_stable(context, deployment_id, body.stable_version_id)
         return {
             "release_id": release.release_id,
+            "deployment_id": release.deployment_id,
             "stable_version_id": release.stable_version_id,
             "previous_stable_version_id": release.previous_stable_version_id,
         }
@@ -707,7 +746,10 @@ def goal_view(goal: GoalContract) -> dict[str, Any]:
         ],
         "status": goal.status,
         "version": goal.version,
-        "budget_limit": goal.budget_limit,
+        "risk_tier": goal.risk_tier,
+        "budget_limit": goal.budget_limit.amount,
+        "budget_unit": goal.budget_limit.unit,
+        "execution_mode": goal.execution_mode,
         "deadline": goal.deadline,
     }
 

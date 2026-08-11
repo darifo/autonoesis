@@ -99,6 +99,7 @@ class TestKillSwitchInGateway:
         )
         from autonoesis_domain import (
             Action,
+            JsonObject,
             RiskLevel,
         )
         from autonoesis_runtime import AuthorizationContext, GovernedToolGateway
@@ -116,12 +117,13 @@ class TestKillSwitchInGateway:
             run_id=uuid4(),
             task_id=uuid4(),
             tool_name="dangerous-tool",
+            tool_version="1.0.0",
             operation="execute",
-            resource_id="res-1",
+            resource_scope="resources/res-1",
             idempotency_key="key-1",
             expected_effect="do something",
             risk_level=RiskLevel.L2_REVERSIBLE_WRITE,
-            parameters=tuple(),
+            parameters=JsonObject.from_value({}),
         )
         context = AuthorizationContext(
             tenant_id=str(action.tenant_id),
@@ -144,7 +146,7 @@ class TestKillSwitchInGateway:
             InMemoryBudgetLedger,
             InMemoryIdempotencyStore,
         )
-        from autonoesis_domain import Action, RiskLevel
+        from autonoesis_domain import Action, JsonObject, RiskLevel
         from autonoesis_runtime import AuthorizationContext, GovernedToolGateway, ToolReceipt
 
         store = InMemoryKillSwitchStore()
@@ -172,12 +174,13 @@ class TestKillSwitchInGateway:
             run_id=uuid4(),
             task_id=uuid4(),
             tool_name="safe-tool",
+            tool_version="1.0.0",
             operation="execute",
-            resource_id="res-1",
+            resource_scope="resources/res-1",
             idempotency_key="key-2",
             expected_effect="do something safe",
             risk_level=RiskLevel.L1_READ,
-            parameters=tuple(),
+            parameters=JsonObject.from_value({}),
         )
         context = AuthorizationContext(
             tenant_id=str(action.tenant_id),

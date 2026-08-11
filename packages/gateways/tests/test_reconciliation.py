@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
-from autonoesis_domain import Action, ActionStatus, RiskLevel
+from autonoesis_domain import Action, ActionStatus, JsonObject, RiskLevel
 from autonoesis_gateways import (
     CompensationExecutor,
     ReconciliationResult,
@@ -19,12 +19,13 @@ def _make_action(**overrides: object) -> Action:
         "run_id": uuid4(),
         "task_id": uuid4(),
         "tool_name": "test-tool",
+        "tool_version": "1.0.0",
         "operation": "test-op",
-        "resource_id": "res-1",
+        "resource_scope": "resources/res-1",
         "idempotency_key": "key-1",
         "expected_effect": "test effect",
         "risk_level": RiskLevel.L1_READ,
-        "parameters": tuple(),
+        "parameters": JsonObject.from_value({}),
     }
     defaults.update({k: v for k, v in overrides.items() if v is not None})
     return Action(**defaults)  # type: ignore[arg-type]

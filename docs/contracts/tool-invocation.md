@@ -22,6 +22,7 @@ operation: string
 resource_scope: string
 arguments: object
 argument_digest: sha256
+action_digest: sha256
 risk_level: l0_compute | l1_read | l2_reversible_write | l3_high_impact_write | l4_privileged
 idempotency_key: string
 budget_ref: string
@@ -89,8 +90,10 @@ error: object | null
 
 ## Approval Binding
 
-- Approval is bound to exact `argument_digest` (SHA-256 of canonical sorted parameters).
-- Any parameter change after approval produces a different digest → execution is rejected and re-approval is required.
+- Arguments are a bounded nested JSON object encoded with sorted keys, UTF-8, and compact separators.
+- Approval is bound to Tenant, Run, Action, immutable Tool Version, operation, resource scope,
+  exact `argument_digest`, complete `action_digest`, Policy Version, role, and expiry.
+- Any executable-field change after approval produces a different Action digest → execution is rejected and re-approval is required.
 - Approval has an expiry (`expires_at`). Expired approvals cannot authorize execution.
 - Policy version is recorded in the approval. If policy changes, existing approvals may be invalidated.
 

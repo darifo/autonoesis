@@ -10,13 +10,12 @@
 
 ## Phase 0：行业无关内核（`unit-tested`）
 
-- `unit-tested`：GoalContract、SubjectRef、Session、Run 和部分执行对象；
+- `unit-tested`：GoalContract、SubjectRef、Session、Run 和完整受治理执行契约；
 - `unit-tested`：Agent/Skill/Tool、Context、Evaluation 和 Improvement 版本对象；
 - `unit-tested`：Capability Pack Manifest、Schema 校验和 Entry Point；
 - `unit-tested`：核心行业词汇隔离检查。
 
-未完成：P0-02 要求的受约束值对象、完整执行快照、Action/Approval/Evidence/Outcome
-契约和全部非法状态迁移测试。
+未完成：P0-03 要求的完整持久化映射和 P0-04 要求的纵向 Application 用例集成。
 
 ## Phase 1：通用运行平台（`modeled` / 部分 `unit-tested`）
 

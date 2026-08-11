@@ -69,7 +69,7 @@ class OPAPolicyAdapter:
                 "action": {
                     "tool": action.tool_name,
                     "operation": action.operation,
-                    "resource": action.resource_id,
+                    "resource": action.resource_scope,
                     "risk": action.risk_level.value,
                     "parameter_digest": action.parameter_digest,
                 },

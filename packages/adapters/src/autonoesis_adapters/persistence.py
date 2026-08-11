@@ -6,8 +6,15 @@ from uuid import UUID, uuid4
 
 from autonoesis_application import AuditEvent, ConcurrencyConflict, RecordNotFound
 from autonoesis_domain import (
+    BudgetAmount,
+    BudgetUnit,
+    DataClassification,
+    DataPolicy,
+    ExecutionMode,
     GoalContract,
     GoalStatus,
+    JsonObject,
+    RiskTier,
     Run,
     RunStatus,
     SubjectRef,
@@ -415,10 +422,21 @@ class SqlAlchemyPlatformRepository:
                 for item in goal.success_criteria
             ],
             "constraints": goal.constraints,
-            "risk_tier": goal.risk_tier,
-            "budget_limit": goal.budget_limit,
+            "risk_tier": goal.risk_tier.value,
+            "budget_limit": {
+                "amount": goal.budget_limit.amount,
+                "unit": goal.budget_limit.unit.value,
+            },
             "deadline": goal.deadline.isoformat(),
-            "input_payload": goal.input_payload,
+            "input_payload": goal.input_payload.to_value(),
+            "delegation_id": str(goal.delegation_id) if goal.delegation_id else None,
+            "data_policy": {
+                "maximum_classification": goal.data_policy.maximum_classification.value,
+                "allowed_regions": goal.data_policy.allowed_regions,
+                "retention_days": goal.data_policy.retention_days,
+            },
+            "execution_mode": goal.execution_mode.value,
+            "max_concurrent_runs": goal.max_concurrent_runs,
         }
 
     @staticmethod
@@ -435,10 +453,29 @@ class SqlAlchemyPlatformRepository:
             ),
             constraints=tuple(payload["constraints"]),
             owner_id=UUID(row["owner_id"]),
-            risk_tier=payload["risk_tier"],
-            budget_limit=payload["budget_limit"],
+            risk_tier=RiskTier(payload["risk_tier"]),
+            budget_limit=BudgetAmount(
+                payload["budget_limit"]["amount"],
+                BudgetUnit(payload["budget_limit"]["unit"]),
+            ),
             deadline=datetime.fromisoformat(payload["deadline"]),
-            input_payload=payload["input_payload"],
+            input_payload=JsonObject.from_value(payload["input_payload"]),
+            delegation_id=(
+                UUID(payload["delegation_id"]) if payload.get("delegation_id") else None
+            ),
+            data_policy=DataPolicy(
+                maximum_classification=DataClassification(
+                    payload.get("data_policy", {}).get(
+                        "maximum_classification", DataClassification.INTERNAL.value
+                    )
+                ),
+                allowed_regions=tuple(payload.get("data_policy", {}).get("allowed_regions", ())),
+                retention_days=payload.get("data_policy", {}).get("retention_days", 30),
+            ),
+            execution_mode=ExecutionMode(
+                payload.get("execution_mode", ExecutionMode.SUPERVISED.value)
+            ),
+            max_concurrent_runs=payload.get("max_concurrent_runs", 1),
             goal_id=UUID(row["id"]),
             version=row["optimistic_version"],
             status=GoalStatus(row["status"]),

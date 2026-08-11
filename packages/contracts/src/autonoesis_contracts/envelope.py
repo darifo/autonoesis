@@ -2,18 +2,10 @@
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from enum import StrEnum
 from typing import Any
 from uuid import UUID, uuid4
 
-
-class DataClassification(StrEnum):
-    """Minimum data classification carried across trust boundaries."""
-
-    PUBLIC = "public"
-    INTERNAL = "internal"
-    CONFIDENTIAL = "confidential"
-    RESTRICTED = "restricted"
+from autonoesis_domain import DataClassification as DataClassification
 
 
 @dataclass(frozen=True, slots=True)

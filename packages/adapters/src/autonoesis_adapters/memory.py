@@ -13,6 +13,7 @@ from autonoesis_capability import CapabilityPackManifest, GoalTypeManifest
 from autonoesis_domain import (
     AgentVersion,
     CandidateVersion,
+    Deployment,
     GoalContract,
     ImprovementProposal,
     Release,
@@ -37,6 +38,7 @@ class InMemoryPlatformStore:
         self.audits: list[AuditEvent] = []
         self.proposals: dict[UUID, ImprovementProposal] = {}
         self.candidates: dict[UUID, CandidateVersion] = {}
+        self.deployments: dict[UUID, Deployment] = {}
         self.releases: dict[UUID, Release] = {}
 
     @staticmethod
@@ -118,6 +120,20 @@ class InMemoryPlatformStore:
 
     async def save_candidate(self, candidate: CandidateVersion) -> None:
         self.candidates[candidate.candidate_id] = candidate
+
+    async def add_deployment(self, deployment: Deployment) -> None:
+        self.deployments[deployment.deployment_id] = deployment
+
+    async def get_deployment(self, tenant_id: UUID, deployment_id: UUID) -> Deployment:
+        try:
+            deployment = self.deployments[deployment_id]
+        except KeyError as exc:
+            raise RecordNotFound(f"deployment {deployment_id} was not found") from exc
+        self._assert_tenant(tenant_id, deployment.tenant_id)
+        return deployment
+
+    async def save_deployment(self, deployment: Deployment) -> None:
+        self.deployments[deployment.deployment_id] = deployment
 
     async def add_release(self, release: Release) -> None:
         self.releases[release.release_id] = release

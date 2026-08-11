@@ -9,10 +9,10 @@
 |---|---|
 | `environment.yml` | `217cde3c5f49080c1b35f5a65051770ad2f9952f9cb6aad4a1c1d9a3696c3119` |
 | `pyproject.toml` | `6886d029e073f1d6d69785f0e599229fd74e619047b064d81aa25748ddad0c55` |
-| `uv.lock` | `5affbd77b4ccdd08e04fe33f609bbf0f2b7be0d14464b8c37e68ebb6cd843476` |
+| `uv.lock` | `8e419c1b984b7fc2df3eec71bdc117e201b7c3a4b8275bb75a03536f512ec09e` |
 | `package.json` | `50cb64a759a95e84c47f1cf5fe1cafa0167aa030bf0d5c806bda00eb48cfbf8a` |
 | `pnpm-lock.yaml` | `f8a6632ae5b7f346481d3cd8deb6252c6bb9fdb197a673c89067f09745e4e132` |
-| `versions.lock` | `02dbd2d7dfb24b038263fd9f977a233f9736d5c4f8d234fbd376f649052c72e9` |
+| `versions.lock` | `ddcae469c41ddf5d1ae0bb99b8102cd1ef69b824a6c23da4a5219a2ca3591598` |
 | `infra/compose/docker-compose.yml` | `05626e8f667a19ba8ae61a8163af06aab99085c6d007bd83d1fd0c88f31eb6d5` |
 
 Configured Compose images (configuration inventory only; not integration evidence):
@@ -28,7 +28,7 @@ Configured Compose images (configuration inventory only; not integration evidenc
 ## Database Schema Baseline
 
 - Alembic head: `0001_initial_platform`
-- SQLAlchemy metadata digest: `sha256:6fff692a4f0decd0cfba71e8a5ed36c917f9c261a335271a5991ed29484da82c`
+- SQLAlchemy metadata digest: `sha256:4ec18793646a108d9dec690409bc8b4e33630125d5f79c203502a808cfb8fa0a`
 - Declared tables (24): `actions`, `agent_versions`, `approvals`, `audit_events`, `budget_ledger`, `candidates`, `capability_packs`, `context_snapshots`, `evaluation_trials`, `evidence`, `goals`, `idempotency_records`, `improvement_proposals`, `inbox`, `kill_switches`, `outbox`, `outcomes`, `plans`, `releases`, `runs`, `skill_versions`, `tasks`, `tenants`, `tool_versions`
 - Evidence level: `modeled`; this inventory does not execute PostgreSQL migrations.
 
@@ -36,8 +36,8 @@ Configured Compose images (configuration inventory only; not integration evidenc
 
 - Application contract version: `0.1.0`
 - OpenAPI dialect: `3.1.x` (FastAPI default; generated contract is not frozen yet)
-- Route source digest: `sha256:9e9664ad47fee129dcb887bc422fffc1dbdcccd3c33b375adf27cccc5a374cb6`
-- Declared operations (37):
+- Route source digest: `sha256:7cc81059da06eb68c3cfbcc767642adad699168bd904de57852bba43097ec2fc`
+- Declared operations (39):
 
   - `DELETE /v1/kill-switches`
   - `GET /`
@@ -68,6 +68,8 @@ Configured Compose images (configuration inventory only; not integration evidenc
   - `POST /v1/candidates/{candidate_id}/evaluate`
   - `POST /v1/candidates/{candidate_id}/promote`
   - `POST /v1/capability-packs`
+  - `POST /v1/deployments/{deployment_id}/canary`
+  - `POST /v1/deployments/{deployment_id}/stable`
   - `POST /v1/goals`
   - `POST /v1/goals/{goal_id}/runs`
   - `POST /v1/improvement-proposals`

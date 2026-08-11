@@ -178,6 +178,8 @@ class GovernedToolGateway:
     ) -> tuple[Action, ToolReceipt]:
         if action.status not in {ActionStatus.PROPOSED, ActionStatus.AWAITING_APPROVAL}:
             raise ValueError("action is not executable from its current state")
+        if context.tenant_id != str(action.tenant_id):
+            raise PermissionError("authorization tenant differs from action tenant")
 
         # ── Kill Switch gate ──────────────────────────────────────────
         if self._kill_switch is not None:
@@ -201,8 +203,8 @@ class GovernedToolGateway:
         if decision.requires_approval:
             if approval is None or approval.status is not ApprovalStatus.APPROVED:
                 raise PermissionError("approved action parameters are required")
-            if approval.action_digest != action.parameter_digest:
-                raise PermissionError("approved parameters differ from execution parameters")
+            if not approval.authorizes(action, context.policy_version):
+                raise PermissionError("approval does not bind the executable action")
         if not await self._budget.reserve(str(action.tenant_id), str(action.run_id), cost_units):
             raise PermissionError("run budget is exhausted")
         existing = await self._idempotency.get(action.idempotency_key)

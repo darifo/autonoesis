@@ -269,6 +269,12 @@ requires-dist = [{ name = "autonoesis-domain", editable = "packages/domain" }]
 name = "autonoesis-contracts"
 version = "0.1.0"
 source = { editable = "packages/contracts" }
+dependencies = [
+    { name = "autonoesis-domain" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "autonoesis-domain", editable = "packages/domain" }]
 
 [[package]]
 name = "autonoesis-domain"

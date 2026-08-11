@@ -16,6 +16,7 @@ from autonoesis_domain import (
     ApprovalRequest,
     CandidateStatus,
     CandidateVersion,
+    JsonObject,
     RiskLevel,
 )
 from autonoesis_runtime import (
@@ -69,25 +70,31 @@ async def test_model_gateway_filters_routes_and_supports_offline_fake() -> None:
 async def test_tool_gateway_requires_exact_approval_and_deduplicates_write() -> None:
     tenant_id, run_id, task_id = uuid4(), uuid4(), uuid4()
     action = Action(
-        tenant_id,
-        run_id,
-        task_id,
-        "record.create",
-        "create",
-        "subject-1",
-        (("value", "approved"),),
-        RiskLevel.L2_REVERSIBLE_WRITE,
-        "stable-key",
-        "one record exists",
+        tenant_id=tenant_id,
+        run_id=run_id,
+        task_id=task_id,
+        tool_name="record.create",
+        tool_version="1.0.0",
+        operation="create",
+        resource_scope="subjects/subject-1",
+        parameters=JsonObject.from_value({"value": "approved"}),
+        risk_level=RiskLevel.L2_REVERSIBLE_WRITE,
+        idempotency_key="stable-key",
+        expected_effect="one record exists",
     ).transition_to(ActionStatus.AWAITING_APPROVAL)
     approval = ApprovalRequest(
-        tenant_id,
-        run_id,
-        action.action_id,
-        action.parameter_digest,
-        "create one reversible record",
-        "approver",
-        datetime.now(UTC) + timedelta(minutes=5),
+        tenant_id=tenant_id,
+        run_id=run_id,
+        action_id=action.action_id,
+        action_digest=action.canonical_digest,
+        tool_version=action.tool_version,
+        operation=action.operation,
+        resource_scope=action.resource_scope,
+        argument_digest=action.parameter_digest,
+        policy_version="v1",
+        impact_summary="create one reversible record",
+        required_role="approver",
+        expires_at=datetime.now(UTC) + timedelta(minutes=5),
     ).decide(uuid4(), True, "scope verified")
     executor = FakeExecutor()
     gateway = GovernedToolGateway(

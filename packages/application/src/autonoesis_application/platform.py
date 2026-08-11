@@ -8,9 +8,17 @@ from uuid import UUID
 from autonoesis_capability import GoalTypeManifest, validate_payload
 from autonoesis_domain import (
     AgentVersion,
+    BudgetAmount,
+    BudgetUnit,
+    DataClassification,
+    DataPolicy,
+    ExecutionMode,
     GoalContract,
     GoalStatus,
+    JsonObject,
+    RiskTier,
     Run,
+    RunStatus,
     SubjectRef,
     SuccessCriterion,
 )
@@ -78,11 +86,18 @@ class CreateGoal:
     success_criteria: tuple[SuccessCriterion, ...]
     constraints: tuple[str, ...]
     owner_id: UUID
-    risk_tier: str
+    risk_tier: RiskTier
     budget_limit: int | None
     deadline: datetime
     input_payload: dict[str, Any]
     correlation_id: UUID
+    budget_unit: BudgetUnit = BudgetUnit.COST_UNITS
+    delegation_id: UUID | None = None
+    maximum_classification: DataClassification = DataClassification.INTERNAL
+    allowed_regions: tuple[str, ...] = ()
+    retention_days: int = 30
+    execution_mode: ExecutionMode = ExecutionMode.SUPERVISED
+    max_concurrent_runs: int = 1
 
 
 class CreateGoalHandler:
@@ -103,10 +118,24 @@ class CreateGoalHandler:
             constraints=command.constraints,
             owner_id=command.owner_id,
             risk_tier=command.risk_tier,
-            budget_limit=command.budget_limit or goal_type.default_budget,
+            budget_limit=BudgetAmount(
+                command.budget_limit or goal_type.default_budget, command.budget_unit
+            ),
             deadline=command.deadline,
-            input_payload=command.input_payload,
-        ).transition_to(GoalStatus.ACTIVE)
+            input_payload=JsonObject.from_value(command.input_payload),
+            delegation_id=command.delegation_id,
+            data_policy=DataPolicy(
+                maximum_classification=command.maximum_classification,
+                allowed_regions=command.allowed_regions,
+                retention_days=command.retention_days,
+            ),
+            execution_mode=command.execution_mode,
+            max_concurrent_runs=command.max_concurrent_runs,
+        ).transition_to(
+            GoalStatus.ACTIVE,
+            actor_id=identity.actor_id,
+            reason="goal accepted by CreateGoal",
+        )
         audit = AuditEvent(
             tenant_id=identity.tenant_id,
             actor_id=identity.actor_id,
@@ -134,6 +163,19 @@ class StartGoalRunHandler:
 
     async def __call__(self, identity: IdentityContext, command: StartGoalRun) -> Run:
         goal = await self._repository.get_goal(identity.tenant_id, command.goal_id)
+        active_runs = await self._repository.list_runs(identity.tenant_id, goal.goal_id)
+        goal.assert_run_request_allowed(
+            sum(
+                run.status
+                in {
+                    RunStatus.PENDING,
+                    RunStatus.RUNNING,
+                    RunStatus.BLOCKED,
+                    RunStatus.AWAITING_EVIDENCE,
+                }
+                for run in active_runs
+            )
+        )
         goal_type = await self._catalog.get_goal_type(goal.goal_type)
         agent = await self._catalog.get_stable_agent(identity.tenant_id, goal_type.agent)
         run = Run(

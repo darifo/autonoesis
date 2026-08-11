@@ -109,7 +109,9 @@ All errors use a standard format:
 | `POST` | `/v1/candidates` | Create candidate |
 | `POST` | `/v1/candidates/{id}/evaluate` | Submit evaluation |
 | `POST` | `/v1/candidates/{id}/decision` | Approve/reject candidate |
-| `POST` | `/v1/candidates/{id}/promote` | Promote to stable |
+| `POST` | `/v1/candidates/{id}/promote` | Start an approved candidate in Shadow |
+| `POST` | `/v1/deployments/{id}/canary` | Promote a Shadow deployment to Canary |
+| `POST` | `/v1/deployments/{id}/stable` | Promote a Canary deployment and create the Stable release |
 | `POST` | `/v1/releases/{id}/rollback` | Rollback release |
 | `GET` | `/v1/releases` | List releases |
 | `GET` | `/v1/audit-events` | List audit events (role-gated) |

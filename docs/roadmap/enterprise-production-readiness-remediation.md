@@ -163,17 +163,17 @@ P0 是最高优先级。目标是证明一条真实外部副作用可以在身�
 
 #### 实施任务
 
-- [ ] 将 `risk_tier`、预算单位、数据分类和执行模式从裸字符串升级为受约束值对象；
-- [ ] 为 Goal 增加 Deadline 有效性、Owner/Delegation、数据策略和并发 Run 约束；
-- [ ] 为 Plan 增加 DAG 环检测、前置条件、预计成本、风险、补偿能力和 Evidence 要求；
-- [ ] 为 Run 固定 Plan、ContextSnapshot、Agent、Skill、Tool、Model Route 和 Policy Version；
-- [ ] 将 Action 参数升级为支持嵌套 JSON 的受约束结构；
-- [ ] 定义完整 `ActionExecutionEnvelope` 和规范化摘要；
-- [ ] Approval 绑定 Tenant、Run、Action、Tool Version、Operation、Resource Scope、参数摘要、Policy Version 和过期时间；
-- [ ] Evidence 增加内容摘要、来源身份、采集方法、数据分类、有效时间和完整性状态；
-- [ ] Outcome 明确关联 Success Criterion ID、验证器版本和 Evidence 集；
-- [ ] 补齐状态跳转时间、原因、Actor 和乐观锁版本；
-- [ ] 将 Candidate 生命周期与 Deployment 生命周期显式关联，避免直接 Approved → Stable。
+- [x] 将 `risk_tier`、预算单位、数据分类和执行模式从裸字符串升级为受约束值对象；
+- [x] 为 Goal 增加 Deadline 有效性、Owner/Delegation、数据策略和并发 Run 约束；
+- [x] 为 Plan 增加 DAG 环检测、前置条件、预计成本、风险、补偿能力和 Evidence 要求；
+- [x] 为 Run 固定 Plan、ContextSnapshot、Agent、Skill、Tool、Model Route 和 Policy Version；
+- [x] 将 Action 参数升级为支持嵌套 JSON 的受约束结构；
+- [x] 定义完整 `ActionExecutionEnvelope` 和规范化摘要；
+- [x] Approval 绑定 Tenant、Run、Action、Tool Version、Operation、Resource Scope、参数摘要、Policy Version 和过期时间；
+- [x] Evidence 增加内容摘要、来源身份、采集方法、数据分类、有效时间和完整性状态；
+- [x] Outcome 明确关联 Success Criterion ID、验证器版本和 Evidence 集；
+- [x] 补齐状态跳转时间、原因、Actor 和乐观锁版本；
+- [x] 将 Candidate 生命周期与 Deployment 生命周期显式关联，避免直接 Approved → Stable。
 
 #### 交付物
 
@@ -184,10 +184,10 @@ P0 是最高优先级。目标是证明一条真实外部副作用可以在身�
 
 #### 验收
 
-- Plan 循环依赖、过期 Goal、非法预算和不完整 Approval 在领域层被拒绝；
-- 修改 Tool、Operation、Resource 或参数都会改变 Action 摘要；
-- Verified Outcome 无完整 Evidence 时无法构造或持久化；
-- Candidate 未完成部署门禁时无法成为 Stable。
+- [x] Plan 循环依赖、过期 Goal、非法预算和不完整 Approval 在领域层被拒绝；
+- [x] 修改 Tool、Operation、Resource 或参数都会改变 Action 摘要；
+- [x] Verified Outcome 无完整 Evidence 时无法构造；持久化拒绝由 P0-03 Repository 组件测试覆盖；
+- [x] Candidate 未完成部署门禁时无法成为 Stable。
 
 ### P0-03 建立完整 PostgreSQL 权威存储
 

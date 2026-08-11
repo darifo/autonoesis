@@ -17,6 +17,7 @@ from autonoesis_domain import (
     AssetStage,
     GoalStatus,
     LoopPolicy,
+    RiskTier,
     SubjectRef,
     SuccessCriterion,
 )
@@ -78,7 +79,7 @@ async def test_goal_and_run_use_capability_pack_without_industry_fields() -> Non
             (SuccessCriterion("verified", "result verified", "system-read"),),
             (),
             actor_id,
-            "medium",
+            RiskTier.MEDIUM,
             None,
             datetime.now(UTC) + timedelta(days=1),
             {"request": "deliver"},

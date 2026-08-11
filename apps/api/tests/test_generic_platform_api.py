@@ -144,10 +144,20 @@ def test_generic_goal_run_and_evolution_api() -> None:
         headers={**identity, "Idempotency-Key": "approval-1"},
     )
     assert approved.json()["status"] == "approved"
-    release = client.post(
+    shadow = client.post(
         f"/v1/candidates/{candidate.json()['candidate_id']}/promote",
-        json={"stable_version_id": str(uuid4())},
         headers={**identity, "Idempotency-Key": "promotion-1"},
+    )
+    assert shadow.json()["status"] == "shadow"
+    canary = client.post(
+        f"/v1/deployments/{shadow.json()['deployment_id']}/canary",
+        headers={**identity, "Idempotency-Key": "canary-1"},
+    )
+    assert canary.json()["status"] == "canary"
+    release = client.post(
+        f"/v1/deployments/{shadow.json()['deployment_id']}/stable",
+        json={"stable_version_id": str(uuid4())},
+        headers={**identity, "Idempotency-Key": "stable-1"},
     )
     assert release.status_code == 200
     rolled_back = client.post(

@@ -9,7 +9,7 @@ These replace the placeholder stubs from Phase 1.  Every activity:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from autonoesis_adapters import InMemoryPlatformStore
 from autonoesis_application import CandidateLifecycleService
@@ -82,10 +82,20 @@ async def prepare_run(
     it validates that the Run exists and transitions it to RUNNING.
     """
     run = await store.get_run(UUID(input.tenant_id), UUID(input.run_id))
-    from autonoesis_domain import RunStatus
+    from autonoesis_domain import RunExecutionSnapshot, RunStatus
 
     if run.status is not RunStatus.RUNNING:
-        run = run.transition_to(RunStatus.RUNNING)
+        run = run.bind_execution(
+            RunExecutionSnapshot(
+                plan_id=uuid4(),
+                context_snapshot_id=uuid4(),
+                agent_version_id=run.agent_version_id,
+                skill_versions=(),
+                tool_versions=(),
+                model_route="prototype-route",
+                policy_version="development-policy",
+            )
+        ).transition_to(RunStatus.RUNNING, reason="prototype run prepared")
         await store.save_run(run, run.optimistic_version - 1)
     return "planned"
 
@@ -101,7 +111,7 @@ async def cancel_run(
 
     if run.status is RunStatus.CANCELLED:
         return "already_cancelled"
-    run = run.transition_to(RunStatus.CANCELLED)
+    run = run.transition_to(RunStatus.CANCELLED, reason=input.reason)
     await store.save_run(run, run.optimistic_version - 1)
     return "cancelled"
 
@@ -117,7 +127,7 @@ async def reject_run(
 
     if run.status is RunStatus.FAILED:
         return "already_rejected"
-    run = run.transition_to(RunStatus.FAILED)
+    run = run.transition_to(RunStatus.FAILED, reason=input.reason)
     await store.save_run(run, run.optimistic_version - 1)
     return "rejected"
 
@@ -145,7 +155,7 @@ async def execute_run(
     #
     # For Phase 2 we mark the Run as succeeded once the plan is executed
     # without errors — real Task/Harness integration arrives in Phase 3.
-    run = run.transition_to(RunStatus.SUCCEEDED)
+    run = run.transition_to(RunStatus.SUCCEEDED, reason="prototype execution completed")
     await store.save_run(run, run.optimistic_version - 1)
     return "succeeded"
 
@@ -211,7 +221,7 @@ async def promote_candidate(
             principal_id=UUID(int=0),
             roles=frozenset({"platform_admin"}),
         )
-        await evolution.promote(identity, UUID(input.candidate_id), UUID(input.stable_version_id))
-        return "stable"
+        await evolution.begin_shadow(identity, UUID(input.candidate_id))
+        return "shadow"
 
     return "promoted"

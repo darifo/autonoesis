@@ -10,6 +10,10 @@ http_api = "0.1.0"
 database_revision = "0001_initial_platform"
 workflow_contract = "unversioned-prototype"
 
+[domain]
+governed_execution_contract = 1
+candidate_deployment_contract = 1
+
 [runtime]
 python = ">=3.12,<3.14"
 node = ">=22"
