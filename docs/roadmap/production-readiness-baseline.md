@@ -8,12 +8,13 @@
 
 仓库已经提供领域模型、应用服务骨架、HTTP 路由、SQLAlchemy Schema、Temporal Workflow
 定义、基础设施 Compose 文件以及若干适配器。现有 CI 能重复验证 Python 格式、Lint、
-严格类型和隔离单元测试，执行 PostgreSQL 17 迁移与权威存储组件测试，以及验证 Cockpit
-的类型检查、构建和静态页面浏览器测试。
+严格类型和隔离单元测试，执行冻结 OpenAPI Consumer Contract、PostgreSQL 17 迁移、Temporal、
+OPA、KMS MinIO、参考纵向 E2E、依赖/Secret 扫描，以及 Cockpit 单元、类型、构建和浏览器测试；
+测试结果生成哈希清单并由 CI 保留 30 天。
 
-这些证据支持 PostgreSQL 权威存储、Goal/Run Application 用例、Governed Tool Gateway、
-Temporal 耐久编排和 Evidence/Outcome/Audit 可信链的 `integrated` 声明；其余能力最高仍为
-`unit-tested`，没有任何能力达到 `production-proven`。
+这些证据支持 P0 参考纵向切片、PostgreSQL 权威存储、HTTP/Application 用例、Governed Tool
+Gateway、Temporal 耐久编排和 Evidence/Outcome/Audit 可信链的 `integrated` 声明；其余能力
+最高仍为 `unit-tested`，没有任何能力达到 `production-proven`。
 
 ## 生产限制
 
@@ -32,9 +33,11 @@ Temporal 耐久编排和 Evidence/Outcome/Audit 可信链的 `integrated` 声明
 - Cockpit 使用静态演示数据，不从公共 API 获取运营指标；
 - Compose 含本地默认凭证和公开测试 KMS key；MinIO 镜像已固定摘要，但配置不满足生产
   Secret/KMS 与供应链要求；
-- 完整 Goal → Plan → Task → Action → Evidence → Verified Outcome 只在 Application 自动化
-  参考链和 PostgreSQL+MinIO 可信证据组件链中通过；尚未连接真实 Temporal、Tool、OPA、
-  业务 Authority 和 MinIO 形成同一条外部纵向 E2E。
+- 完整 Goal → Plan → Task → Action → Evidence → Verified Outcome → Satisfied Goal 已在
+  Field Service 参考 E2E 中连接真实 API、PostgreSQL、Temporal、OPA、Tool Gateway 和 MinIO；
+  外部业务系统仍是确定性受控模拟器，不能替代真实第三方、网络分区和生产凭证演练；
+- Python/npm 依赖审计和精确 Secret 基线已成为 CI 门禁，但尚无签名制品、SBOM、镜像扫描、
+  Provenance 或生产发布供应链证明。
 
 ## 版本权威
 
@@ -45,7 +48,7 @@ Temporal 耐久编排和 Evidence/Outcome/Audit 可信链的 `integrated` 声明
 | Conda 运行时 | `environment.yml` |
 | 人工评审兼容版本 | `versions.lock` |
 | 数据库 Schema | Alembic revision 与 `packages/adapters/.../persistence_schema.py` metadata |
-| HTTP API Contract | FastAPI app version 与 `apps/api/src/autonoesis_api/main.py` 路由 |
+| HTTP API Contract | FastAPI 源与冻结的 `docs/contracts/generated/openapi-v1.json` |
 | Workflow 类型 | `apps/worker/src/autonoesis_worker/workflows.py` 中的 `@workflow.defn` 类 |
 
 具体摘要、表、路由和 Workflow 类型由

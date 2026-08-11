@@ -50,15 +50,19 @@ payload: object
 
 ### Error Envelope
 
-All errors use a standard format:
+All errors use a standard nested envelope. `audit_ref` is null unless an error AuditEvent was
+actually persisted; the API never fabricates an audit URI:
 
 ```json
 {
-  "code": "GOAL_NOT_FOUND",
-  "message": "No goal with id {goal_id} exists in this tenant",
-  "retryable": false,
-  "next_action": "Verify the goal_id or create a new goal",
-  "correlation_id": "uuid"
+  "error": {
+    "code": "record_not_found",
+    "message": "The requested resource was not found.",
+    "retryable": false,
+    "next_action": "verify the identifier and tenant scope",
+    "correlation_id": "uuid",
+    "audit_ref": null
+  }
 }
 ```
 
@@ -74,7 +78,8 @@ All errors use a standard format:
 - Deleting, renaming, adding required fields, or changing semantics requires a new major version.
 - Published events are immutable facts—never change their meaning in place.
 - Provider protocol versions are hidden from core domains by Adapters.
-- OpenAPI/AsyncAPI/JSON Schema/SDK code is generated from a single contract source into an explicit `generated/` directory.
+- OpenAPI is frozen from the FastAPI source into `docs/contracts/generated/openapi-v1.json`;
+  CI rejects source/snapshot drift.
 - Consumer contract tests and multi-version replay tests are part of CI.
 
 ## Resource Paths

@@ -181,13 +181,14 @@ Adapters implement ports defined by domain/application/runtime-kernel.
 ## Delivery Status
 
 Legacy MVP phases recorded implementation breadth, not production readiness. Their
-current evidence has been recalibrated below; P0 remediation remains in progress.
+current evidence has been recalibrated below. The P0 reference baseline is complete; P1/P2
+enterprise governance and production operations remain in progress.
 
 | Legacy Phase | Current Maturity | Production Readiness Gap |
 |---|---|---|
-| **Phase 0** | `integrated` / partly `unit-tested` | P0-02 contracts are frozen; P0-04 Application use cases have PostgreSQL component evidence, while real Tool/Evidence end-to-end execution remains incomplete. |
-| **Phase 1** | PostgreSQL and Temporal `integrated`; otherwise partial `unit-tested` | Production assembly uses PostgreSQL authority and recoverable Temporal dispatch; API consumer contracts and full multi-process E2E remain. |
-| **Phase 2** | Tool Gateway and Evidence chain `integrated`; otherwise partial `unit-tested` | PostgreSQL, Temporal, OPA and KMS-backed MinIO are CI gates; one real third-party end-to-end effect is not. |
+| **Phase 0** | Reference execution slice `integrated` | Frozen contracts and the Field Service reference Pack reach a Verified Goal through real PostgreSQL, Temporal, OPA and MinIO with a controlled authority simulator. |
+| **Phase 1** | PostgreSQL, Temporal and HTTP/Application slice `integrated` | Frozen OpenAPI and CI consumer tests exist; multi-replica API, enterprise OIDC and production capacity evidence do not. |
+| **Phase 2** | Tool Gateway and Evidence chain `integrated`; otherwise partial `unit-tested` | The reference E2E is archived in CI; a real third-party system, production credentials/KMS and network failure drills remain. |
 | **Phase 3** | `unit-tested` | Deployment/Release persistence exists; real Shadow traffic, Canary routing, and Release Executor remain. |
 | **Phase 4** | `specified` | Production operations and hardening are planned only. |
 

@@ -54,6 +54,7 @@ tasks:
     desc: Verify production-readiness claims and version inventory
     cmds:
       - python3 tools/dev/check_production_baseline.py
+      - python3 tools/dev/freeze_openapi.py
 
   api:
     desc: Start the API in development mode

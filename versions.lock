@@ -11,6 +11,8 @@ database_revision = "0005_trusted_evidence_chain"
 postgres_authority_contract = 1
 vertical_use_case_contract = 1
 workflow_contract = "p0-06-approval-id-signal"
+http_consumer_contract = "openapi-v1"
+test_evidence_contract = "autonoesis.test-evidence.v1"
 
 [domain]
 governed_execution_contract = 1

@@ -33,6 +33,7 @@ import {
 import { useState } from "react";
 import { createRoot } from "react-dom/client";
 
+import { PROTOTYPE_DISCLOSURE, PROTOTYPE_LABEL } from "./maturity";
 import "./styles.css";
 
 type PageDefinition = {
@@ -85,7 +86,7 @@ function Shell() {
       </aside>
       <main>
         <header className="topbar"><button className="menu" onClick={() => setOpen(true)} aria-label="打开菜单"><Menu /></button><div className="environment"><span className="pulse"/>原型界面可访问</div><div className="identity"><KeyRound size={16}/><span>demo-operator@acme</span><b>演示身份</b></div></header>
-        <div className="prototype-banner" role="status" data-testid="prototype-banner"><strong>Prototype / Demo</strong><span>当前页面使用静态样例数据，不代表真实运行状态、生产能力或审计证据。</span></div>
+        <div className="prototype-banner" role="status" data-testid="prototype-banner"><strong>{PROTOTYPE_LABEL}</strong><span>{PROTOTYPE_DISCLOSURE}</span></div>
         <Outlet />
       </main>
       {open && <button className="scrim" aria-label="关闭菜单" onClick={() => setOpen(false)} />}

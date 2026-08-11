@@ -56,12 +56,12 @@ PostgreSQL/Temporal 的备份恢复、容量和长期运行证据仍未达到生
 
 ## 当前证据边界
 
-现有 CI 执行 Python lint/type/unit test、PostgreSQL 17、Temporal、OPA、KMS MinIO 组件测试和 Cockpit
-typecheck/build/静态页面 Playwright。以下项目尚未成为 CI 门禁，因此不得标记为
+现有 CI 执行 Python lint/type/unit/Consumer Contract、PostgreSQL 17、Temporal、OPA、KMS
+MinIO、参考纵向 E2E、依赖/Secret 扫描和 Cockpit unit/typecheck/build/Playwright，并归档哈希
+证据。以下项目尚未成为 CI 门禁，因此不得标记为
 `integrated` 或 `production-proven`：
 
-- API Consumer Contract Test；
-- 真实第三方系统纵向 E2E、生产级故障演练、依赖扫描和 Secret 扫描。
+- 真实第三方系统纵向 E2E、生产级故障演练、长期容量/HA/DR 与发布证据。
 
 详细限制见[生产就绪基线](production-readiness-baseline.md)，整改优先级以
 [企业级生产就绪整改路线](enterprise-production-readiness-remediation.md)为准。

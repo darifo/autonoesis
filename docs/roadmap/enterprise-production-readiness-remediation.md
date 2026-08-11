@@ -34,7 +34,8 @@
 - Goal、Run、Action、Evidence、Outcome、Candidate 等对象已初步建模；
 - API、Temporal Worker、Cockpit、PostgreSQL Schema 和若干适配器已经建立；
 - 格式、静态类型和部分单元测试具备基础质量；
-- 核心生产闭环、持久化权威、执行时治理和自进化发布尚未端到端成立。
+- P0 参考纵向闭环已通过受控外部系统模拟器和真实 PostgreSQL、Temporal、OPA、MinIO；
+  P1 企业治理、P2 生产运维和自进化真实发布仍未端到端成立。
 
 在 P0 退出以前，不得把当前版本描述为以下任一状态：
 
@@ -405,23 +406,23 @@ Resolve Identity
 - [x] Ruff；
 - [x] MyPy strict；
 - [x] Python Unit/Contract Tests；
-- [ ] TypeScript Typecheck/Build/Unit Tests；
+- [x] TypeScript Typecheck/Build/Unit Tests；
 - [x] PostgreSQL Component Tests；
 - [x] Temporal Workflow Tests 和 Replay Tests；
 - [x] OPA Policy Tests；
 - [x] MinIO Evidence Tests；
-- [ ] API Consumer Contract Tests；
+- [x] API Consumer Contract Tests；
 - [x] Cockpit Playwright Tests；
-- [ ] 依赖和 Secret 扫描；
-- [ ] 关键纵向 E2E；
-- [ ] 测试与演练证据归档。
+- [x] 依赖和 Secret 扫描；
+- [x] 关键纵向 E2E；
+- [x] 测试与演练证据归档。
 
 #### P0 退出门槛
 
 P0 只有在下列条件全部满足时才能结束：
 
-- [ ] 参考 Capability Pack 通过真实纵向闭环完成一个 Verified Goal；
-- [ ] Run 成功前真实产生 Plan、Task、Action、Evidence 和 Outcome；
+- [x] 参考 Capability Pack 通过真实纵向闭环完成一个 Verified Goal；
+- [x] Run 成功前真实产生 Plan、Task、Action、Evidence 和 Outcome；
 - [x] 所有权威状态可跨 API/Worker 重启恢复；
 - [x] 外部写并发和崩溃测试证明不会重复副作用；
 - [x] Tool Gateway 无已知生产绕过路径；

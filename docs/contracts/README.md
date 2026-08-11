@@ -26,4 +26,7 @@ Request → Goal → ContextSnapshot → Plan → Decision → Run → Task → 
 
 ## 兼容性
 
-新增可选字段可能向后兼容；删除、重命名、增加必填字段或改变语义必须提升主版本。事件含义不可修改。生成模型放在显式 `generated/` 目录，不手工编辑。
+新增可选字段可能向后兼容；删除、重命名、增加必填字段或改变语义必须提升主版本。事件含义不可修改。
+HTTP 权威源是 FastAPI，冻结的 Consumer Contract 为
+[`generated/openapi-v1.json`](generated/openapi-v1.json)，由 `tools/dev/freeze_openapi.py`
+生成并在 CI 中校验，不手工编辑。

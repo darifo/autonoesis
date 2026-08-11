@@ -47,6 +47,8 @@ jobs:
           auto-activate-base: false
       - name: Install workspace
         run: UV_PROJECT_ENVIRONMENT="$CONDA_PREFIX" uv sync --inexact --all-packages --dev --locked
+      - name: Prepare evidence directory
+        run: mkdir -p .artifacts
       - name: Wait for Temporal component
         run: |
           for attempt in {1..30}; do
@@ -80,12 +82,14 @@ jobs:
         run: curl --fail --retry 20 --retry-delay 1 --retry-connrefused http://localhost:8181/health
       - name: Wait for MinIO Evidence component
         run: curl --fail --retry 30 --retry-delay 1 --retry-connrefused http://localhost:9000/minio/health/live
-      - name: Production baseline claims
-        run: python3 tools/dev/check_production_baseline.py
+      - name: Production and consumer contract baselines
+        run: |
+          python3 tools/dev/check_production_baseline.py
+          python3 tools/dev/freeze_openapi.py
       - name: Lint
         run: ruff format --check . && ruff check .
       - name: Type check
-        run: mypy apps packages --ignore-missing-imports
+        run: mypy --strict apps packages
       - name: Test
         env:
           AUTONOESIS_TEST_DATABASE_URL: postgresql+psycopg://autonoesis_api:autonoesis-ci-only@localhost:5432/autonoesis
@@ -96,7 +100,72 @@ jobs:
           AUTONOESIS_TEST_MINIO_ACCESS_KEY: autonoesis
           AUTONOESIS_TEST_MINIO_SECRET_KEY: autonoesis-test-only
           AUTONOESIS_TEST_TEMPORAL_TARGET: localhost:7233
-        run: pytest
+        run: pytest --junitxml=.artifacts/python-junit.xml
+      - name: Build Python evidence manifest
+        if: always()
+        run: >-
+          python tools/dev/build_test_evidence.py
+          --output .artifacts/python-evidence.json
+          --artifact .artifacts/python-junit.xml
+          --artifact docs/roadmap/generated/production-baseline-report.md
+          --artifact docs/contracts/generated/openapi-v1.json
+      - name: Archive Python and real-component evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-component-evidence
+          path: .artifacts/
+          retention-days: 30
+
+  security:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash -el {0}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: conda-incubator/setup-miniconda@v3
+        with:
+          activate-environment: autonoesis
+          environment-file: environment.yml
+          auto-activate-base: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+      - name: Install locked dependencies
+        run: |
+          UV_PROJECT_ENVIRONMENT="$CONDA_PREFIX" uv sync --inexact --all-packages --dev --locked
+          pnpm install --frozen-lockfile
+          mkdir -p .artifacts
+      - name: Secret scan
+        run: python tools/security/scan_secrets.py
+      - name: Python dependency audit
+        run: |
+          uv export --all-packages --no-dev --no-emit-workspace --frozen --output-file .artifacts/python-requirements.txt
+          pip-audit --requirement .artifacts/python-requirements.txt --strict --format json --output .artifacts/pip-audit.json
+      - name: Node production dependency audit
+        run: >-
+          pnpm audit --prod --audit-level high
+          --registry=https://registry.npmjs.org --json
+          > .artifacts/pnpm-audit.json
+      - name: Build security evidence manifest
+        if: always()
+        run: >-
+          python tools/dev/build_test_evidence.py
+          --output .artifacts/security-evidence.json
+          --artifact .artifacts/python-requirements.txt
+          --artifact .artifacts/pip-audit.json
+          --artifact .artifacts/pnpm-audit.json
+          --artifact .secret-baseline.toml
+      - name: Archive security evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-secret-scan-evidence
+          path: .artifacts/
+          retention-days: 30
 
   cockpit:
     runs-on: ubuntu-latest
@@ -109,11 +178,35 @@ jobs:
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: Prepare evidence directory
+        run: mkdir -p .artifacts
       - name: Type check
         run: pnpm --filter @autonoesis/cockpit typecheck
       - name: Build
         run: pnpm --filter @autonoesis/cockpit build
+      - name: Unit test
+        run: >-
+          pnpm --filter @autonoesis/cockpit exec vitest run
+          --reporter=default --reporter=junit
+          --outputFile.junit="$GITHUB_WORKSPACE/.artifacts/cockpit-unit-junit.xml"
       - name: Install Playwright browser
         run: pnpm --filter @autonoesis/cockpit exec playwright install --with-deps chromium
       - name: Browser test
-        run: pnpm --filter @autonoesis/cockpit test
+        env:
+          PLAYWRIGHT_JUNIT_OUTPUT_FILE: ${{ github.workspace }}/.artifacts/cockpit-e2e-junit.xml
+        run: pnpm --filter @autonoesis/cockpit exec playwright test --reporter=line,junit
+      - name: Build Cockpit evidence manifest
+        if: always()
+        run: >-
+          python3 tools/dev/build_test_evidence.py
+          --output .artifacts/cockpit-evidence.json
+          --artifact .artifacts/cockpit-unit-junit.xml
+          --artifact .artifacts/cockpit-e2e-junit.xml
+          --artifact apps/cockpit/dist/index.html
+      - name: Archive Cockpit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cockpit-test-evidence
+          path: .artifacts/
+          retention-days: 30

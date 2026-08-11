@@ -150,7 +150,7 @@ def validate_claim_boundaries() -> list[str]:
             'data-testid="prototype-banner"',
         ),
         "Cockpit static-data disclosure": (
-            "apps/cockpit/src/main.tsx",
+            "apps/cockpit/src/maturity.ts",
             "当前页面使用静态样例数据",
         ),
         "API engineering-preview phase": (
@@ -189,6 +189,7 @@ def render_report() -> str:
     workflow_patches = workflow_patch_inventory()
     schema_digest = digest("packages/adapters/src/autonoesis_adapters/persistence_schema.py")
     workflow_digest = digest("apps/worker/src/autonoesis_worker/workflows.py")
+    openapi_digest = digest("docs/contracts/generated/openapi-v1.json")
     versions = tomllib.loads(read("versions.lock"))
     reviewed_at = versions["reviewed_at"]
     if hasattr(reviewed_at, "isoformat"):
@@ -228,7 +229,8 @@ def render_report() -> str:
             "## HTTP API Contract Baseline",
             "",
             f"- Application contract version: `{api_version}`",
-            "- OpenAPI dialect: `3.1.x` (FastAPI default; generated contract is not frozen yet)",
+            "- OpenAPI dialect: `3.1.x`; frozen consumer contract: `openapi-v1`",
+            f"- Frozen OpenAPI digest: `sha256:{openapi_digest}`",
             f"- Route source digest: `sha256:{digest('apps/api/src/autonoesis_api/main.py')}`",
             f"- Declared operations ({len(routes)}):",
             "",
@@ -256,7 +258,10 @@ def render_report() -> str:
             "and the Evidence/Outcome/Audit trust chain).",
             "- Real-component integration evidence: CI PostgreSQL 17 migration, Temporal replay/"
             "recovery, OPA policy, KMS-backed MinIO retention/version tests, trusted readback, "
-            "Evidence Saga recovery, and chained-audit transaction tests.",
+            "Evidence Saga recovery, chained-audit transaction tests, and the Field Service "
+            "reference Verified-Goal E2E.",
+            "- Supply-chain gates: Python/npm dependency audit, exact-fingerprint secret scan, "
+            "and 30-day hash-manifest CI evidence artifacts.",
             "",
         ]
     )

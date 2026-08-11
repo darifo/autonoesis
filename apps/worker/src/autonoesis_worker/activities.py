@@ -11,6 +11,7 @@ from __future__ import annotations
 from contextlib import suppress
 from dataclasses import dataclass
 from hashlib import sha256
+from typing import Protocol
 from uuid import UUID
 
 from autonoesis_adapters import InMemoryPlatformStore, PostgreSQLPlatformStore
@@ -24,9 +25,11 @@ from autonoesis_application import (
     GoalExecutionApplication,
     IdentityContext,
     PrepareRunContext,
+    SatisfyOrFailGoal,
     StartTask,
     TaskDefinition,
 )
+from autonoesis_domain import Task
 from temporalio import activity
 
 from autonoesis_worker.contracts import (
@@ -48,21 +51,54 @@ PlatformStore = InMemoryPlatformStore | PostgreSQLPlatformStore
 
 
 @dataclass(frozen=True, slots=True)
+class PreparedRunPlan:
+    """Capability-owned immutable inputs for the generic planning Activity."""
+
+    tasks: tuple[TaskDefinition, ...]
+    skill_versions: tuple[str, ...] = ()
+    tool_versions: tuple[str, ...] = ()
+    model_route: str = "configured-by-capability-pack"
+    policy_version: str = "development-policy@1"
+
+
+class RunPlanner(Protocol):
+    async def prepare(self, input: PrepareRunInput) -> PreparedRunPlan: ...
+
+
+class RunExecutor(Protocol):
+    async def execute(
+        self,
+        input: ExecuteRunInput,
+        task: Task,
+        application: GoalExecutionApplication,
+    ) -> None: ...
+
+
+@dataclass(frozen=True, slots=True)
 class ActivityDependencies:
     """Process-level dependencies injected into every Activity invocation."""
 
     store: PlatformStore
     application: GoalExecutionApplication
     evolution: CandidateLifecycleService | None = None
+    planner: RunPlanner | None = None
+    executor: RunExecutor | None = None
 
 
 def build_activity_dependencies(
-    store: PlatformStore, evolution: CandidateLifecycleService | None = None
+    store: PlatformStore,
+    evolution: CandidateLifecycleService | None = None,
+    *,
+    application: GoalExecutionApplication | None = None,
+    planner: RunPlanner | None = None,
+    executor: RunExecutor | None = None,
 ) -> ActivityDependencies:
     return ActivityDependencies(
         store=store,
-        application=GoalExecutionApplication(store.repository, store),
+        application=application or GoalExecutionApplication(store.repository, store),
         evolution=evolution,
+        planner=planner,
+        executor=executor,
     )
 
 
@@ -98,6 +134,11 @@ async def prepare_run(
     """Prepare immutable Context and a validated Plan through Application use cases."""
     _heartbeat("prepare_context")
     application = dependencies.application
+    prepared = (
+        await dependencies.planner.prepare(input)
+        if dependencies.planner is not None
+        else PreparedRunPlan(tasks=(TaskDefinition("execute goal", "required Outcomes verified"),))
+    )
     await application.prepare_run_context(
         _context(input.tenant_id, input.run_id, "prepare-context"),
         PrepareRunContext(
@@ -106,18 +147,18 @@ async def prepare_run(
             knowledge_refs=(),
             memory_ids=(),
             history_digest=f"temporal:{input.run_id}",
-            tool_versions=(),
+            tool_versions=prepared.tool_versions,
         ),
     )
     await application.create_validated_plan(
         _context(input.tenant_id, input.run_id, "create-plan"),
         CreateValidatedPlan(
             run_id=UUID(input.run_id),
-            tasks=(TaskDefinition("execute goal", "required Outcomes verified"),),
-            skill_versions=(),
-            tool_versions=(),
-            model_route="configured-by-capability-pack",
-            policy_version="development-policy@1",
+            tasks=prepared.tasks,
+            skill_versions=prepared.skill_versions,
+            tool_versions=prepared.tool_versions,
+            model_route=prepared.model_route,
+            policy_version=prepared.policy_version,
         ),
     )
     _heartbeat("plan_persisted")
@@ -205,11 +246,14 @@ async def execute_run(
     application = dependencies.application
     for task in await store.repository.list_tasks(UUID(input.tenant_id), UUID(input.run_id)):
         if task.status.value == "pending":
-            await application.start_task(
+            task = await application.start_task(
                 _context(input.tenant_id, input.run_id, f"start-task:{task.task_id}"),
                 StartTask(task.task_id),
             )
             _heartbeat(f"task_started:{task.task_id}")
+        if task.status.value == "running" and dependencies.executor is not None:
+            await dependencies.executor.execute(input, task, application)
+            _heartbeat(f"task_executed:{task.task_id}")
     return "dispatched"
 
 
@@ -228,6 +272,11 @@ async def evaluate_run(
         )
     except ValueError:
         run = await dependencies.store.get_run(UUID(input.tenant_id), UUID(input.run_id))
+    if run.status.value == "succeeded":
+        await application.satisfy_or_fail_goal(
+            _context(input.tenant_id, input.run_id, "satisfy-goal"),
+            SatisfyOrFailGoal(UUID(input.goal_id), True, "verified Run satisfied Goal"),
+        )
     return run.status.value
 
 

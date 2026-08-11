@@ -161,13 +161,13 @@ autonoesis/
 
 ## 交付状态
 
-旧 MVP 阶段记录的是实现广度，不代表生产就绪。现按实际证据重新校准如下，P0 整改仍在进行。
+旧 MVP 阶段记录的是实现广度，不代表生产就绪。现按实际证据重新校准如下：P0 参考基线已完成，P1/P2 企业治理与生产运维仍在进行。
 
 | 旧阶段 | 当前成熟度 | 生产就绪缺口 |
 |---|---|---|
-| **Phase 0** | `integrated` / 部分 `unit-tested` | 契约、Application、Tool Gateway、Temporal 与 Evidence 可信链已通过组件集成；真实第三方纵向端到端仍未完成。 |
-| **Phase 1** | PostgreSQL `integrated`；其余部分 `unit-tested` | 生产装配使用 PostgreSQL 权威状态，仍缺 Consumer Contract 和多进程 E2E。 |
-| **Phase 2** | Tool Gateway 与 Evidence 可信链 `integrated`，其余为部分 `unit-tested` | PostgreSQL、Temporal、OPA 和 KMS MinIO 已进入 CI；真实第三方完整纵向端到端仍未完成。 |
+| **Phase 0** | 参考执行切片 `integrated` | 冻结契约和 Field Service 参考 Pack 通过真实 PostgreSQL、Temporal、OPA、MinIO 与受控 Authority 模拟器完成 Verified Goal。 |
+| **Phase 1** | PostgreSQL、Temporal 与 HTTP/Application 切片 `integrated` | OpenAPI 已冻结并有 Consumer Contract；多副本 API、企业 OIDC 和生产容量证据仍缺失。 |
+| **Phase 2** | Tool Gateway 与 Evidence 可信链 `integrated`，其余为部分 `unit-tested` | 参考 E2E 证据进入 CI；真实第三方系统、生产 Credential/KMS 和网络故障演练仍未完成。 |
 | **Phase 3** | `unit-tested` | Deployment/Release 已持久化，仍缺真实 Shadow 流量、Canary 分流和 Release Executor。 |
 | **Phase 4** | `specified` | 生产运维和加固仅处于计划状态。 |
 

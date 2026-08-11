@@ -8,11 +8,11 @@
 | Source | SHA-256 |
 |---|---|
 | `environment.yml` | `217cde3c5f49080c1b35f5a65051770ad2f9952f9cb6aad4a1c1d9a3696c3119` |
-| `pyproject.toml` | `6886d029e073f1d6d69785f0e599229fd74e619047b064d81aa25748ddad0c55` |
-| `uv.lock` | `95105fa4d566f4af92d38852a011c9d2c496dc2d6a591ced6fd97de227a0aeab` |
+| `pyproject.toml` | `5d38d54e8885bf564eecb9e3978068874c0f52d1a26776273a020624e1fb0e1f` |
+| `uv.lock` | `88037667f7e13aeddb75fc2dab97c31e6ca83badabbf7b482a2df86d62e804ab` |
 | `package.json` | `50cb64a759a95e84c47f1cf5fe1cafa0167aa030bf0d5c806bda00eb48cfbf8a` |
-| `pnpm-lock.yaml` | `f8a6632ae5b7f346481d3cd8deb6252c6bb9fdb197a673c89067f09745e4e132` |
-| `versions.lock` | `6ecd6840028c630705d0ad4103deadaf4c379d5beed4c3c4fcf75911c10970c4` |
+| `pnpm-lock.yaml` | `929ae26bb7e72d59b69b08d5d55c355a963004622e28fdcac443298b7a7bca30` |
+| `versions.lock` | `92b0033b97da57c95b433d1f2a88cc683f67993022dff9082949dd54b06e55bb` |
 | `infra/compose/docker-compose.yml` | `edb93fe5466a30df2408e00a6cdac26de49b8cd6bf140f0776405e90e42e4783` |
 
 Configured Compose images (configuration inventory only; not integration evidence):
@@ -35,8 +35,9 @@ Configured Compose images (configuration inventory only; not integration evidenc
 ## HTTP API Contract Baseline
 
 - Application contract version: `0.1.0`
-- OpenAPI dialect: `3.1.x` (FastAPI default; generated contract is not frozen yet)
-- Route source digest: `sha256:0122299391148073ee75d78c9c049729901a6380775d2660144d4f106740c2ec`
+- OpenAPI dialect: `3.1.x`; frozen consumer contract: `openapi-v1`
+- Frozen OpenAPI digest: `sha256:d0e2a1624c705db8fe65f3a1d331557e5a8acaf41266b9f76a8721f9af56daad`
+- Route source digest: `sha256:4e26990130d67a50810ae94c948187be9215c766665978f151a410975dcb51cc`
 - Declared operations (40):
 
   - `DELETE /v1/kill-switches`
@@ -92,4 +93,5 @@ Configured Compose images (configuration inventory only; not integration evidenc
 - README engineering-preview disclosure: present.
 - Cockpit Prototype/Demo and static-data disclosure: present.
 - Highest allowed current maturity: `integrated` (PostgreSQL authority, Goal/Run Application use cases, Governed Tool Gateway, Temporal orchestration, and the Evidence/Outcome/Audit trust chain).
-- Real-component integration evidence: CI PostgreSQL 17 migration, Temporal replay/recovery, OPA policy, KMS-backed MinIO retention/version tests, trusted readback, Evidence Saga recovery, and chained-audit transaction tests.
+- Real-component integration evidence: CI PostgreSQL 17 migration, Temporal replay/recovery, OPA policy, KMS-backed MinIO retention/version tests, trusted readback, Evidence Saga recovery, chained-audit transaction tests, and the Field Service reference Verified-Goal E2E.
+- Supply-chain gates: Python/npm dependency audit, exact-fingerprint secret scan, and 30-day hash-manifest CI evidence artifacts.

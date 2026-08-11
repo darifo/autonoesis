@@ -22,3 +22,4 @@ ADRs record decisions affecting authoritative ownership, process boundaries, pro
 - [ADR-0015: Make Tool Execution an Atomic Governed Boundary](0015-atomic-governed-tool-execution.md)
 - [ADR-0016: Make Temporal Run Orchestration Recoverable and Deterministic](0016-durable-temporal-run-orchestration.md)
 - [ADR-0017: Require Immutable Evidence and Independent Outcome Verification](0017-trusted-evidence-outcome-audit-chain.md)
+- [ADR-0018: Require Real-Component E2E and Archived CI Evidence](0018-real-component-e2e-and-ci-evidence.md)

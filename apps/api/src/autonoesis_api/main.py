@@ -53,6 +53,7 @@ from autonoesis_domain import (
 )
 from autonoesis_governance import InMemoryKillSwitchStore, KillSwitchDimension
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 from temporalio.client import Client
@@ -60,6 +61,19 @@ from temporalio.client import Client
 
 class StrictRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+
+class ErrorDetail(BaseModel):
+    code: str
+    message: str
+    retryable: bool
+    next_action: str
+    correlation_id: UUID
+    audit_ref: str | None = None
+
+
+class ErrorEnvelope(BaseModel):
+    error: ErrorDetail
 
 
 class AgentRequest(StrictRequest):
@@ -207,6 +221,13 @@ def build_app(store: PlatformStore | None = None) -> FastAPI:
         description="Engineering preview of a goal-driven governed agent platform",
         version="0.1.0",
         lifespan=lifespan,
+        responses={
+            status: {
+                "model": ErrorEnvelope,
+                "description": "Common tenant-safe error envelope",
+            }
+            for status in (400, 401, 403, 404, 409, 422, 500)
+        },
     )
     app.state.store = platform_store
     app.state.kill_switch = (
@@ -238,6 +259,17 @@ def build_app(store: PlatformStore | None = None) -> FastAPI:
     @app.exception_handler(ValueError)
     async def invalid_request(_: Request, exc: Exception) -> JSONResponse:
         return error_response(422, "invalid_request", str(exc), False, "correct the request")
+
+    @app.exception_handler(RequestValidationError)
+    async def request_validation(_: Request, exc: RequestValidationError) -> JSONResponse:
+        first = exc.errors()[0] if exc.errors() else {"msg": "request validation failed"}
+        return error_response(
+            422,
+            "invalid_request",
+            str(first.get("msg", "request validation failed")),
+            False,
+            "correct the request",
+        )
 
     @app.exception_handler(PermissionError)
     async def forbidden(_: Request, exc: PermissionError) -> JSONResponse:
