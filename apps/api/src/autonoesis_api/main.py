@@ -160,8 +160,8 @@ def build_app(store: InMemoryPlatformStore | None = None) -> FastAPI:
     platform_store = store or InMemoryPlatformStore()
     app = FastAPI(
         title="Autonoesis API",
-        description="Goal-driven governed and evolving AI agent platform",
-        version="0.3.0",
+        description="Engineering preview of a goal-driven governed agent platform",
+        version="0.1.0",
     )
     app.state.store = platform_store
     app.state.idempotency = {}
@@ -249,8 +249,8 @@ def build_app(store: InMemoryPlatformStore | None = None) -> FastAPI:
     async def root() -> dict[str, str]:
         return {
             "name": "Autonoesis",
-            "positioning": "Goal-driven governed and evolving AI agent platform",
-            "phase": "generic-platform-mvp",
+            "positioning": "Goal-driven governed agent platform engineering preview",
+            "phase": "engineering-preview",
             "docs": "/docs",
         }
 

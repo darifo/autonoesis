@@ -12,6 +12,14 @@ Autonoesis is in early development with an architecture-first approach. Changes 
 6. When behavior changes, synchronously update contracts, ADRs, threat models, or runbooks.
 7. Submit a Pull Request using the repository template.
 
+## Capability Claims
+
+- Use only `specified`, `modeled`, `unit-tested`, `integrated`, and `production-proven`.
+- Any `integrated` claim must link to a real-component CI job or an archived drill report.
+- Any `production-proven` claim must additionally link failure, concurrency, security, and operations acceptance evidence.
+- Update the claim and evidence in the same change when a gate is removed or a runtime path changes.
+- Run `task baseline` to ensure README, Cockpit, version inventories, and the maturity matrix remain aligned.
+
 ## Commit Messages
 
 Use clear imperative mood titles. Conventional Commits prefixes are recommended:

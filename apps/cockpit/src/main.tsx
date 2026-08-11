@@ -81,10 +81,11 @@ function Shell() {
             return <Link key={path} to={path} activeProps={{ className: "active" }} onClick={() => setOpen(false)}><Icon size={17}/><span>{page?.title ?? "总览"}</span></Link>;
           })}</div>)}
         </nav>
-        <div className="tenant-card"><div className="tenant-icon"><Boxes size={18}/></div><div><span>当前租户</span><strong>Acme / Production</strong></div><ChevronRight size={16}/></div>
+        <div className="tenant-card"><div className="tenant-icon"><Boxes size={18}/></div><div><span>示例租户</span><strong>Acme / Demo</strong></div><ChevronRight size={16}/></div>
       </aside>
       <main>
-        <header className="topbar"><button className="menu" onClick={() => setOpen(true)} aria-label="打开菜单"><Menu /></button><div className="environment"><span className="pulse"/>系统运行正常</div><div className="identity"><KeyRound size={16}/><span>operator@acme</span><b>运营者</b></div></header>
+        <header className="topbar"><button className="menu" onClick={() => setOpen(true)} aria-label="打开菜单"><Menu /></button><div className="environment"><span className="pulse"/>原型界面可访问</div><div className="identity"><KeyRound size={16}/><span>demo-operator@acme</span><b>演示身份</b></div></header>
+        <div className="prototype-banner" role="status" data-testid="prototype-banner"><strong>Prototype / Demo</strong><span>当前页面使用静态样例数据，不代表真实运行状态、生产能力或审计证据。</span></div>
         <Outlet />
       </main>
       {open && <button className="scrim" aria-label="关闭菜单" onClick={() => setOpen(false)} />}
@@ -93,7 +94,7 @@ function Shell() {
 }
 
 function Overview() {
-  return <div className="page"><PageHeader eyebrow="OPERATING PICTURE" title="智能运行总览" description="从目标、执行、治理和进化四个维度观察系统。" />
+  return <div className="page"><PageHeader eyebrow="OPERATING PICTURE · STATIC SAMPLE" title="智能运行总览" description="静态演示：展示目标、执行、治理和进化四个维度的目标界面形态。" />
     <section className="hero-grid"><div className="hero-card"><div><span className="eyebrow">单位成功目标</span><h2>¥18.40</h2><p>较上周下降 8.2%</p></div><div className="orb"><BrainCircuit size={34}/></div></div><Stat label="活跃 Goal" value="24" delta="+4"/><Stat label="等待审批" value="6" delta="2 个高风险"/><Stat label="候选版本" value="3" delta="1 个可晋升"/></section>
     <section className="dashboard-grid"><div className="panel span-two"><PanelTitle title="运行态势" action="查看全部运行"/><div className="flow"><FlowStep label="目标已接收" value="128"/><FlowStep label="正在执行" value="24"/><FlowStep label="等待证据" value="7"/><FlowStep label="结果已验证" value="97" last/></div><div className="timeline-bars">{[48, 65, 54, 78, 62, 86, 74, 91, 84, 96, 88, 93].map((height, index)=><span key={index} style={{height: `${height}%`}}/>)}</div></div><div className="panel"><PanelTitle title="治理信号"/><Signal icon={ShieldCheck} label="策略拒绝" value="12" tone="good"/><Signal icon={FileCheck2} label="人工审批" value="19" tone="neutral"/><Signal icon={History} label="恢复执行" value="7" tone="neutral"/><Signal icon={CheckCircle2} label="重复副作用" value="0" tone="good"/></div></section>
   </div>;
@@ -101,7 +102,7 @@ function Overview() {
 
 function ControlPage({ page }: { page: PageDefinition }) {
   const Icon = page.icon;
-  return <div className="page"><PageHeader eyebrow={page.eyebrow} title={page.title} description={page.description} /><section className="section-grid"><div className="metric-card"><div className="metric-icon"><Icon/></div><span>{page.metricLabel}</span><strong>{page.metric}</strong><p>基于当前租户和 Stable 版本</p></div><div className="panel table-panel"><PanelTitle title="最近活动" action="打开完整视图"/><div className="table-head"><span>对象</span><span>状态 / 版本</span><span>更新时间 / 说明</span></div>{page.rows.map((row) => <div className="table-row" key={row[0]}><strong>{row[0]}</strong><span><i />{row[1]}</span><small>{row[2]}</small></div>)}</div></section></div>;
+  return <div className="page"><PageHeader eyebrow={`${page.eyebrow} · STATIC SAMPLE`} title={page.title} description={`静态演示：${page.description}`} /><section className="section-grid"><div className="metric-card"><div className="metric-icon"><Icon/></div><span>{page.metricLabel}</span><strong>{page.metric}</strong><p>样例指标，尚未连接真实 API</p></div><div className="panel table-panel"><PanelTitle title="最近活动（样例）"/><div className="table-head"><span>对象</span><span>状态 / 版本</span><span>更新时间 / 说明</span></div>{page.rows.map((row) => <div className="table-row" key={row[0]}><strong>{row[0]}</strong><span><i />{row[1]}</span><small>{row[2]}</small></div>)}</div></section></div>;
 }
 
 function PageHeader({eyebrow,title,description}:{eyebrow:string;title:string;description:string}) { return <div className="page-header"><span className="eyebrow">{eyebrow}</span><h1>{title}</h1><p>{description}</p></div>; }

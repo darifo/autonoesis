@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <strong>企业级受控自进化智能体操作系统</strong>
+  <strong>企业级受控自进化智能体操作系统 — 工程预览</strong>
 </p>
 
 <p align="center">
@@ -19,13 +19,16 @@
   <a href="https://nodejs.org/">
     <img src="https://img.shields.io/badge/node-%3E%3D22-green.svg" alt="Node"/>
   </a>
-  <img src="https://img.shields.io/badge/tests-122%20passed-brightgreen.svg" alt="Tests"/>
-  <img src="https://img.shields.io/badge/mypy-strict%20clean-brightgreen.svg" alt="MyPy"/>
+  <img src="https://img.shields.io/badge/readiness-engineering%20preview-orange.svg" alt="工程预览"/>
 </p>
 
 ---
 
-**Autonoesis** 不是一个堆叠了 Prompt 和工具的"大 Agent"。它是一套对智能运行**事实负责**的企业平台——每次行动都受治理、每个结果都被验证、每次进化都经过安全检查。
+> [!WARNING]
+> Autonoesis 当前是架构原型和工程预览。生产权威存储、耐久执行、多租户隔离、
+> 证据链和发布链路尚未完成端到端验证，请勿用于生产环境或高风险真实写操作。
+
+**Autonoesis** 正在建设一套对智能运行**事实负责**的企业平台——目标是让每次行动受治理、每个结果被验证、每次进化经过安全检查。
 
 ```text
 意图 → GoalContract → ContextSnapshot → Plan → 持久 Run → Task
@@ -36,14 +39,17 @@
 [English](README.md) ·
 [架构总览](docs/architecture/overview.md) ·
 [ADR](docs/adr/README.md) ·
-[路线图](docs/roadmap/mvp.md) ·
+[生产就绪整改计划](docs/roadmap/enterprise-production-readiness-remediation.md) ·
+[能力成熟度](docs/roadmap/capability-maturity.md) ·
 [集成指南](docs/architecture/integration-guide.md)
 
 ---
 
 ## 核心理念
 
-| 能力 | 含义 |
+下表描述的是**目标架构**，不代表当前已经生产验证。实际实现证据见[能力成熟度矩阵](docs/roadmap/capability-maturity.md)。
+
+| 目标能力 | 含义 |
 |---|---|
 | **目标驱动** | 工作是可验证的 `GoalContract`——成功标准、预算和截止时间都是显式的，不是嵌在 prompt 里 |
 | **持久执行** | Goal 跨断线、崩溃和重启持续推进，通过 Temporal 持久工作流引擎保障 |
@@ -76,11 +82,13 @@ pnpm install
 ruff format --check . && ruff check . && mypy apps packages --ignore-missing-imports && pytest
 ```
 
-### 全栈启动 (Docker Compose)
+### 本地原型栈 (Docker Compose)
 
 ```bash
 docker compose -f infra/compose/docker-compose.yml up --build
 ```
+
+该栈仅用于本地开发；默认凭证、进程内应用装配、未固定的 MinIO 镜像和基础设施配置均不满足生产安全要求。
 
 | 服务 | 地址 |
 |---|---|
@@ -94,7 +102,7 @@ docker compose -f infra/compose/docker-compose.yml up --build
 
 ## 架构概览
 
-Autonoesis 将职责划分为**八个逻辑平面**（八个逻辑层，非八个微服务）。当前部署为三个进程：**API**、**Worker** 和 **Cockpit**。
+目标架构将职责划分为**八个逻辑平面**（非八个微服务）。原型当前定义了 **API**、**Worker** 和 **Cockpit** 三个进程入口；这不代表生产部署拓扑已经成立。
 
 | 平面 | 职责 | 实现 |
 |---|---|---|
@@ -151,15 +159,19 @@ autonoesis/
 
 ---
 
-## 实施阶段
+## 交付状态
 
-| 阶段 | 状态 | 重点 |
+旧 MVP 阶段记录的是实现广度，不代表生产就绪。现按实际证据重新校准如下，P0 整改仍在进行。
+
+| 旧阶段 | 当前成熟度 | 生产就绪缺口 |
 |---|---|---|
-| **Phase 0** | ✅ 完成 | 领域语言、核心对象、状态机、Monorepo 骨架 |
-| **Phase 1** | ✅ 完成 | API、PostgreSQL、Temporal、Cockpit、模型/工具适配器、参考能力包 |
-| **Phase 2** | ✅ 完成 | Outbox/Inbox、Kill Switch、MinIO Evidence、真实 Temporal Activity、工具对账、MCP 适配器 |
-| **Phase 3** | ✅ 完成 | 回放/仿真、Shadow/Canary、自动回滚、AI FinOps、SLO、重复试验、桩包填平 |
-| **Phase 4** | 📋 计划中 | Kubernetes、备份恢复、Grafana 仪表板、SAST、生产加固 |
+| **Phase 0** | `unit-tested` | 核心类型已存在，但 P0-02 不变量和冻结契约尚未完成。 |
+| **Phase 1** | `modeled` / 部分 `unit-tested` | API 和适配器已存在，生产装配仍使用进程内状态。 |
+| **Phase 2** | `modeled` / 部分 `unit-tested` | 测试依赖 Fake，真实 PostgreSQL、MinIO、OPA、Temporal 恢复尚未进入 CI。 |
+| **Phase 3** | `modeled` / 部分 `unit-tested` | 已有进化算法，但缺少持久化 Shadow/Canary 发布链路。 |
+| **Phase 4** | `specified` | 生产运维和加固仅处于计划状态。 |
+
+当前生产限制和可重复基线证据见[生产就绪基线](docs/roadmap/production-readiness-baseline.md)。
 
 ---
 

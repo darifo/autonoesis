@@ -1,39 +1,69 @@
-# MVP 路线图
+# MVP 路线图（历史实现范围，已重新校准）
 
-## Phase 0：行业无关内核（完成）
+> 状态：历史记录，不作为生产就绪声明
+> 当前执行计划：[企业级生产就绪整改路线](enterprise-production-readiness-remediation.md)
+> 成熟度证据：[能力成熟度矩阵](capability-maturity.md)
 
-- [x] GoalContract、SubjectRef、Session、Run 和执行对象
-- [x] Agent/Skill/Tool、Context、Evaluation 和 Improvement 版本对象
-- [x] Capability Pack Manifest、Schema 校验和 Entry Point
-- [x] 核心行业词汇隔离测试
+本文件原先以“代码对象或接口存在”作为完成标志。自 2026-08-11 起，所有条目按
+`specified / modeled / unit-tested / integrated / production-proven` 重新表述。这里的
+`unit-tested` 仅说明隔离测试覆盖，不能推导出真实基础设施、故障恢复或生产安全已经成立。
 
-## Phase 1：通用运行平台（完成）
+## Phase 0：行业无关内核（`unit-tested`）
 
-- [x] PostgreSQL Schema、Alembic、RLS、Outbox/Inbox 和幂等记录
-- [x] Temporal Goal 与 Candidate Workflow
-- [x] OIDC、OPA、预算、审批和 Tool Gateway 边界
-- [x] OpenAI、Anthropic、OpenAI-compatible 和 Fake 模型适配器
-- [x] 通用 API、Python/TypeScript SDK 和 Cockpit
-- [x] Field Service 外部能力包和 10 个评估案例
+- `unit-tested`：GoalContract、SubjectRef、Session、Run 和部分执行对象；
+- `unit-tested`：Agent/Skill/Tool、Context、Evaluation 和 Improvement 版本对象；
+- `unit-tested`：Capability Pack Manifest、Schema 校验和 Entry Point；
+- `unit-tested`：核心行业词汇隔离检查。
 
-## Phase 2：生产级活动与证据（完成）
+未完成：P0-02 要求的受约束值对象、完整执行快照、Action/Approval/Evidence/Outcome
+契约和全部非法状态迁移测试。
 
-- [x] 将示例执行器注册为真实 Temporal Activity
-- [x] MinIO Evidence 内容摘要、分类和删除传播
-- [x] PostgreSQL Outbox Publisher 与 Inbox Consumer
-- [x] Tool 超时未知对账、补偿和 Kill Switch
-- [x] OIDC 企业身份提供方集成测试
-- [x] MCP Tool Server 与远程资源隔离
+## Phase 1：通用运行平台（`modeled` / 部分 `unit-tested`）
 
-## Phase 3：高级进化发布（完成）
+- `modeled`：PostgreSQL Schema、Alembic、RLS、Outbox/Inbox 和幂等表；
+- `modeled`：Temporal Goal 与 Candidate Workflow；
+- `unit-tested`：OIDC、预算、审批和 Tool Gateway 的部分隔离逻辑；
+- `unit-tested`：模型适配器边界；
+- `unit-tested`：通用 API、SDK 和 Cockpit 构建；
+- `unit-tested`：Field Service 示例能力包与评估案例解析。
 
-- [x] 可复现 Replay 和 Simulation 环境
-- [x] Shadow、Canary、观察窗口和自动回滚
-- [x] 重复 Trial、分位数和不确定性报告
-- [x] 单位成功 Goal 的完整 AI FinOps
-- [x] SLO 指标与错误预算
-- [x] 6 个桩包实现（intelligence/context/memory/environment/improvement/evaluation）
+未完成：生产装配默认使用 PostgreSQL Repository、冻结的显式 Migration、真实 RLS
+攻击测试、Temporal Replay/恢复、Cockpit 真实 API 数据源和统一 Application 用例路径。
 
-## 当前退出证据
+## Phase 2：活动与证据骨架（`modeled` / 部分 `unit-tested`）
 
-基础框架必须持续满足：核心无行业字段；跨租户隐藏；写入审批绑定精确参数；重复执行不重复副作用；Tool 回执不能直接证明 Outcome；Candidate 生成者不能自评或自批；Cockpit 配置、运行、治理、评估和进化主导航通过浏览器测试。
+- `unit-tested`：Activity 函数与进程内 Store 的协作；
+- `unit-tested`：Evidence 内容摘要和分类逻辑（使用内存 Object Store）；
+- `unit-tested`：Outbox/Inbox 逻辑；
+- `unit-tested`：Unknown 对账、补偿和 Kill Switch 的隔离逻辑；
+- `unit-tested`：OIDC Validator；
+- `unit-tested`：MCP 适配器边界。
+
+未完成：真实 Temporal Worker 恢复、MinIO 对象锁与租户策略、PostgreSQL 原子幂等、
+OPA 组件测试、凭证 Broker、受控出口和 Evidence Saga。
+
+## Phase 3：进化发布算法骨架（`modeled` / 部分 `unit-tested`）
+
+- `unit-tested`：Replay/Simulation 的纯逻辑；
+- `unit-tested`：Shadow/Canary、观察窗口和回滚判断算法；
+- `unit-tested`：重复 Trial、分位数和不确定性计算；
+- `unit-tested`：AI FinOps 和 SLO 计算；
+- `modeled`：intelligence/context/memory/environment/improvement/evaluation 包。
+
+未完成：持久化 Deployment Aggregate、独立 Evaluation Harness、真实 Shadow 双跑、
+可审计 Canary 分流、Stable Pointer 原子更新和 Release Executor。
+
+## 当前证据边界
+
+现有 CI 只执行 Python lint/type/unit test 和 Cockpit typecheck/build/静态页面 Playwright。以下项目尚未成为
+CI 门禁，因此不得标记为 `integrated` 或 `production-proven`：
+
+- PostgreSQL Component Test 和 RLS 攻击测试；
+- Temporal Workflow Test、Replay 和 Worker Crash 恢复；
+- OPA Policy Test；
+- MinIO Evidence Test；
+- API Consumer Contract Test；
+- 纵向 E2E、故障注入、依赖扫描和 Secret 扫描。
+
+详细限制见[生产就绪基线](production-readiness-baseline.md)，整改优先级以
+[企业级生产就绪整改路线](enterprise-production-readiness-remediation.md)为准。

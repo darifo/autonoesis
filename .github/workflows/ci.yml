@@ -23,6 +23,8 @@ jobs:
           auto-activate-base: false
       - name: Install workspace
         run: UV_PROJECT_ENVIRONMENT="$CONDA_PREFIX" uv sync --inexact --all-packages --dev --locked
+      - name: Production baseline claims
+        run: python3 tools/dev/check_production_baseline.py
       - name: Lint
         run: ruff format --check . && ruff check .
       - name: Type check
@@ -45,3 +47,7 @@ jobs:
         run: pnpm --filter @autonoesis/cockpit typecheck
       - name: Build
         run: pnpm --filter @autonoesis/cockpit build
+      - name: Install Playwright browser
+        run: pnpm --filter @autonoesis/cockpit exec playwright install --with-deps chromium
+      - name: Browser test
+        run: pnpm --filter @autonoesis/cockpit test

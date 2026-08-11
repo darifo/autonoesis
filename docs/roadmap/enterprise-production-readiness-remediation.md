@@ -135,12 +135,12 @@ P0 是最高优先级。目标是证明一条真实外部副作用可以在身�
 
 #### 实施任务
 
-- [ ] 将 README 和 `docs/roadmap/mvp.md` 中 Phase 1–3 的状态改为实际成熟度；
-- [ ] 为主要能力建立 `specified/modeled/unit-tested/integrated/production-proven` 清单；
-- [ ] 在 Cockpit 静态数据页面增加明确的 Prototype/Demo 标识；
-- [ ] 删除或修正文档中与代码相冲突的 Phase 描述；
-- [ ] 建立“能力声明必须引用验收证据”的文档规则；
-- [ ] 记录当前依赖、数据库 Schema、API Contract 和 Workflow 类型的版本基线。
+- [x] 将 README 和 `docs/roadmap/mvp.md` 中 Phase 1–3 的状态改为实际成熟度；
+- [x] 为主要能力建立 `specified/modeled/unit-tested/integrated/production-proven` 清单；
+- [x] 在 Cockpit 静态数据页面增加明确的 Prototype/Demo 标识；
+- [x] 删除或修正文档中与代码相冲突的 Phase 描述；
+- [x] 建立“能力声明必须引用验收证据”的文档规则；
+- [x] 记录当前依赖、数据库 Schema、API Contract 和 Workflow 类型的版本基线。
 
 #### 交付物
 
@@ -151,9 +151,9 @@ P0 是最高优先级。目标是证明一条真实外部副作用可以在身�
 
 #### 验收
 
-- 文档中不再把占位实现描述为生产完成；
-- 每项 `integrated` 或 `production-proven` 能力都有 CI 任务或演练报告引用；
-- Cockpit 不再展示无法从真实 API 获取的指标而不标注为示例。
+- [x] 文档中不再把占位实现描述为生产完成；
+- [x] 每项 `integrated` 或 `production-proven` 能力都有 CI 任务或演练报告引用（当前无此等级声明）；
+- [x] Cockpit 不再展示无法从真实 API 获取的指标而不标注为示例。
 
 ### P0-02 收敛领域模型与不变量
 
@@ -411,7 +411,7 @@ Resolve Identity
 - [ ] OPA Policy Tests；
 - [ ] MinIO Evidence Tests；
 - [ ] API Consumer Contract Tests；
-- [ ] Cockpit Playwright Tests；
+- [x] Cockpit Playwright Tests；
 - [ ] 依赖和 Secret 扫描；
 - [ ] 关键纵向 E2E；
 - [ ] 测试与演练证据归档。

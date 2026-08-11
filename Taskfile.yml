@@ -48,7 +48,12 @@ tasks:
 
   check:
     desc: Run all local quality checks
-    deps: [lint, typecheck, test]
+    deps: [baseline, lint, typecheck, test]
+
+  baseline:
+    desc: Verify production-readiness claims and version inventory
+    cmds:
+      - python3 tools/dev/check_production_baseline.py
 
   api:
     desc: Start the API in development mode

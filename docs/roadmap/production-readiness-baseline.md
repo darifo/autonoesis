@@ -1,0 +1,61 @@
+# 生产就绪基线与限制
+
+> 评审日期：2026-08-11
+> 适用版本：0.1.x
+> 判定：架构原型 / 工程预览，不可用于生产或高风险真实写操作
+
+## 当前可信范围
+
+仓库已经提供领域模型、应用服务骨架、HTTP 路由、SQLAlchemy Schema、Temporal Workflow
+定义、基础设施 Compose 文件以及若干适配器。现有 CI 能重复验证 Python 格式、Lint、
+严格类型和隔离单元测试，以及 Cockpit 的类型检查、构建和静态页面浏览器测试。
+
+这些证据只支持[能力成熟度矩阵](capability-maturity.md)中的 `specified`、`modeled` 和
+`unit-tested` 声明，不支持 `integrated` 或 `production-proven` 声明。
+
+## 生产限制
+
+- API 与 Worker 的默认装配使用 `InMemoryPlatformStore`，重启会丢失已接受业务状态；
+- Alembic `0001` 在历史 Revision 中动态执行 `metadata.create_all()`，不是冻结的显式迁移；
+- 数据库外键不是租户复合外键，角色、授权、约束和真实 RLS 攻击测试尚不完整；
+- Temporal 只有流程骨架，没有 Outbox Dispatcher、DB/Workflow Reconciler、Replay 和崩溃恢复证据；
+- Tool Gateway 的 Policy、Budget 和 Idempotency 测试使用内存实现，尚无数据库原子 Reservation；
+- Evidence 测试使用内存 Object Store；真实 MinIO 租户策略、加密、版本、对象锁和 Saga 尚未验证；
+- OPA 出现在本地 Compose，但 OPA Policy Test 和执行时端到端授权不在 CI；
+- API 错误响应会构造未持久化的 `audit://` 引用，不能视为真实审计证据；
+- Candidate/Shadow/Canary 主要是领域算法，没有持久化 Deployment 和独立 Release Executor；
+- Cockpit 使用静态演示数据，不从公共 API 获取运营指标；
+- Compose 含本地默认凭证和未固定的 MinIO 镜像，不满足生产供应链要求；
+- 尚无完整 Goal → Plan → Task → Action → Evidence → Verified Outcome 的真实纵向 E2E。
+
+## 版本权威
+
+| 范围 | 当前权威来源 |
+|---|---|
+| Python 依赖解析 | `uv.lock` |
+| TypeScript 依赖解析 | `pnpm-lock.yaml` |
+| Conda 运行时 | `environment.yml` |
+| 人工评审兼容版本 | `versions.lock` |
+| 数据库 Schema | Alembic revision 与 `packages/adapters/.../persistence.py` metadata |
+| HTTP API Contract | FastAPI app version 与 `apps/api/src/autonoesis_api/main.py` 路由 |
+| Workflow 类型 | `apps/worker/src/autonoesis_worker/workflows.py` 中的 `@workflow.defn` 类 |
+
+具体摘要、表、路由和 Workflow 类型由
+[生成的生产基线报告](generated/production-baseline-report.md)记录，避免手工清单漂移。
+
+## 可重复检查
+
+```bash
+task baseline
+```
+
+该命令校验 README/Cockpit 的原型标识、成熟度文档的声明边界，并重新计算依赖 Lock、
+数据库 Schema、HTTP 路由和 Workflow 类型的确定性报告。源发生变化但报告未更新时检查失败；
+使用下列命令有意刷新报告：
+
+```bash
+python3 tools/dev/check_production_baseline.py --write
+```
+
+`integrated` 或 `production-proven` 声明只有在矩阵中同时引用 CI 真实组件任务或演练报告时
+才允许合入。基线检查进入 CI，但它本身不提高任何运行能力的成熟度。

@@ -1,10 +1,11 @@
 # Autonoesis Architecture Overview
 
-> Status: baseline · Last reviewed: 2026-08-10 · Applicable version: 0.1.0
+> Status: target architecture · Last reviewed: 2026-08-11 · Applicable version: 0.1.x
+> Implementation evidence: [capability maturity matrix](../roadmap/capability-maturity.md)
 
 ## 1. System Responsibility
 
-Autonoesis is an industry-agnostic, AI-native agent runtime base. It does not own external business system state—customers, orders, devices, medical records, contracts, or projects. Instead, it references these authoritative objects via `SubjectRef` and takes responsibility for the facts of intelligent execution: Goal, Run, Plan, Decision, Action, Evidence, Outcome, and governed evolution.
+Autonoesis targets an industry-agnostic, AI-native agent runtime base. It does not own external business system state—customers, orders, devices, medical records, contracts, or projects. Instead, the target platform references these authoritative objects via `SubjectRef` and takes responsibility for the facts of intelligent execution: Goal, Run, Plan, Decision, Action, Evidence, Outcome, and governed evolution.
 
 Core closed loop:
 
@@ -16,9 +17,9 @@ Intent → GoalContract → ContextSnapshot → Plan → Decision
 
 ## 2. Eight Logical Planes
 
-Planes are logical responsibility boundaries, not mandatory physical deployment units. The current deployment uses three processes: API, Worker, and Cockpit.
+Planes are logical responsibility boundaries, not mandatory physical deployment units. The prototype defines API, Worker, and Cockpit process entry points; it is not a production deployment.
 
-| Plane | Core Question | Current Implementation |
+| Plane | Core Question | Target Components |
 |---|---|---|
 | Interaction | Where do requests come from, who is the caller, how are they normalized? | FastAPI, Cockpit, Python/TS SDK |
 | Intelligence | What is the goal, and how should we plan and decide? | Goal Manager, Planner, Decision, Capability Selector |
@@ -59,7 +60,7 @@ Industry capabilities are installed through versioned Capability Packs (`capabil
 - Evaluation Suites with test cases
 - Python Entry Point for complex behavior
 
-Installation validates: API version, SemVer, strict field and JSON Schema checks, manifest/entry point version matching, identifier uniqueness, dependency integrity, tenant authorization, and audit recording.
+The target installation path validates: API version, SemVer, strict field and JSON Schema checks, manifest/entry point version matching, identifier uniqueness, dependency integrity, tenant authorization, and audit recording. Current validation is limited to the evidence listed in the maturity matrix.
 
 ## 6. Authoritative State & Durable Workflows
 
@@ -107,7 +108,7 @@ Post-run Analysis proposes an `ImprovementProposal`. Allowed targets: Agent Inst
 Candidate generator, grader, and approver must be separate. The pipeline is:
 
 ```text
-Draft → Evaluating → Awaiting Approval → Approved → Stable
+Draft → Evaluating → Awaiting Approval → Approved → Shadow → Canary → Stable
 Stable → Rolled Back
 ```
 
@@ -115,7 +116,7 @@ Each Stable retains a pointer to the previous Stable for rollback.
 
 ## 10. Deployment
 
-Local Compose runs PostgreSQL, Temporal, OPA, MinIO, OpenTelemetry/Jaeger, API, Worker, and Cockpit. Kubernetes, Shadow/Canary, and automatic traffic experiments are post-MVP production phases.
+Local Compose starts PostgreSQL, Temporal, OPA, MinIO, OpenTelemetry/Jaeger, API, Worker, and Cockpit as a development prototype. Default credentials, in-memory application assembly, and incomplete component tests make this stack unsuitable for production. Kubernetes, real Shadow/Canary traffic experiments, and production hardening remain planned work.
 
 See [deployment.md](deployment.md) for detailed deployment architecture.
 

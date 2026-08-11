@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <strong>Enterprise Governed Self-Evolving Agent Operating System</strong>
+  <strong>Enterprise Governed Self-Evolving Agent Operating System — Engineering Preview</strong>
 </p>
 
 <p align="center">
@@ -19,16 +19,19 @@
   <a href="https://nodejs.org/">
     <img src="https://img.shields.io/badge/node-%3E%3D22-green.svg" alt="Node"/>
   </a>
-  <img src="https://img.shields.io/badge/tests-122%20passed-brightgreen.svg" alt="Tests"/>
-  <img src="https://img.shields.io/badge/mypy-strict%20clean-brightgreen.svg" alt="MyPy"/>
+  <img src="https://img.shields.io/badge/readiness-engineering%20preview-orange.svg" alt="Engineering preview"/>
 </p>
 
 ---
 
-**Autonoesis** is not a "big agent" stacked with prompts and tools. It is an
-enterprise platform that takes **responsibility for the facts of intelligent
-execution** — governing every action, verifying every outcome, and safely
-evolving agent behavior over time.
+> [!WARNING]
+> Autonoesis is an architecture prototype and engineering preview. Its production
+> authority, durable execution, multi-tenant isolation, evidence, and release paths
+> are not yet end-to-end proven. Do not use it for production or high-risk writes.
+
+**Autonoesis** is building an enterprise platform that takes **responsibility
+for the facts of intelligent execution** — governing every action, verifying
+every outcome, and safely evolving agent behavior over time.
 
 ```text
 Intent → GoalContract → ContextSnapshot → Plan → Durable Run → Task
@@ -39,14 +42,18 @@ Intent → GoalContract → ContextSnapshot → Plan → Durable Run → Task
 [中文说明](README.zh-CN.md) ·
 [Architecture](docs/architecture/overview.md) ·
 [ADR](docs/adr/README.md) ·
-[Roadmap](docs/roadmap/mvp.md) ·
+[Production Readiness Plan](docs/roadmap/enterprise-production-readiness-remediation.md) ·
+[Capability Maturity](docs/roadmap/capability-maturity.md) ·
 [Integration Guide](docs/architecture/integration-guide.md)
 
 ---
 
 ## Why Autonoesis
 
-| Capability | What It Means |
+The table below describes the **target architecture**, not current production-proven behavior.
+See the [capability maturity matrix](docs/roadmap/capability-maturity.md) for implemented evidence.
+
+| Target Capability | What It Means |
 |---|---|
 | **Goal-First** | Work is a verifiable `GoalContract` — not a chat message. Success criteria, budget, and deadline are explicit. |
 | **Durable Execution** | Goals survive disconnections, crashes, and restarts via Temporal durable workflows. |
@@ -82,11 +89,14 @@ pnpm install
 ruff format --check . && ruff check . && mypy apps packages --ignore-missing-imports && pytest
 ```
 
-### Full Platform (Docker Compose)
+### Local Prototype Stack (Docker Compose)
 
 ```bash
 docker compose -f infra/compose/docker-compose.yml up --build
 ```
+
+This stack is for local development. Its default credentials, in-memory application
+assembly, unpinned MinIO image, and infrastructure configuration are not production-safe.
 
 | Service | URL |
 |---|---|
@@ -108,9 +118,9 @@ python -m autonoesis_worker.main                       # Worker
 
 ## Architecture
 
-Autonoesis organizes responsibility into **eight logical planes** (not eight
-microservices). The current deployment uses three processes: **API**, **Worker**,
-and **Cockpit**.
+The target architecture organizes responsibility into **eight logical planes**
+(not eight microservices). The prototype currently defines three process entry
+points: **API**, **Worker**, and **Cockpit**; this is not a production deployment topology.
 
 | Plane | Responsibility | Implementation |
 |---|---|---|
@@ -168,15 +178,21 @@ Adapters implement ports defined by domain/application/runtime-kernel.
 
 ---
 
-## Phases
+## Delivery Status
 
-| Phase | Status | Focus |
+Legacy MVP phases recorded implementation breadth, not production readiness. Their
+current evidence has been recalibrated below; P0 remediation remains in progress.
+
+| Legacy Phase | Current Maturity | Production Readiness Gap |
 |---|---|---|
-| **Phase 0** | ✅ Complete | Domain language, core objects, state machines, monorepo skeleton |
-| **Phase 1** | ✅ Complete | API, PostgreSQL, Temporal, Cockpit, Model/Tool adapters, reference Pack |
-| **Phase 2** | ✅ Complete | Outbox/Inbox, Kill Switch, MinIO Evidence, real Temporal Activities, Tool reconciliation, MCP adapter |
-| **Phase 3** | ✅ Complete | Replay/Simulation, Shadow/Canary, Auto-Rollback, AI FinOps, SLO, Repeat Trials, stub packages filled |
-| **Phase 4** | 📋 Planned | Kubernetes, backup/restore, Grafana dashboards, SAST, production hardening |
+| **Phase 0** | `unit-tested` | Core types exist, but P0-02 invariants and frozen contracts remain incomplete. |
+| **Phase 1** | `modeled` / partial `unit-tested` | API and adapters exist; production assembly still uses process-local state. |
+| **Phase 2** | `modeled` / partial `unit-tested` | Tests use fakes; real PostgreSQL, MinIO, OPA, and Temporal recovery are not CI gates. |
+| **Phase 3** | `modeled` / partial `unit-tested` | Evolution algorithms exist without a persistent Shadow/Canary release path. |
+| **Phase 4** | `specified` | Production operations and hardening are planned only. |
+
+Current production limitations and reproducible baseline evidence are recorded in
+the [production readiness baseline](docs/roadmap/production-readiness-baseline.md).
 
 ---
 
