@@ -81,6 +81,7 @@ dependencies = [
     { name = "distro" },
     { name = "docstring-parser" },
     { name = "httpx" },
+    { name = "jsonschema" },
     { name = "jiter" },
     { name = "pydantic" },
     { name = "sniffio" },
@@ -166,6 +167,7 @@ dependencies = [
     { name = "autonoesis-domain" },
     { name = "autonoesis-runtime-kernel" },
     { name = "httpx" },
+    { name = "jsonschema" },
     { name = "openai" },
     { name = "psycopg", extra = ["binary"] },
     { name = "pyjwt", extra = ["crypto"] },
@@ -186,6 +188,7 @@ requires-dist = [
     { name = "autonoesis-domain", editable = "packages/domain" },
     { name = "autonoesis-runtime-kernel", editable = "packages/runtime-kernel" },
     { name = "httpx", specifier = ">=0.28" },
+    { name = "jsonschema", specifier = ">=4.25" },
     { name = "openai", specifier = ">=2.0" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
     { name = "pyjwt", extras = ["crypto"], specifier = ">=2.10" },
@@ -230,6 +233,7 @@ dependencies = [
     { name = "autonoesis-capability" },
     { name = "autonoesis-contracts" },
     { name = "autonoesis-domain" },
+    { name = "autonoesis-runtime-kernel" },
 ]
 
 [package.metadata]
@@ -237,6 +241,7 @@ requires-dist = [
     { name = "autonoesis-capability", editable = "packages/capability" },
     { name = "autonoesis-contracts", editable = "packages/contracts" },
     { name = "autonoesis-domain", editable = "packages/domain" },
+    { name = "autonoesis-runtime-kernel", editable = "packages/runtime-kernel" },
 ]
 
 [[package]]

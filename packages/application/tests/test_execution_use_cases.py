@@ -5,7 +5,16 @@ from hashlib import sha256
 from uuid import UUID, uuid4
 
 import pytest
-from autonoesis_adapters import InMemoryPlatformStore
+from autonoesis_adapters import (
+    DevelopmentPolicy,
+    EphemeralCredentialBroker,
+    InMemoryAtomicExecutionReservations,
+    InMemoryDelegationStore,
+    InMemoryGatewayAudit,
+    InMemoryPlatformStore,
+    JsonSchemaValidator,
+    StaticToolCatalog,
+)
 from autonoesis_application import (
     ActivateGoal,
     AuthorizeActionAtExecutionTime,
@@ -17,6 +26,7 @@ from autonoesis_application import (
     CreateGoal,
     CreateValidatedPlan,
     DecideApproval,
+    ExecuteGovernedAction,
     GoalExecutionApplication,
     IdentityContext,
     PrepareRunContext,
@@ -53,6 +63,14 @@ from autonoesis_domain import (
     RunStatus,
     SubjectRef,
     SuccessCriterion,
+)
+from autonoesis_governance import InMemoryKillSwitchStore
+from autonoesis_runtime import (
+    CredentialLease,
+    GovernedToolGateway,
+    ResolvedToolVersion,
+    ToolReceipt,
+    ToolResultStatus,
 )
 
 
@@ -111,7 +129,11 @@ def _setup(
         frozenset({"operator", "approver", "tenant_admin"}),
         "vertical-agent",
     )
-    return actual, GoalExecutionApplication(actual.repository, actual), identity
+    return (
+        actual,
+        GoalExecutionApplication(actual.repository, actual, legacy_authorization_enabled=True),
+        identity,
+    )
 
 
 def _context(identity: IdentityContext, key: str) -> CommandContext:
@@ -392,7 +414,7 @@ async def test_deadline_and_idempotent_retry_are_first_class() -> None:
     )
     await application.prepare_run_context(
         _context(identity, "context-timeout"),
-        PrepareRunContext(run.run_id, (), (), (), "history-timeout", ()),
+        PrepareRunContext(run.run_id, (), (), (), "history-timeout", ("records@1.0.0",)),
     )
     task_id = uuid4()
     await application.create_validated_plan(
@@ -401,7 +423,7 @@ async def test_deadline_and_idempotent_retry_are_first_class() -> None:
             run.run_id,
             (TaskDefinition("read", "read complete", task_id=task_id),),
             (),
-            (),
+            ("records@1.0.0",),
             "balanced",
             "vertical-policy@1",
         ),
@@ -454,6 +476,112 @@ async def test_manual_takeover_and_cancellation_are_application_transitions() ->
         CancelRun(action.run_id, "manual process replaced automation"),
     )
     assert cancelled.status is RunStatus.CANCELLED
+
+
+@pytest.mark.asyncio
+async def test_application_executes_only_through_gateway_and_records_attempt_and_evidence() -> None:
+    store, preparation, identity = _setup()
+    _, _, action = await _prepare_action(preparation, identity, suffix="governed")
+    approval = await preparation.request_approval(
+        _context(identity, "approval-governed"),
+        RequestApproval(
+            action.action_id,
+            "vertical-policy@1",
+            "one record update",
+            "approver",
+            datetime.now(UTC) + timedelta(minutes=5),
+        ),
+    )
+    approval = await preparation.decide_approval(
+        _context(identity, "decision-governed"),
+        DecideApproval(approval.approval_id, action.canonical_digest, True, "exact effect"),
+    )
+
+    class Egress:
+        async def execute(
+            self, item: Action, tool: ResolvedToolVersion, credential: CredentialLease
+        ) -> ToolReceipt:
+            assert item.action_id == action.action_id
+            assert tool.version == "1.0.0"
+            assert credential.scope == "records.write"
+            return ToolReceipt("records://42", ToolResultStatus.SUCCEEDED)
+
+        async def verify(
+            self, item: Action, tool: ResolvedToolVersion, receipt: ToolReceipt
+        ) -> bool:
+            return (
+                item.expected_effect == "record status becomes delivered"
+                and tool.provider == "records-authority"
+                and receipt.external_id == "records://42"
+            )
+
+    delegation = InMemoryDelegationStore()
+    delegation.grant("delegation-1", "records", "records/")
+    gateway = GovernedToolGateway(
+        catalog=StaticToolCatalog(
+            (
+                ResolvedToolVersion(
+                    "records",
+                    "1.0.0",
+                    "records-authority",
+                    frozenset({"update"}),
+                    ("records/",),
+                    {
+                        "type": "object",
+                        "properties": {"status": {"type": "string"}},
+                        "required": ["status"],
+                        "additionalProperties": False,
+                    },
+                    RiskLevel.L2_REVERSIBLE_WRITE,
+                    "records.write",
+                ),
+            )
+        ),
+        delegation=delegation,
+        schema_validator=JsonSchemaValidator(),
+        policy=DevelopmentPolicy(),
+        kill_switch=InMemoryKillSwitchStore(),
+        reservations=InMemoryAtomicExecutionReservations(),
+        credentials=EphemeralCredentialBroker(),
+        egress=Egress(),
+        audit=InMemoryGatewayAudit(),
+    )
+    application = GoalExecutionApplication(store, store, governed_gateway=gateway)
+
+    execution = await application.execute_governed_action(
+        _context(identity, "execute-governed"),
+        ExecuteGovernedAction(
+            action.action_id,
+            approval.approval_id,
+            "vertical-policy@1",
+            "delegation-1",
+            3,
+        ),
+    )
+
+    assert execution.result.action.status is ActionStatus.SUCCEEDED
+    assert execution.attempt.status is ActionAttemptStatus.SUCCEEDED
+    assert execution.evidence.integrity is EvidenceIntegrity.VERIFIED
+    assert store.actions[action.action_id].status is ActionStatus.SUCCEEDED
+    assert len(store.action_attempts) == 1
+    assert len(store.evidence) == 1
+
+    with pytest.raises(RuntimeError, match="direct execution authorization is disabled"):
+        await application.authorize_action_at_execution_time(
+            _context(identity, "unsafe-direct-authorization"),
+            AuthorizeActionAtExecutionTime(
+                action.action_id,
+                "vertical-policy@1",
+                True,
+                "caller asserted",
+                approval.approval_id,
+                "vertical-agent@1",
+                "delegation-1",
+                "budget://run",
+                datetime.now(UTC) + timedelta(minutes=5),
+                "00-unsafe",
+            ),
+        )
 
 
 class _FailingRunSaveStore(InMemoryPlatformStore):

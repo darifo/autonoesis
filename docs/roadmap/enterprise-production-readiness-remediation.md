@@ -296,31 +296,31 @@ Resolve Identity
 
 #### 实施任务
 
-- [ ] 定义完整 Tool Invocation/Result Contract；
-- [ ] 使用规范化 JSON 计算完整 Action 摘要；
-- [ ] 校验 AuthorizationContext 与 Action Tenant 一致；
-- [ ] 实现 Delegation Port 和资源范围校验；
-- [ ] 根据 Tool Definition 服务端重新确定风险，不信任模型声明；
-- [ ] 实现 Approval 的角色、身份、摘要、策略版本和过期复核；
-- [ ] 使用数据库原子 Reservation 实现幂等；
-- [ ] 幂等记录包含 Tenant、Tool Version、Key 和 Request Digest；
-- [ ] 重复 Key 且摘要不同返回冲突，不返回旧结果；
-- [ ] 预算预留与幂等 Reservation 协调，重复调用不重复计费；
-- [ ] 失败、拒绝、已接受、成功和未知采用统一结果语义；
-- [ ] Unknown 禁止盲目重试，必须进入 Reconciliation；
-- [ ] 所有执行和验证结果写入 Evidence/Audit；
-- [ ] 增加 Credential Broker 和受控 Egress Port；
-- [ ] L4 操作默认禁止自动执行。
+- [x] 定义完整 Tool Invocation/Result Contract；
+- [x] 使用规范化 JSON 计算完整 Action 摘要；
+- [x] 校验 AuthorizationContext 与 Action Tenant 一致；
+- [x] 实现 Delegation Port 和资源范围校验；
+- [x] 根据 Tool Definition 服务端重新确定风险，不信任模型声明；
+- [x] 实现 Approval 的角色、身份、摘要、策略版本和过期复核；
+- [x] 使用数据库原子 Reservation 实现幂等；
+- [x] 幂等记录包含 Tenant、Tool Version、Key 和 Request Digest；
+- [x] 重复 Key 且摘要不同返回冲突，不返回旧结果；
+- [x] 预算预留与幂等 Reservation 协调，重复调用不重复计费；
+- [x] 失败、拒绝、已接受、成功和未知采用统一结果语义；
+- [x] Unknown 禁止盲目重试，必须进入 Reconciliation；
+- [x] 所有执行和验证结果写入 Evidence/Audit；
+- [x] 增加 Credential Broker 和受控 Egress Port；
+- [x] L4 操作默认禁止自动执行。
 
 #### 验收场景
 
-- Approval 后修改任意执行字段都会被拒绝；
-- Approval 到期、策略更新或委托撤销后无法执行；
-- 相同 Key 并发调用只产生一次外部副作用；
-- 相同 Key、不同摘要返回冲突；
-- 执行超时进入 Unknown，不自动重复写；
-- 外部系统返回 Accepted 时不能直接生成 Verified Outcome；
-- Kill Switch 在新 Action 执行前生效并写入审计。
+- [x] Approval 后修改任意执行字段都会被拒绝；
+- [x] Approval 到期、策略更新或委托撤销后无法执行；
+- [x] 相同 Key 并发调用只产生一次外部副作用；
+- [x] 相同 Key、不同摘要返回冲突；
+- [x] 执行超时进入 Unknown，不自动重复写；
+- [x] 外部系统返回 Accepted 时不能直接生成 Verified Outcome；
+- [x] Kill Switch 在新 Action 执行前生效并写入审计。
 
 ### P0-06 重建 Temporal 耐久编排
 

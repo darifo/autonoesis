@@ -7,6 +7,7 @@ dependencies = [
   "autonoesis-capability",
   "autonoesis-contracts",
   "autonoesis-domain",
+  "autonoesis-runtime-kernel",
 ]
 
 [build-system]
@@ -20,3 +21,4 @@ packages = ["src/autonoesis_application"]
 autonoesis-capability = { workspace = true }
 autonoesis-contracts = { workspace = true }
 autonoesis-domain = { workspace = true }
+autonoesis-runtime-kernel = { workspace = true }

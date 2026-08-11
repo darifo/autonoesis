@@ -48,12 +48,21 @@ class DevelopmentPolicy:
             allowed=allowed,
             requires_approval=requires_approval,
             reason="development role policy",
+            policy_version=context.policy_version,
         )
 
 
 class OPAPolicyAdapter:
-    def __init__(self, base_url: str, policy_path: str = "autonoesis/action/allow") -> None:
+    def __init__(
+        self,
+        base_url: str,
+        policy_version: str,
+        policy_path: str = "autonoesis/action/allow",
+    ) -> None:
         self._base_url = base_url.rstrip("/")
+        if not policy_version.strip():
+            raise ValueError("OPA policy version must be immutable and non-empty")
+        self._policy_version = policy_version
         self._policy_path = policy_path
 
     async def authorize(self, context: AuthorizationContext, action: Action) -> PolicyDecision:
@@ -85,4 +94,5 @@ class OPAPolicyAdapter:
             allowed=bool(result.get("allowed", False)),
             requires_approval=bool(result.get("requires_approval", False)),
             reason=str(result.get("reason", "OPA policy decision")),
+            policy_version=self._policy_version,
         )

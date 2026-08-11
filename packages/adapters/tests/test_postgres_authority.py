@@ -1,5 +1,6 @@
 """PostgreSQL component tests for authoritative state and tenant isolation."""
 
+import asyncio
 import os
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
@@ -7,8 +8,19 @@ from hashlib import sha256
 from uuid import UUID, uuid4
 
 import pytest
-from autonoesis_adapters import PostgreSQLPlatformStore, SqlKillSwitchStore
-from autonoesis_adapters.persistence_schema import audit_events, goals, outbox, releases, runs
+from autonoesis_adapters import (
+    PostgreSQLAtomicExecutionReservations,
+    PostgreSQLPlatformStore,
+    SqlKillSwitchStore,
+)
+from autonoesis_adapters.persistence_schema import (
+    audit_events,
+    budget_ledger,
+    goals,
+    outbox,
+    releases,
+    runs,
+)
 from autonoesis_application import (
     ActivateGoal,
     AuditEvent,
@@ -60,7 +72,13 @@ from autonoesis_domain import (
     SuccessCriterion,
     Task,
 )
-from autonoesis_runtime import KillSwitchDimension
+from autonoesis_runtime import (
+    ExecutionReservation,
+    KillSwitchDimension,
+    ReservationStatus,
+    ToolReceipt,
+    ToolResultStatus,
+)
 from sqlalchemy import func, insert, select, text
 from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import create_async_engine
@@ -458,7 +476,9 @@ async def test_application_transaction_persists_context_plan_and_unknown_reconci
             AssetStage.STABLE,
         )
         await first.add_agent("authority-agent", agent)
-        application = GoalExecutionApplication(first.repository, first)
+        application = GoalExecutionApplication(
+            first.repository, first, legacy_authorization_enabled=True
+        )
         created = await application.create_goal(
             command_context(identity, "component-goal"),
             CreateGoal(
@@ -579,6 +599,103 @@ async def test_application_transaction_persists_context_plan_and_unknown_reconci
     finally:
         await first.close()
         await second.close()
+
+
+@pytest.mark.asyncio
+async def test_atomic_tool_reservation_serializes_budget_and_unknown_retries() -> None:
+    tenant_id = uuid4()
+    await provision_tenant(tenant_id)
+    store = PostgreSQLPlatformStore.from_url(os.environ["AUTONOESIS_TEST_DATABASE_URL"])
+    try:
+        goal = make_goal(tenant_id)
+        await store.add_goal(goal, audit_for(goal))
+        run = Run(tenant_id, goal.goal_id, uuid4())
+        await store.add_run(run, audit_for(goal))
+        task = Task(tenant_id, run.run_id, "write", "record created")
+        await store.repository.add_plan(Plan(tenant_id, goal.goal_id, run.run_id, (task,)))
+        action = Action(
+            tenant_id=tenant_id,
+            run_id=run.run_id,
+            task_id=task.task_id,
+            tool_name="records",
+            tool_version="2.0.0",
+            operation="create",
+            resource_scope="records/42",
+            parameters=JsonObject.from_value({"value": "once"}),
+            risk_level=RiskLevel.L2_REVERSIBLE_WRITE,
+            idempotency_key="component-reservation-key",
+            expected_effect="one record exists",
+        )
+        await store.repository.add_action(action)
+        reservations = PostgreSQLAtomicExecutionReservations(store.repository.sessions)
+        request = ExecutionReservation(
+            str(tenant_id),
+            str(run.run_id),
+            str(action.action_id),
+            action.tool_name,
+            action.tool_version,
+            action.idempotency_key,
+            action.canonical_digest,
+            7,
+        )
+
+        first, second = await asyncio.gather(
+            reservations.reserve(request), reservations.reserve(request)
+        )
+        assert {first.status, second.status} == {
+            ReservationStatus.ACQUIRED,
+            ReservationStatus.IN_PROGRESS,
+        }
+        acquired = first if first.status is ReservationStatus.ACQUIRED else second
+        assert acquired.reservation_id is not None
+
+        async with store.repository.sessions() as session:
+            await session.execute(select(func.set_config("app.tenant_id", str(tenant_id), True)))
+            charged = await session.scalar(
+                select(func.sum(budget_ledger.c.amount)).where(
+                    budget_ledger.c.tenant_id == str(tenant_id),
+                    budget_ledger.c.run_id == str(run.run_id),
+                    budget_ledger.c.category == "tool_execution",
+                )
+            )
+        assert charged == 7
+
+        await reservations.complete(
+            str(tenant_id),
+            acquired.reservation_id,
+            ToolReceipt("external-42", ToolResultStatus.SUCCEEDED),
+        )
+        cached = await reservations.reserve(request)
+        assert cached.status is ReservationStatus.CACHED
+        assert cached.receipt is not None
+        assert cached.receipt.external_id == "external-42"
+
+        conflict = await reservations.reserve(replace(request, request_digest="f" * 64))
+        assert conflict.status is ReservationStatus.CONFLICT
+
+        unknown_action = replace(
+            action,
+            action_id=uuid4(),
+            idempotency_key="component-unknown-key",
+            parameters=JsonObject.from_value({"value": "uncertain"}),
+        )
+        await store.repository.add_action(unknown_action)
+        unknown_request = replace(
+            request,
+            action_id=str(unknown_action.action_id),
+            idempotency_key=unknown_action.idempotency_key,
+            request_digest=unknown_action.canonical_digest,
+        )
+        unknown = await reservations.reserve(unknown_request)
+        assert unknown.reservation_id is not None
+        await reservations.complete(
+            str(tenant_id),
+            unknown.reservation_id,
+            ToolReceipt("", ToolResultStatus.UNKNOWN),
+        )
+        assert (await reservations.reserve(unknown_request)).status is ReservationStatus.UNKNOWN
+    finally:
+        await store.close()
 
 
 @pytest.mark.asyncio

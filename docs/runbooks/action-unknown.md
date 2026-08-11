@@ -40,8 +40,9 @@ An Action has entered `Unknown` status—the Tool Gateway could not determine wh
 
 **Evidence**: External system shows no state change; idempotency key not found.
 
-1. If the Action is retryable and within policy limits, re-submit with the same `idempotency_key`.
-2. If not retryable (e.g., L3/L4 write without idempotency support on the target), transition Action to `Failed`.
+1. Record reconciliation evidence that the effect did not occur.
+2. Transition the original Action to `Failed`. A new attempt, if policy permits one, must be a new
+   Action and cannot be created until reconciliation closes the Unknown reservation.
 3. Run may enter `Blocked` for replan or human decision.
 
 ### Case 3: Cannot determine
@@ -50,7 +51,8 @@ An Action has entered `Unknown` status—the Tool Gateway could not determine wh
 
 1. Keep Action in `Unknown`.
 2. Escalate to human operator with all available context.
-3. Human decides: retry, mark as failed, or initiate compensation.
+3. Human decides whether evidence supports success, failure, or continued investigation; do not
+   retry while the reservation remains Unknown.
 4. If the uncertainty affects other Tasks, the Run may need to enter `Blocked`.
 
 ## Prevention

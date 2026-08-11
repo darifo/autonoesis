@@ -1,9 +1,11 @@
 """Vertical Application use cases for governed Goal execution."""
 
+import json
 from dataclasses import dataclass, field, replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from hashlib import sha256
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from autonoesis_capability import validate_payload
 from autonoesis_domain import (
@@ -21,6 +23,8 @@ from autonoesis_domain import (
     DataPolicy,
     EnvironmentFact,
     Evidence,
+    EvidenceCaptureMethod,
+    EvidenceIntegrity,
     ExecutionMode,
     GoalContract,
     GoalStatus,
@@ -36,10 +40,18 @@ from autonoesis_domain import (
     Task,
     TaskStatus,
 )
+from autonoesis_runtime import (
+    AuthorizationContext,
+    GatewayResult,
+    GovernedToolGateway,
+    ToolReceipt,
+    ToolResultStatus,
+)
 
 from autonoesis_application.platform import (
     AuditEvent,
     CapabilityCatalog,
+    ConcurrencyConflict,
     CreateGoal,
     IdentityContext,
 )
@@ -166,6 +178,22 @@ class AuthorizeActionAtExecutionTime:
 
 
 @dataclass(frozen=True, slots=True)
+class ExecuteGovernedAction:
+    action_id: UUID
+    approval_id: UUID | None
+    policy_version: str
+    delegation_id: str | None
+    cost_units: int
+
+
+@dataclass(frozen=True, slots=True)
+class GovernedActionExecution:
+    result: GatewayResult
+    attempt: ActionAttempt
+    evidence: Evidence
+
+
+@dataclass(frozen=True, slots=True)
 class RecordActionAttempt:
     action_id: UUID
     invocation_id: UUID
@@ -235,9 +263,18 @@ class GoalExecutionApplication:
 
     _OPERATORS = frozenset({"platform_admin", "tenant_admin", "operator", "worker"})
 
-    def __init__(self, repository: ApplicationRepository, catalog: CapabilityCatalog) -> None:
+    def __init__(
+        self,
+        repository: ApplicationRepository,
+        catalog: CapabilityCatalog,
+        *,
+        governed_gateway: GovernedToolGateway | None = None,
+        legacy_authorization_enabled: bool = False,
+    ) -> None:
         self._repository = repository
         self._catalog = catalog
+        self._governed_gateway = governed_gateway
+        self._legacy_authorization_enabled = legacy_authorization_enabled
 
     async def create_goal(self, context: CommandContext, command: CreateGoal) -> GoalContract:
         self._require_any(context, self._OPERATORS)
@@ -456,6 +493,13 @@ class GoalExecutionApplication:
             task = await self._repository.get_task(context.identity.tenant_id, command.task_id)
             if task.status is not TaskStatus.RUNNING:
                 raise ValueError("Action proposal requires a running Task")
+            run = await self._repository.get_run(context.identity.tenant_id, task.run_id)
+            tool_ref = f"{command.tool_name}@{command.tool_version}"
+            if (
+                run.execution_snapshot is None
+                or tool_ref not in run.execution_snapshot.tool_versions
+            ):
+                raise PermissionError("Action tool version is not bound to the Run snapshot")
             action = Action(
                 tenant_id=context.identity.tenant_id,
                 run_id=task.run_id,
@@ -555,6 +599,10 @@ class GoalExecutionApplication:
     async def authorize_action_at_execution_time(
         self, context: CommandContext, command: AuthorizeActionAtExecutionTime
     ) -> ActionExecutionEnvelope:
+        if not self._legacy_authorization_enabled:
+            raise RuntimeError(
+                "direct execution authorization is disabled; use execute_governed_action"
+            )
         self._require_any(context, self._OPERATORS)
         if command.deadline <= datetime.now(UTC):
             raise ValueError("execution authorization deadline has expired")
@@ -625,6 +673,135 @@ class GoalExecutionApplication:
                 return envelope
         assert denied_reason is not None
         raise PermissionError(denied_reason)
+
+    async def execute_governed_action(
+        self, context: CommandContext, command: ExecuteGovernedAction
+    ) -> GovernedActionExecution:
+        """Execute through the mandatory Gateway and persist all resulting facts."""
+
+        self._require_any(context, self._OPERATORS)
+        if self._governed_gateway is None:
+            raise RuntimeError("a governed tool gateway is required for external execution")
+        key = self._key("execute_governed_action", context)
+        async with self._repository.transaction():
+            cached = await self._load_idempotency(context, key)
+            if cached is not None:
+                action = await self._repository.get_action(context.identity.tenant_id, cached)
+                attempts = await self._repository.list_action_attempts(
+                    context.identity.tenant_id, action.action_id
+                )
+                items = tuple(
+                    item
+                    for item in await self._repository.list_evidence(context.identity.tenant_id)
+                    if item.action_id == action.action_id
+                )
+                if not attempts or not items:
+                    raise RuntimeError("cached governed execution is missing durable facts")
+                attempt = max(attempts, key=lambda item: item.recorded_at)
+                evidence = max(items, key=lambda item: item.captured_at)
+                # The receipt is reconstructed without claiming more than durable state proves.
+                status = {
+                    ActionStatus.SUCCEEDED: ToolResultStatus.SUCCEEDED,
+                    ActionStatus.FAILED: ToolResultStatus.FAILED,
+                    ActionStatus.DENIED: ToolResultStatus.REJECTED,
+                    ActionStatus.UNKNOWN: ToolResultStatus.UNKNOWN,
+                }.get(action.status, ToolResultStatus.UNKNOWN)
+                return GovernedActionExecution(
+                    GatewayResult(action, ToolReceipt(attempt.receipt_ref, status), True),
+                    attempt,
+                    evidence,
+                )
+            action = await self._repository.get_action(
+                context.identity.tenant_id, command.action_id
+            )
+            approval = (
+                await self._repository.get_approval(context.identity.tenant_id, command.approval_id)
+                if command.approval_id is not None
+                else None
+            )
+
+        authorization = AuthorizationContext(
+            tenant_id=str(context.identity.tenant_id),
+            actor_id=str(context.identity.actor_id),
+            principal_id=str(context.identity.principal_id),
+            agent_id=context.identity.agent_id or "human-operator",
+            roles=tuple(sorted(context.identity.roles)),
+            policy_version=command.policy_version,
+            delegation_id=command.delegation_id,
+            correlation_id=str(context.correlation_id),
+        )
+        result = await self._governed_gateway.execute(
+            authorization, action, approval, command.cost_units
+        )
+        attempt_status = {
+            ToolResultStatus.SUCCEEDED: ActionAttemptStatus.SUCCEEDED,
+            ToolResultStatus.ACCEPTED: ActionAttemptStatus.UNKNOWN,
+            ToolResultStatus.UNKNOWN: ActionAttemptStatus.UNKNOWN,
+            ToolResultStatus.FAILED: ActionAttemptStatus.FAILED,
+            ToolResultStatus.REJECTED: ActionAttemptStatus.FAILED,
+        }[result.receipt.status]
+        receipt_ref = result.receipt.external_id or (
+            f"gateway://{result.receipt.status.value}/{action.action_id}"
+        )
+        failure_reason = (
+            dict(result.receipt.output).get("reason", result.receipt.status.value)
+            if attempt_status is ActionAttemptStatus.FAILED
+            else None
+        )
+        attempt = ActionAttempt(
+            tenant_id=action.tenant_id,
+            run_id=action.run_id,
+            action_id=action.action_id,
+            invocation_id=uuid4(),
+            status=attempt_status,
+            idempotency_key=action.idempotency_key,
+            receipt_ref=receipt_ref,
+            executor_identity=f"gateway:{action.tool_name}@{action.tool_version}",
+            failure_reason=failure_reason,
+        )
+        now = datetime.now(UTC)
+        evidence_payload = json.dumps(
+            {
+                "external_id": result.receipt.external_id,
+                "output": result.receipt.output,
+                "status": result.receipt.status.value,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        evidence = Evidence(
+            tenant_id=action.tenant_id,
+            run_id=action.run_id,
+            action_id=action.action_id,
+            source="governed-tool-gateway",
+            source_identity=f"{action.tool_name}@{action.tool_version}",
+            capture_method=EvidenceCaptureMethod.SYSTEM_QUERY,
+            reference=receipt_ref,
+            observed_state=result.receipt.status.value,
+            content_digest=sha256(evidence_payload.encode()).hexdigest(),
+            classification=action.classification,
+            valid_from=now,
+            valid_until=now + timedelta(days=1),
+            integrity=(
+                EvidenceIntegrity.VERIFIED
+                if result.receipt.status is ToolResultStatus.SUCCEEDED
+                else EvidenceIntegrity.UNVERIFIED
+            ),
+            captured_at=now,
+        )
+        async with self._repository.transaction():
+            current = await self._repository.get_action(action.tenant_id, action.action_id)
+            if current.optimistic_version != action.optimistic_version:
+                raise ConcurrencyConflict("Action changed while external execution was in flight")
+            await self._repository.save_action(result.action, action.optimistic_version)
+            await self._repository.add_action_attempt(attempt)
+            await self._repository.add_evidence(evidence)
+            await self._repository.record_audit(
+                self._audit(context, "action.governed_execution_recorded", attempt)
+            )
+            await self._repository.record_audit(self._audit(context, "evidence.recorded", evidence))
+            await self._remember(context, key, action.action_id)
+        return GovernedActionExecution(result, attempt, evidence)
 
     async def record_action_attempt(
         self, context: CommandContext, command: RecordActionAttempt
@@ -1020,8 +1197,10 @@ __all__ = [
     "CompleteTask",
     "CreateValidatedPlan",
     "DecideApproval",
+    "ExecuteGovernedAction",
     "FailRun",
     "GoalExecutionApplication",
+    "GovernedActionExecution",
     "PrepareRunContext",
     "ProposeAction",
     "ReconcileUnknownAction",

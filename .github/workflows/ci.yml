@@ -46,6 +46,13 @@ jobs:
           AUTONOESIS_MIGRATION_DATABASE_URL: postgresql+psycopg://autonoesis_migrator:autonoesis-ci-only@localhost:5432/autonoesis
           AUTONOESIS_MIGRATION_ROLE: autonoesis_migration
         run: alembic upgrade head
+      - name: Start OPA policy component
+        run: >-
+          docker run --detach --rm --name autonoesis-ci-opa --publish 8181:8181
+          --volume "$PWD/infra/policies:/policies:ro"
+          openpolicyagent/opa:1.4.2 run --server --addr=0.0.0.0:8181 /policies
+      - name: Wait for OPA policy component
+        run: curl --fail --retry 20 --retry-delay 1 --retry-connrefused http://localhost:8181/health
       - name: Production baseline claims
         run: python3 tools/dev/check_production_baseline.py
       - name: Lint
@@ -56,6 +63,7 @@ jobs:
         env:
           AUTONOESIS_TEST_DATABASE_URL: postgresql+psycopg://autonoesis_api:autonoesis-ci-only@localhost:5432/autonoesis
           AUTONOESIS_TEST_ADMIN_DATABASE_URL: postgresql+psycopg://autonoesis:autonoesis@localhost:5432/autonoesis
+          AUTONOESIS_TEST_OPA_URL: http://localhost:8181
         run: pytest
 
   cockpit:

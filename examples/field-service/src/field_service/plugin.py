@@ -7,7 +7,7 @@ from uuid import uuid4
 
 from autonoesis_capability import CapabilityPackManifest, load_manifest
 from autonoesis_domain import Action
-from autonoesis_runtime import ToolReceipt
+from autonoesis_runtime import ToolReceipt, ToolResultStatus
 
 
 @dataclass(slots=True)
@@ -29,14 +29,14 @@ class FakeRepairOrderTool:
         self.orders: dict[str, tuple[str, str]] = {}
 
     async def execute(self, action: Action) -> ToolReceipt:
-        parameters = dict(action.parameters)
+        parameters = action.parameters.to_value()
         external_id = f"WO-{str(uuid4()).split('-')[0].upper()}"
         self.orders[external_id] = (parameters["equipment_id"], "open")
-        return ToolReceipt(external_id, True, (("status", "open"),))
+        return ToolReceipt(external_id, ToolResultStatus.SUCCEEDED, (("status", "open"),))
 
     async def verify(self, action: Action, receipt: ToolReceipt) -> bool:
         equipment_id, status = self.orders.get(receipt.external_id, ("", "missing"))
-        return equipment_id == dict(action.parameters)["equipment_id"] and status == "open"
+        return equipment_id == action.parameters.to_value()["equipment_id"] and status == "open"
 
 
 def create_plugin() -> FieldServicePlugin:

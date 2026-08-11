@@ -4,10 +4,14 @@ from uuid import uuid4
 import pytest
 from autonoesis_adapters import (
     DevelopmentPolicy,
+    EphemeralCredentialBroker,
     FakeModelAdapter,
-    InMemoryBudgetLedger,
-    InMemoryIdempotencyStore,
+    InMemoryAtomicExecutionReservations,
+    InMemoryDelegationStore,
+    InMemoryGatewayAudit,
     InMemoryPlatformStore,
+    JsonSchemaValidator,
+    StaticToolCatalog,
 )
 from autonoesis_application import CandidateLifecycleService, EvaluationDecision, IdentityContext
 from autonoesis_domain import (
@@ -19,13 +23,16 @@ from autonoesis_domain import (
     JsonObject,
     RiskLevel,
 )
+from autonoesis_governance import InMemoryKillSwitchStore
 from autonoesis_runtime import (
     AuthorizationContext,
     GovernedToolGateway,
     ModelGateway,
     ModelRequest,
     ModelRoute,
+    ResolvedToolVersion,
     ToolReceipt,
+    ToolResultStatus,
 )
 
 
@@ -33,11 +40,13 @@ class FakeExecutor:
     def __init__(self) -> None:
         self.calls = 0
 
-    async def execute(self, action: Action) -> ToolReceipt:
+    async def execute(self, action: Action, tool: object, credential: object) -> ToolReceipt:
+        del action, tool, credential
         self.calls += 1
-        return ToolReceipt("EXT-1", True, (("state", "created"),))
+        return ToolReceipt("EXT-1", ToolResultStatus.SUCCEEDED, (("state", "created"),))
 
-    async def verify(self, action: Action, receipt: ToolReceipt) -> bool:
+    async def verify(self, action: Action, tool: object, receipt: ToolReceipt) -> bool:
+        del action, tool
         return receipt.external_id == "EXT-1"
 
 
@@ -97,11 +106,31 @@ async def test_tool_gateway_requires_exact_approval_and_deduplicates_write() -> 
         expires_at=datetime.now(UTC) + timedelta(minutes=5),
     ).decide(uuid4(), True, "scope verified")
     executor = FakeExecutor()
+    delegation = InMemoryDelegationStore()
+    delegation.grant("delegation-1", "record.create", "subjects/")
     gateway = GovernedToolGateway(
-        DevelopmentPolicy(),
-        InMemoryBudgetLedger(),
-        InMemoryIdempotencyStore(),
-        {"record.create": executor},
+        catalog=StaticToolCatalog(
+            (
+                ResolvedToolVersion(
+                    "record.create",
+                    "1.0.0",
+                    "test-provider",
+                    frozenset({"create"}),
+                    ("subjects/",),
+                    {"type": "object", "required": ["value"]},
+                    RiskLevel.L2_REVERSIBLE_WRITE,
+                    "records.write",
+                ),
+            )
+        ),
+        delegation=delegation,
+        schema_validator=JsonSchemaValidator(),
+        policy=DevelopmentPolicy(),
+        kill_switch=InMemoryKillSwitchStore(),
+        reservations=InMemoryAtomicExecutionReservations(),
+        credentials=EphemeralCredentialBroker(),
+        egress=executor,
+        audit=InMemoryGatewayAudit(),
     )
     context = AuthorizationContext(
         str(tenant_id),
@@ -110,11 +139,13 @@ async def test_tool_gateway_requires_exact_approval_and_deduplicates_write() -> 
         "agent",
         ("operator",),
         "v1",
+        "delegation-1",
     )
-    first, _ = await gateway.execute(context, action, approval, 1)
-    duplicate, _ = await gateway.execute(context, action, approval, 1)
-    assert first.status is ActionStatus.SUCCEEDED
-    assert duplicate.status is ActionStatus.SUCCEEDED
+    first = await gateway.execute(context, action, approval, 1)
+    duplicate = await gateway.execute(context, action, approval, 1)
+    assert first.action.status is ActionStatus.SUCCEEDED
+    assert duplicate.action.status is ActionStatus.SUCCEEDED
+    assert duplicate.cached is True
     assert executor.calls == 1
 
 

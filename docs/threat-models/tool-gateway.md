@@ -1,6 +1,6 @@
 # Tool Gateway Threat Model
 
-> Status: baseline · Last reviewed: 2026-08-09
+> Status: implemented baseline · Last reviewed: 2026-08-11
 
 ## Scope
 
@@ -68,7 +68,19 @@ The Tool Gateway is the single enforcement point for all external side effects. 
 **Description**: Authorization, budget, or approval state changes between when the check was performed and when the Action executes.
 
 **Controls**:
-- All checks re-executed atomically at execution time in the Gateway pipeline.
+- Identity, delegation, immutable Tool version, policy, Kill Switch, Approval and credentials are
+  re-evaluated immediately before reservation and egress.
 - Approval has explicit expiry.
-- Budget reservation is made before execution, settled after.
+- PostgreSQL serializes the Tenant/Tool Version/Key identity and records the budget charge in the
+  same transaction; duplicate requests do not charge twice.
 - Policy version recorded; if policy changed since authorization, re-check required.
+
+### TG-007: Ambiguous Provider Result
+
+**Description**: A timeout or asynchronous acceptance is mistaken for failure or success and the
+write is blindly retried or used as verified evidence.
+
+**Controls**:
+- Timeout and `accepted` normalize to non-retryable Unknown execution state.
+- Unknown reservations return `execution_not_safe_to_retry` until explicit reconciliation.
+- Only a `succeeded` receipt plus verifier confirmation can produce verified execution evidence.

@@ -1,6 +1,7 @@
 # mypy: disable_error_code = no-untyped-def
 """Tests for Kill Switch mechanism."""
 
+from typing import Any
 from uuid import uuid4
 
 import pytest
@@ -90,27 +91,57 @@ class TestInMemoryKillSwitchStore:
 
 
 class TestKillSwitchInGateway:
-    @pytest.mark.asyncio
-    async def test_gateway_blocks_execution_when_kill_switch_active(self) -> None:
+    @staticmethod
+    def gateway(store: Any, action: Any, egress: Any) -> Any:
         from autonoesis_adapters import (
             DevelopmentPolicy,
-            InMemoryBudgetLedger,
-            InMemoryIdempotencyStore,
+            EphemeralCredentialBroker,
+            InMemoryAtomicExecutionReservations,
+            InMemoryDelegationStore,
+            InMemoryGatewayAudit,
+            JsonSchemaValidator,
+            StaticToolCatalog,
         )
+        from autonoesis_runtime import GovernedToolGateway, ResolvedToolVersion
+
+        delegation = InMemoryDelegationStore()
+        delegation.grant("delegation-1", action.tool_name, "resources/")
+        return GovernedToolGateway(
+            catalog=StaticToolCatalog(
+                (
+                    ResolvedToolVersion(
+                        action.tool_name,
+                        action.tool_version,
+                        "provider",
+                        frozenset({action.operation}),
+                        ("resources/",),
+                        {"type": "object"},
+                        action.risk_level,
+                        "tool.execute",
+                    ),
+                )
+            ),
+            delegation=delegation,
+            schema_validator=JsonSchemaValidator(),
+            policy=DevelopmentPolicy(),
+            kill_switch=store,
+            reservations=InMemoryAtomicExecutionReservations(),
+            credentials=EphemeralCredentialBroker(),
+            egress=egress,
+            audit=InMemoryGatewayAudit(),
+        )
+
+    @pytest.mark.asyncio
+    async def test_gateway_blocks_execution_when_kill_switch_active(self) -> None:
         from autonoesis_domain import (
             Action,
             JsonObject,
             RiskLevel,
         )
-        from autonoesis_runtime import AuthorizationContext, GovernedToolGateway
+        from autonoesis_runtime import AuthorizationContext
 
         store = InMemoryKillSwitchStore()
         await store.activate(KillSwitchDimension.TOOL, "dangerous-tool", "blocked", "admin")
-
-        policy = DevelopmentPolicy()
-        budget = InMemoryBudgetLedger()
-        idempotency = InMemoryIdempotencyStore()
-        gateway = GovernedToolGateway(policy, budget, idempotency, {}, kill_switch=store)
 
         action = Action(
             tenant_id=uuid4(),
@@ -125,6 +156,7 @@ class TestKillSwitchInGateway:
             risk_level=RiskLevel.L2_REVERSIBLE_WRITE,
             parameters=JsonObject.from_value({}),
         )
+        gateway = self.gateway(store, action, object())
         context = AuthorizationContext(
             tenant_id=str(action.tenant_id),
             actor_id="actor-1",
@@ -132,42 +164,42 @@ class TestKillSwitchInGateway:
             agent_id="agent-1",
             roles=("operator",),
             policy_version="v1",
+            delegation_id="delegation-1",
         )
 
-        result_action, receipt = await gateway.execute(context, action, None, 1)
-        assert result_action.status.value == "denied"
-        assert receipt.accepted is False
-        assert ("reason", "kill_switch_active") in receipt.output
+        result = await gateway.execute(context, action, None, 1)
+        assert result.action.status.value == "denied"
+        assert result.receipt.accepted is False
+        assert ("reason", "kill_switch_active") in result.receipt.output
 
     @pytest.mark.asyncio
     async def test_gateway_proceeds_when_kill_switch_inactive(self) -> None:
-        from autonoesis_adapters import (
-            DevelopmentPolicy,
-            InMemoryBudgetLedger,
-            InMemoryIdempotencyStore,
-        )
         from autonoesis_domain import Action, JsonObject, RiskLevel
-        from autonoesis_runtime import AuthorizationContext, GovernedToolGateway, ToolReceipt
+        from autonoesis_runtime import (
+            AuthorizationContext,
+            ToolReceipt,
+            ToolResultStatus,
+        )
 
         store = InMemoryKillSwitchStore()
 
         class FakeExecutor:
             calls = 0
 
-            async def execute(self, action: Action) -> ToolReceipt:
+            async def execute(
+                self, action: Action, tool: object, credential: object
+            ) -> ToolReceipt:
+                del action, tool, credential
                 self.calls += 1
-                return ToolReceipt(external_id="ext-1", accepted=True, output=())
+                return ToolReceipt(
+                    external_id="ext-1", status=ToolResultStatus.SUCCEEDED, output=()
+                )
 
-            async def verify(self, action: Action, receipt: ToolReceipt) -> bool:
+            async def verify(self, action: Action, tool: object, receipt: ToolReceipt) -> bool:
+                del action, tool, receipt
                 return True
 
         executor = FakeExecutor()
-        policy = DevelopmentPolicy()
-        budget = InMemoryBudgetLedger()
-        idempotency = InMemoryIdempotencyStore()
-        gateway = GovernedToolGateway(
-            policy, budget, idempotency, {"safe-tool": executor}, kill_switch=store
-        )
 
         action = Action(
             tenant_id=uuid4(),
@@ -182,6 +214,7 @@ class TestKillSwitchInGateway:
             risk_level=RiskLevel.L1_READ,
             parameters=JsonObject.from_value({}),
         )
+        gateway = self.gateway(store, action, executor)
         context = AuthorizationContext(
             tenant_id=str(action.tenant_id),
             actor_id="actor-2",
@@ -189,8 +222,9 @@ class TestKillSwitchInGateway:
             agent_id="agent-2",
             roles=("operator",),
             policy_version="v1",
+            delegation_id="delegation-1",
         )
 
-        result_action, _ = await gateway.execute(context, action, None, 1)
-        assert result_action.status.value == "succeeded"
+        result = await gateway.execute(context, action, None, 1)
+        assert result.action.status.value == "succeeded"
         assert executor.calls == 1

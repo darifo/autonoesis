@@ -402,13 +402,18 @@ inbox = tenant_table(
 )
 idempotency_records = tenant_table(
     "idempotency_records",
+    Column("run_id", String(36), nullable=True),
+    Column("action_id", String(36), nullable=True),
+    Column("tool_name", String(200), nullable=True),
+    Column("tool_version", String(64), nullable=True),
     Column("idempotency_key", String(300), nullable=False),
     Column("request_digest", String(64), nullable=False),
+    Column("cost_units", BigInteger, nullable=True),
     Column("external_id", String(300), nullable=True),
     Column("status", String(32), nullable=False),
     Column("response", JSON, nullable=True),
     UniqueConstraint("tenant_id", "idempotency_key", name="uq_idempotency_tenant_key"),
-    status_check("pending", "completed", "failed", "unknown"),
+    status_check("pending", "accepted", "completed", "failed", "unknown"),
 )
 
 AUTHORITATIVE_TABLES = (

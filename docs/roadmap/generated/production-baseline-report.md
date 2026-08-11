@@ -9,7 +9,7 @@
 |---|---|
 | `environment.yml` | `217cde3c5f49080c1b35f5a65051770ad2f9952f9cb6aad4a1c1d9a3696c3119` |
 | `pyproject.toml` | `6886d029e073f1d6d69785f0e599229fd74e619047b064d81aa25748ddad0c55` |
-| `uv.lock` | `8e419c1b984b7fc2df3eec71bdc117e201b7c3a4b8275bb75a03536f512ec09e` |
+| `uv.lock` | `0ef8b45b39aadf009274f8b818d3dbba0244f2a0da420baf4c3e91e85c9bf925` |
 | `package.json` | `50cb64a759a95e84c47f1cf5fe1cafa0167aa030bf0d5c806bda00eb48cfbf8a` |
 | `pnpm-lock.yaml` | `f8a6632ae5b7f346481d3cd8deb6252c6bb9fdb197a673c89067f09745e4e132` |
 | `versions.lock` | `99eec493a438c18cc24235bc325a4c8d9e45338ed4f2a75b4e794e4f421a4fe0` |
@@ -27,8 +27,8 @@ Configured Compose images (configuration inventory only; not integration evidenc
 
 ## Database Schema Baseline
 
-- Alembic head: `0003_application_use_cases`
-- SQLAlchemy metadata digest: `sha256:0c43a4d2a80bd140f5361f9ec5768c1710809e73728867a9e1d45e8decce9b90`
+- Alembic head: `0004_governed_tool_gateway`
+- SQLAlchemy metadata digest: `sha256:a96d4b9feda34f8177168959b2bcd03624a27b5412b1e4ff3e4e83d440e4b83c`
 - Declared tables (28): `action_attempts`, `actions`, `agent_versions`, `approvals`, `audit_events`, `budget_ledger`, `budgets`, `candidates`, `capability_packs`, `context_snapshots`, `deployments`, `evaluation_trials`, `evidence`, `goals`, `idempotency_records`, `improvement_proposals`, `inbox`, `kill_switches`, `outbox`, `outcomes`, `plans`, `policy_versions`, `releases`, `runs`, `skill_versions`, `tasks`, `tenants`, `tool_versions`
 - Evidence level: `integrated`; CI migrates PostgreSQL 17 and runs authority/Application transaction component tests.
 

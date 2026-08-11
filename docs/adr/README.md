@@ -19,3 +19,4 @@ ADRs record decisions affecting authoritative ownership, process boundaries, pro
 - [ADR-0012: Freeze Governed Execution Domain Contracts Before Persistence](0012-freeze-governed-execution-domain-contracts.md)
 - [ADR-0013: Make PostgreSQL the Process-Independent Business Authority](0013-postgresql-authority-and-role-separation.md)
 - [ADR-0014: Make Application Use Cases the Governed Execution Writer](0014-application-owned-execution-transactions.md)
+- [ADR-0015: Make Tool Execution an Atomic Governed Boundary](0015-atomic-governed-tool-execution.md)

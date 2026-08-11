@@ -6,6 +6,16 @@ from autonoesis_adapters.evidence_store import (
     MinioEvidenceStore,
     ObjectStorePort,
 )
+from autonoesis_adapters.execution_gateway import (
+    EphemeralCredentialBroker,
+    InMemoryAtomicExecutionReservations,
+    InMemoryDelegationStore,
+    InMemoryGatewayAudit,
+    JsonSchemaValidator,
+    PostgreSQLAtomicExecutionReservations,
+    RegistryControlledEgress,
+    StaticToolCatalog,
+)
 from autonoesis_adapters.governance import (
     DevelopmentPolicy,
     OIDCSettings,
@@ -36,13 +46,18 @@ from autonoesis_adapters.platform_store import PostgreSQLPlatformStore
 __all__ = [
     "AnthropicMessagesAdapter",
     "DevelopmentPolicy",
+    "EphemeralCredentialBroker",
     "EvidenceArtifact",
     "FakeModelAdapter",
+    "InMemoryAtomicExecutionReservations",
     "InMemoryBudgetLedger",
+    "InMemoryDelegationStore",
+    "InMemoryGatewayAudit",
     "InMemoryIdempotencyStore",
     "InMemoryObjectStore",
     "InMemoryPlatformStore",
     "InboxConsumer",
+    "JsonSchemaValidator",
     "MCPServerAdapter",
     "MCPToolDefinition",
     "MinioEvidenceStore",
@@ -54,9 +69,12 @@ __all__ = [
     "OpenAIResponsesAdapter",
     "OutboxRelay",
     "OutboxWriter",
+    "PostgreSQLAtomicExecutionReservations",
     "PostgreSQLPlatformStore",
+    "RegistryControlledEgress",
     "SqlAlchemyPlatformRepository",
     "SqlKillSwitchStore",
+    "StaticToolCatalog",
     "create_repository",
     "metadata",
 ]
