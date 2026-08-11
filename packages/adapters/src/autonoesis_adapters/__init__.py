@@ -1,7 +1,7 @@
 """Replaceable provider and infrastructure adapters."""
 
 from autonoesis_adapters.evidence_store import (
-    EvidenceArtifact,
+    Boto3ObjectStore,
     InMemoryObjectStore,
     MinioEvidenceStore,
     ObjectStorePort,
@@ -42,13 +42,15 @@ from autonoesis_adapters.persistence import (
     metadata,
 )
 from autonoesis_adapters.platform_store import PostgreSQLPlatformStore
+from autonoesis_adapters.readback import HttpAuthoritativeReadback, ReadbackEndpoint
 
 __all__ = [
     "AnthropicMessagesAdapter",
+    "Boto3ObjectStore",
     "DevelopmentPolicy",
     "EphemeralCredentialBroker",
-    "EvidenceArtifact",
     "FakeModelAdapter",
+    "HttpAuthoritativeReadback",
     "InMemoryAtomicExecutionReservations",
     "InMemoryBudgetLedger",
     "InMemoryDelegationStore",
@@ -71,6 +73,7 @@ __all__ = [
     "OutboxWriter",
     "PostgreSQLAtomicExecutionReservations",
     "PostgreSQLPlatformStore",
+    "ReadbackEndpoint",
     "RegistryControlledEgress",
     "SqlAlchemyPlatformRepository",
     "SqlKillSwitchStore",

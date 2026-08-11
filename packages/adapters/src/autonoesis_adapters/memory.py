@@ -4,11 +4,15 @@ from collections import defaultdict
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from copy import deepcopy
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from autonoesis_application import (
     AuditEvent,
     ConcurrencyConflict,
+    EvidenceCaptureSaga,
+    EvidenceCaptureStatus,
+    EvidenceDeletionRecord,
     RecordNotFound,
     TenantBoundaryViolation,
 )
@@ -55,6 +59,8 @@ class InMemoryPlatformStore:
         self.budgets: dict[str, dict[str, object]] = {}
         self.approvals: dict[UUID, ApprovalRequest] = {}
         self.evidence: dict[UUID, Evidence] = {}
+        self.evidence_capture_sagas: dict[UUID, EvidenceCaptureSaga] = {}
+        self.evidence_deletions: dict[UUID, EvidenceDeletionRecord] = {}
         self.outcomes: dict[UUID, Outcome] = {}
         self.audits: list[AuditEvent] = []
         self.proposals: dict[UUID, ImprovementProposal] = {}
@@ -80,7 +86,19 @@ class InMemoryPlatformStore:
             raise
 
     async def record_audit(self, audit: AuditEvent) -> None:
-        self.audits.append(audit)
+        previous = next(
+            (item for item in reversed(self.audits) if item.tenant_id == audit.tenant_id),
+            None,
+        )
+        self.audits.append(
+            audit.chained(
+                (previous.sequence or 0) + 1 if previous is not None else 1,
+                previous.event_digest
+                if previous is not None and previous.event_digest
+                else "0" * 64,
+                datetime.now(UTC),
+            )
+        )
 
     @staticmethod
     def _assert_tenant(expected: UUID, actual: UUID) -> None:
@@ -136,7 +154,7 @@ class InMemoryPlatformStore:
 
     async def add_goal(self, goal: GoalContract, audit: AuditEvent) -> None:
         self.goals[goal.goal_id] = goal
-        self.audits.append(audit)
+        await self.record_audit(audit)
 
     async def get_goal(self, tenant_id: UUID, goal_id: UUID) -> GoalContract:
         try:
@@ -154,11 +172,11 @@ class InMemoryPlatformStore:
         if current.version != expected_version:
             raise ConcurrencyConflict("goal optimistic version changed")
         self.goals[goal.goal_id] = goal
-        self.audits.append(audit)
+        await self.record_audit(audit)
 
     async def add_run(self, run: Run, audit: AuditEvent) -> None:
         self.runs[run.run_id] = run
-        self.audits.append(audit)
+        await self.record_audit(audit)
 
     async def get_run(self, tenant_id: UUID, run_id: UUID) -> Run:
         try:
@@ -176,7 +194,7 @@ class InMemoryPlatformStore:
             raise ConcurrencyConflict("run optimistic version changed")
         self.runs[run.run_id] = run
         if audit is not None:
-            self.audits.append(audit)
+            await self.record_audit(audit)
 
     async def list_runs(self, tenant_id: UUID, goal_id: UUID | None = None) -> tuple[Run, ...]:
         return tuple(
@@ -384,6 +402,49 @@ class InMemoryPlatformStore:
 
     async def list_evidence(self, tenant_id: UUID) -> tuple[Evidence, ...]:
         return tuple(item for item in self.evidence.values() if item.tenant_id == tenant_id)
+
+    async def start_evidence_capture(self, saga: EvidenceCaptureSaga) -> None:
+        existing = self.evidence_capture_sagas.get(saga.evidence_id)
+        if existing is not None and existing != saga:
+            raise ConcurrencyConflict(
+                "Evidence capture id was reused with different immutable content"
+            )
+        if existing is None:
+            self.evidence_capture_sagas[saga.evidence_id] = saga
+
+    async def get_evidence_capture(self, tenant_id: UUID, evidence_id: UUID) -> EvidenceCaptureSaga:
+        try:
+            item = self.evidence_capture_sagas[evidence_id]
+        except KeyError as exc:
+            raise RecordNotFound("Evidence capture Saga was not found") from exc
+        self._assert_tenant(tenant_id, item.tenant_id)
+        return item
+
+    async def complete_evidence_capture(self, tenant_id: UUID, evidence_id: UUID) -> None:
+        item = await self.get_evidence_capture(tenant_id, evidence_id)
+        if item.status not in {
+            EvidenceCaptureStatus.PENDING,
+            EvidenceCaptureStatus.COMMITTED,
+        }:
+            raise ConcurrencyConflict("Evidence capture Saga is not pending")
+        from dataclasses import replace
+
+        self.evidence_capture_sagas[evidence_id] = replace(
+            item, status=EvidenceCaptureStatus.COMMITTED
+        )
+
+    async def record_evidence_deletion(self, record: EvidenceDeletionRecord) -> None:
+        self.evidence_deletions[record.evidence_id] = record
+
+    async def get_evidence_deletion(
+        self, tenant_id: UUID, evidence_id: UUID
+    ) -> EvidenceDeletionRecord:
+        try:
+            item = self.evidence_deletions[evidence_id]
+        except KeyError as exc:
+            raise RecordNotFound("Evidence deletion record was not found") from exc
+        self._assert_tenant(tenant_id, item.tenant_id)
+        return item
 
     async def add_outcome(self, item: Outcome) -> None:
         for submitted in item.evidence:

@@ -20,6 +20,10 @@ from autonoesis_domain import (
 )
 
 from autonoesis_application.platform import AuditEvent
+from autonoesis_application.verification import (
+    EvidenceCaptureSaga,
+    EvidenceDeletionRecord,
+)
 
 
 class ExecutionRepository(Protocol):
@@ -115,6 +119,20 @@ class VerificationRepository(Protocol):
     async def get_outcome(self, tenant_id: UUID, outcome_id: UUID) -> Outcome: ...
 
     async def list_outcomes(self, tenant_id: UUID, run_id: UUID) -> tuple[Outcome, ...]: ...
+
+    async def start_evidence_capture(self, saga: EvidenceCaptureSaga) -> None: ...
+
+    async def get_evidence_capture(
+        self, tenant_id: UUID, evidence_id: UUID
+    ) -> EvidenceCaptureSaga: ...
+
+    async def complete_evidence_capture(self, tenant_id: UUID, evidence_id: UUID) -> None: ...
+
+    async def record_evidence_deletion(self, record: EvidenceDeletionRecord) -> None: ...
+
+    async def get_evidence_deletion(
+        self, tenant_id: UUID, evidence_id: UUID
+    ) -> EvidenceDeletionRecord: ...
 
 
 class EvaluationRepository(Protocol):

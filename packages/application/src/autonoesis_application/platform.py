@@ -1,10 +1,11 @@
 """Industry-neutral platform use cases and persistence ports."""
 
-from dataclasses import dataclass
-from datetime import datetime
+import json
+from dataclasses import dataclass, field, replace
+from datetime import UTC, datetime
 from hashlib import sha256
 from typing import Any, Protocol, cast
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from autonoesis_capability import GoalTypeManifest
 from autonoesis_domain import (
@@ -51,6 +52,64 @@ class AuditEvent:
     object_id: str
     correlation_id: UUID
     details: dict[str, Any]
+    event_id: UUID = field(default_factory=uuid4)
+    sequence: int | None = None
+    previous_digest: str | None = None
+    event_digest: str | None = None
+    created_at: datetime | None = None
+
+    @property
+    def audit_ref(self) -> str | None:
+        if self.event_digest is None:
+            return None
+        return f"audit://events/{self.event_id}?digest={self.event_digest}"
+
+    def chained(self, sequence: int, previous_digest: str, created_at: datetime) -> "AuditEvent":
+        if sequence <= 0 or len(previous_digest) != 64 or created_at.tzinfo is None:
+            raise ValueError("audit chain metadata is invalid")
+        payload = {
+            "event_id": str(self.event_id),
+            "tenant_id": str(self.tenant_id),
+            "actor_id": str(self.actor_id),
+            "principal_id": str(self.principal_id),
+            "event_type": self.event_type,
+            "object_type": self.object_type,
+            "object_id": self.object_id,
+            "correlation_id": str(self.correlation_id),
+            "details": self.details,
+            "sequence": sequence,
+            "created_at": created_at.astimezone(UTC).isoformat(),
+        }
+        canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
+        digest = sha256(f"{previous_digest}\n{canonical}".encode()).hexdigest()
+        return replace(
+            self,
+            sequence=sequence,
+            previous_digest=previous_digest,
+            event_digest=digest,
+            created_at=created_at,
+        )
+
+
+def verify_audit_chain(events: tuple[AuditEvent, ...]) -> bool:
+    """Verify a complete tenant chain; unsigned legacy rows deliberately fail verification."""
+
+    previous_digest = "0" * 64
+    expected_sequence = 1
+    for event in events:
+        if (
+            event.sequence != expected_sequence
+            or event.previous_digest != previous_digest
+            or event.created_at is None
+            or event.event_digest is None
+        ):
+            return False
+        expected = event.chained(expected_sequence, previous_digest, event.created_at)
+        if expected.event_digest != event.event_digest:
+            return False
+        previous_digest = event.event_digest
+        expected_sequence += 1
+    return bool(events)
 
 
 class PlatformRepository(Protocol):

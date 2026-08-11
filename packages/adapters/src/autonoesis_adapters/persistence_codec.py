@@ -38,6 +38,7 @@ from autonoesis_domain import (
     RunExecutionSnapshot,
     RunStatus,
     StateTransition,
+    SubjectRef,
     Task,
     TaskStatus,
     Trial,
@@ -347,7 +348,22 @@ def approval_from_row(row: dict[str, Any]) -> ApprovalRequest:
 
 
 def evidence_payload(item: Evidence) -> dict[str, Any]:
-    return {"observed_state": item.observed_state, "captured_at": item.captured_at.isoformat()}
+    return {
+        "observed_state": item.observed_state,
+        "captured_at": item.captured_at.isoformat(),
+        "source_reference": item.source_reference,
+        "subject_refs": [
+            {
+                "system": value.system,
+                "subject_type": value.subject_type,
+                "subject_id": value.subject_id,
+                "version": value.version,
+            }
+            for value in item.subject_refs
+        ],
+        "retained_until": item.retained_until.isoformat() if item.retained_until else None,
+        "artifact_version_id": item.artifact_version_id,
+    }
 
 
 def evidence_from_row(row: dict[str, Any]) -> Evidence:
@@ -366,6 +382,19 @@ def evidence_from_row(row: dict[str, Any]) -> Evidence:
         valid_from=row["valid_from"],
         valid_until=row["valid_until"],
         integrity=EvidenceIntegrity(row["integrity"]),
+        source_reference=definition.get("source_reference", ""),
+        subject_refs=tuple(
+            SubjectRef(
+                value["system"], value["subject_type"], value["subject_id"], value.get("version")
+            )
+            for value in definition.get("subject_refs", ())
+        ),
+        retained_until=(
+            datetime.fromisoformat(definition["retained_until"])
+            if definition.get("retained_until")
+            else None
+        ),
+        artifact_version_id=definition.get("artifact_version_id"),
         evidence_id=UUID(row["id"]),
         captured_at=datetime.fromisoformat(definition["captured_at"]),
     )

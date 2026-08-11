@@ -170,7 +170,8 @@ def error_response(
                 "retryable": retryable,
                 "next_action": next_action,
                 "correlation_id": correlation_id,
-                "audit_ref": f"audit://errors/{correlation_id}",
+                # No reference is emitted until an AuditEvent has actually been committed.
+                "audit_ref": None,
             }
         },
     )
@@ -761,10 +762,15 @@ def build_app(store: PlatformStore | None = None) -> FastAPI:
         require_role(context, {"platform_admin", "tenant_admin", "auditor", "operator"})
         return [
             {
+                "event_id": item.event_id,
                 "event_type": item.event_type,
                 "object_type": item.object_type,
                 "object_id": item.object_id,
                 "correlation_id": item.correlation_id,
+                "sequence": item.sequence,
+                "previous_digest": item.previous_digest,
+                "event_digest": item.event_digest,
+                "audit_ref": item.audit_ref,
                 "details": item.details,
             }
             for item in await platform_store.list_audit_events(context.tenant_id)

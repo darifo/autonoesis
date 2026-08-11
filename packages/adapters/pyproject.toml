@@ -10,6 +10,7 @@ dependencies = [
   "autonoesis-runtime-kernel",
   "anthropic>=0.70",
   "alembic>=1.16",
+  "boto3>=1.40",
   "httpx>=0.28",
   "jsonschema>=4.25",
   "openai>=2.0",
@@ -34,4 +35,5 @@ autonoesis-runtime-kernel = { workspace = true }
 [dependency-groups]
 dev = [
     "aiosqlite>=0.22.1",
+    "boto3-stubs[s3]>=1.40",
 ]

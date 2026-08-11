@@ -279,6 +279,43 @@ evidence = tenant_table(
     CheckConstraint("length(content_digest) = 64", name="content_digest_length"),
     CheckConstraint("valid_until >= valid_from", name="validity_interval"),
 )
+evidence_capture_sagas = tenant_table(
+    "evidence_capture_sagas",
+    Column("evidence_id", String(36), nullable=False),
+    Column("run_id", String(36), nullable=False),
+    Column("action_id", String(36), nullable=False),
+    Column("criterion_id", String(200), nullable=False),
+    Column("source", String(300), nullable=False),
+    Column("artifact_uri", String(1000), nullable=False),
+    Column("expected_digest", String(64), nullable=False),
+    Column("status", String(32), nullable=False),
+    Column("definition", JSON, nullable=False),
+    Column("failure_reason", String(1000), nullable=True),
+    tenant_reference("run_id", "runs"),
+    tenant_reference("action_id", "actions"),
+    UniqueConstraint("tenant_id", "evidence_id", name="uq_evidence_capture_saga_evidence"),
+    CheckConstraint("length(expected_digest) = 64", name="expected_digest_length"),
+    status_check("pending", "committed", "failed"),
+)
+evidence_deletions = tenant_table(
+    "evidence_deletions",
+    Column("evidence_id", String(36), nullable=False),
+    Column("artifact_uri", String(1000), nullable=False),
+    Column("requested_by", String(36), nullable=False),
+    Column("reason", String(1000), nullable=False),
+    Column("requested_at", DateTime(timezone=True), nullable=False),
+    Column("status", String(32), nullable=False),
+    Column("deleted_at", DateTime(timezone=True), nullable=True),
+    Column("provider_version_id", String(300), nullable=True),
+    Column("proof_digest", String(64), nullable=True),
+    Column("failure_reason", String(1000), nullable=True),
+    tenant_reference("evidence_id", "evidence"),
+    UniqueConstraint("tenant_id", "evidence_id", name="uq_evidence_deletion_evidence"),
+    CheckConstraint(
+        "proof_digest IS NULL OR length(proof_digest) = 64", name="proof_digest_length"
+    ),
+    status_check("requested", "retention_blocked", "deleted", "failed"),
+)
 outcomes = tenant_table(
     "outcomes",
     Column("goal_id", String(36), nullable=False),
@@ -379,6 +416,11 @@ audit_events = tenant_table(
     Column("object_id", String(200), nullable=False),
     Column("correlation_id", String(36), nullable=False),
     Column("details", JSON, nullable=False),
+    Column("sequence", BigInteger, nullable=True),
+    Column("previous_digest", String(64), nullable=True),
+    Column("event_digest", String(64), nullable=True),
+    UniqueConstraint("tenant_id", "sequence", name="uq_audit_event_tenant_sequence"),
+    UniqueConstraint("tenant_id", "event_digest", name="uq_audit_event_tenant_digest"),
 )
 kill_switches = tenant_table(
     "kill_switches",
@@ -426,6 +468,8 @@ AUTHORITATIVE_TABLES = (
     approvals,
     context_snapshots,
     evidence,
+    evidence_capture_sagas,
+    evidence_deletions,
     outcomes,
     budget_ledger,
     audit_events,

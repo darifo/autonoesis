@@ -68,8 +68,18 @@ jobs:
           docker run --detach --rm --name autonoesis-ci-opa --publish 8181:8181
           --volume "$PWD/infra/policies:/policies:ro"
           openpolicyagent/opa:1.4.2 run --server --addr=0.0.0.0:8181 /policies
+      - name: Start MinIO Evidence component
+        run: >-
+          docker run --detach --rm --name autonoesis-ci-minio --publish 9000:9000
+          --env MINIO_ROOT_USER=autonoesis
+          --env MINIO_ROOT_PASSWORD=autonoesis-test-only
+          --env MINIO_KMS_SECRET_KEY=autonoesis-evidence:MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
+          minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
+          server /data
       - name: Wait for OPA policy component
         run: curl --fail --retry 20 --retry-delay 1 --retry-connrefused http://localhost:8181/health
+      - name: Wait for MinIO Evidence component
+        run: curl --fail --retry 30 --retry-delay 1 --retry-connrefused http://localhost:9000/minio/health/live
       - name: Production baseline claims
         run: python3 tools/dev/check_production_baseline.py
       - name: Lint
@@ -82,6 +92,9 @@ jobs:
           AUTONOESIS_TEST_ADMIN_DATABASE_URL: postgresql+psycopg://autonoesis:autonoesis@localhost:5432/autonoesis
           AUTONOESIS_TEST_DISPATCH_DATABASE_URL: postgresql+psycopg://autonoesis_outbox:autonoesis-ci-only@localhost:5432/autonoesis
           AUTONOESIS_TEST_OPA_URL: http://localhost:8181
+          AUTONOESIS_TEST_MINIO_URL: http://localhost:9000
+          AUTONOESIS_TEST_MINIO_ACCESS_KEY: autonoesis
+          AUTONOESIS_TEST_MINIO_SECRET_KEY: autonoesis-test-only
           AUTONOESIS_TEST_TEMPORAL_TARGET: localhost:7233
         run: pytest
 

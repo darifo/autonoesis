@@ -198,7 +198,7 @@ def test_authentication_errors_use_the_common_envelope() -> None:
     assert response.json()["error"]["code"] == "http_error"
     assert response.json()["error"]["retryable"] is False
     assert response.json()["error"]["correlation_id"]
-    assert response.json()["error"]["audit_ref"].startswith("audit://errors/")
+    assert response.json()["error"]["audit_ref"] is None
 
 
 def test_approval_decision_is_tenant_scoped_and_digest_bound() -> None:

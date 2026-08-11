@@ -45,11 +45,12 @@ services:
     ports: ["8181:8181"]
 
   minio:
-    image: minio/minio:${MINIO_VERSION:-latest}
+    image: ${MINIO_IMAGE:-minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e}
     command: server /data --console-address :9001
     environment:
       MINIO_ROOT_USER: autonoesis
       MINIO_ROOT_PASSWORD: autonoesis-local-only
+      MINIO_KMS_SECRET_KEY: autonoesis-evidence:MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
     ports: ["9000:9000", "9001:9001"]
     volumes: ["minio-data:/data"]
 

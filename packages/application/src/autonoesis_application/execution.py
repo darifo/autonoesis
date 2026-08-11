@@ -5,7 +5,7 @@ from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from typing import Any
-from uuid import UUID, uuid4
+from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from autonoesis_capability import validate_payload
 from autonoesis_domain import (
@@ -37,6 +37,7 @@ from autonoesis_domain import (
     Run,
     RunExecutionSnapshot,
     RunStatus,
+    SubjectRef,
     Task,
     TaskStatus,
 )
@@ -56,6 +57,16 @@ from autonoesis_application.platform import (
     IdentityContext,
 )
 from autonoesis_application.repositories import ApplicationRepository
+from autonoesis_application.verification import (
+    AuthoritativeReadback,
+    EvidenceAdmissionPolicy,
+    EvidenceArtifactDescriptor,
+    EvidenceArtifactStore,
+    EvidenceCaptureSaga,
+    EvidenceDeletionRecord,
+    EvidenceDeletionStatus,
+    TrustedOutcomeVerifier,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -209,6 +220,22 @@ class RecordEvidence:
 
 
 @dataclass(frozen=True, slots=True)
+class CaptureAuthoritativeEvidence:
+    run_id: UUID
+    action_id: UUID
+    criterion_id: str
+    source: str
+    declared_classification: DataClassification = DataClassification.INTERNAL
+    content_type: str = "application/json"
+
+
+@dataclass(frozen=True, slots=True)
+class RequestEvidenceDeletion:
+    evidence_id: UUID
+    reason: str
+
+
+@dataclass(frozen=True, slots=True)
 class ReconcileUnknownAction:
     action_id: UUID
     invocation_id: UUID
@@ -222,10 +249,7 @@ class ReconcileUnknownAction:
 class VerifyOutcome:
     run_id: UUID
     criterion_id: str
-    verifier_version: str
-    status: OutcomeStatus
     evidence_ids: tuple[UUID, ...]
-    verified_at: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -270,11 +294,22 @@ class GoalExecutionApplication:
         *,
         governed_gateway: GovernedToolGateway | None = None,
         legacy_authorization_enabled: bool = False,
+        evidence_artifacts: EvidenceArtifactStore | None = None,
+        authoritative_readback: AuthoritativeReadback | None = None,
+        evidence_policy: EvidenceAdmissionPolicy | None = None,
     ) -> None:
         self._repository = repository
         self._catalog = catalog
         self._governed_gateway = governed_gateway
         self._legacy_authorization_enabled = legacy_authorization_enabled
+        self._evidence_artifacts = evidence_artifacts
+        self._authoritative_readback = authoritative_readback
+        self._evidence_policy = evidence_policy or EvidenceAdmissionPolicy()
+        self._outcome_verifier = (
+            TrustedOutcomeVerifier(authoritative_readback, evidence_artifacts)
+            if authoritative_readback is not None and evidence_artifacts is not None
+            else None
+        )
 
     async def create_goal(self, context: CommandContext, command: CreateGoal) -> GoalContract:
         self._require_any(context, self._OPERATORS)
@@ -782,11 +817,8 @@ class GoalExecutionApplication:
             classification=action.classification,
             valid_from=now,
             valid_until=now + timedelta(days=1),
-            integrity=(
-                EvidenceIntegrity.VERIFIED
-                if result.receipt.status is ToolResultStatus.SUCCEEDED
-                else EvidenceIntegrity.UNVERIFIED
-            ),
+            # A Tool receipt proves only invocation, never the external business Outcome.
+            integrity=EvidenceIntegrity.UNVERIFIED,
             captured_at=now,
         )
         async with self._repository.transaction():
@@ -860,6 +892,10 @@ class GoalExecutionApplication:
     async def record_evidence(self, context: CommandContext, command: RecordEvidence) -> Evidence:
         self._require_any(context, self._OPERATORS)
         item = command.evidence
+        if item.integrity is EvidenceIntegrity.VERIFIED:
+            raise ValueError(
+                "integrity-verified Evidence must be captured through authoritative readback"
+            )
         if item.tenant_id != context.identity.tenant_id:
             raise PermissionError("Evidence tenant does not match command identity")
         key = self._key("record_evidence", context)
@@ -874,6 +910,238 @@ class GoalExecutionApplication:
             await self._repository.record_audit(self._audit(context, "evidence.recorded", item))
             await self._remember(context, key, item.evidence_id)
             return item
+
+    async def capture_authoritative_evidence(
+        self, context: CommandContext, command: CaptureAuthoritativeEvidence
+    ) -> Evidence:
+        """Capture an authoritative observation through an immutable, recoverable artifact Saga."""
+
+        self._require_any(context, self._OPERATORS)
+        if self._evidence_artifacts is None or self._authoritative_readback is None:
+            raise RuntimeError("authoritative Evidence capture is not configured")
+        key = self._key("capture_authoritative_evidence", context)
+        cached = await self._load_idempotency(context, key)
+        if cached is not None:
+            return await self._repository.get_evidence(context.identity.tenant_id, cached)
+        evidence_id = uuid5(
+            NAMESPACE_URL,
+            f"autonoesis:evidence:{context.identity.tenant_id}:{context.idempotency_key}",
+        )
+        try:
+            pending = await self._repository.get_evidence_capture(
+                context.identity.tenant_id, evidence_id
+            )
+        except LookupError:
+            pending = None
+        if pending is not None:
+            if pending.status.value == "committed":
+                return await self._repository.get_evidence(context.identity.tenant_id, evidence_id)
+            definition = pending.definition
+            descriptor = EvidenceArtifactDescriptor(
+                pending.tenant_id,
+                pending.evidence_id,
+                pending.artifact_uri,
+                pending.expected_digest,
+                DataClassification(str(definition["classification"])),
+                int(str(definition["size_bytes"])),
+                datetime.fromisoformat(str(definition["retained_until"])),
+            )
+            content = await self._evidence_artifacts.retrieve_verified(descriptor)
+            stored = await self._evidence_artifacts.store(
+                descriptor, content, str(definition["content_type"])
+            )
+            return await self._commit_evidence_capture(context, key, pending, stored)
+        run = await self._repository.get_run(context.identity.tenant_id, command.run_id)
+        goal = await self._repository.get_goal(context.identity.tenant_id, run.goal_id)
+        action = await self._repository.get_action(context.identity.tenant_id, command.action_id)
+        if action.run_id != run.run_id or action.status is not ActionStatus.SUCCEEDED:
+            raise ValueError("authoritative Evidence requires a succeeded Action in the Run")
+        criterion = next(
+            (item for item in goal.success_criteria if item.criterion_id == command.criterion_id),
+            None,
+        )
+        if criterion is None:
+            raise ValueError("Evidence criterion is not part of the Goal contract")
+        observation = await self._authoritative_readback.observe(
+            command.source,
+            context.identity.tenant_id,
+            goal.subject_refs,
+            criterion,
+        )
+        classification = self._evidence_policy.admit(
+            observation.content,
+            command.declared_classification,
+            goal.data_policy.maximum_classification,
+            goal.data_policy.retention_days,
+        )
+        retained_until = observation.captured_at + timedelta(days=goal.data_policy.retention_days)
+        descriptor = self._evidence_artifacts.describe(
+            context.identity.tenant_id,
+            evidence_id,
+            observation.content_digest,
+            classification,
+            len(observation.content),
+            retained_until,
+        )
+        capture_definition: dict[str, object] = {
+            "source": observation.source,
+            "source_identity": observation.source_identity,
+            "source_reference": observation.reference,
+            "observed_state": observation.observed_state,
+            "captured_at": observation.captured_at.isoformat(),
+            "valid_until": observation.valid_until.isoformat(),
+            "retained_until": retained_until.isoformat(),
+            "classification": classification.value,
+            "size_bytes": len(observation.content),
+            "content_type": command.content_type,
+            "subject_refs": [
+                {
+                    "system": item.system,
+                    "subject_type": item.subject_type,
+                    "subject_id": item.subject_id,
+                    "version": item.version,
+                }
+                for item in goal.subject_refs
+            ],
+        }
+        saga = EvidenceCaptureSaga(
+            context.identity.tenant_id,
+            evidence_id,
+            run.run_id,
+            action.action_id,
+            criterion.criterion_id,
+            command.source,
+            descriptor.artifact_uri,
+            descriptor.content_digest,
+            capture_definition,
+        )
+        await self._repository.start_evidence_capture(saga)
+        stored = await self._evidence_artifacts.store(
+            descriptor, observation.content, command.content_type
+        )
+        await self._evidence_artifacts.retrieve_verified(stored)
+        return await self._commit_evidence_capture(context, key, saga, stored)
+
+    async def _commit_evidence_capture(
+        self,
+        context: CommandContext,
+        key: str,
+        saga: EvidenceCaptureSaga,
+        stored: EvidenceArtifactDescriptor,
+    ) -> Evidence:
+        definition = saga.definition
+        raw_subjects = definition["subject_refs"]
+        if not isinstance(raw_subjects, list):
+            raise ValueError("Evidence capture Saga subject references are invalid")
+        captured_at = datetime.fromisoformat(str(definition["captured_at"]))
+        retained_until = datetime.fromisoformat(str(definition["retained_until"]))
+        subjects = tuple(
+            SubjectRef(
+                str(item["system"]),
+                str(item["subject_type"]),
+                str(item["subject_id"]),
+                str(item["version"]) if item.get("version") else None,
+            )
+            for item in raw_subjects
+            if isinstance(item, dict)
+        )
+        evidence = Evidence(
+            tenant_id=saga.tenant_id,
+            run_id=saga.run_id,
+            action_id=saga.action_id,
+            source=str(definition["source"]),
+            source_identity=str(definition["source_identity"]),
+            capture_method=EvidenceCaptureMethod.AUTHORITATIVE_READBACK,
+            reference=stored.artifact_uri,
+            observed_state=str(definition["observed_state"]),
+            content_digest=stored.content_digest,
+            classification=DataClassification(str(definition["classification"])),
+            valid_from=captured_at,
+            valid_until=datetime.fromisoformat(str(definition["valid_until"])),
+            integrity=EvidenceIntegrity.VERIFIED,
+            source_reference=str(definition["source_reference"]),
+            subject_refs=subjects,
+            retained_until=retained_until,
+            artifact_version_id=stored.version_id,
+            evidence_id=saga.evidence_id,
+            captured_at=captured_at,
+        )
+        async with self._repository.transaction():
+            await self._repository.add_evidence(evidence)
+            await self._repository.complete_evidence_capture(
+                context.identity.tenant_id, evidence.evidence_id
+            )
+            await self._repository.record_audit(
+                self._audit(context, "evidence.authoritative_captured", evidence)
+            )
+            await self._remember(context, key, evidence.evidence_id)
+        return evidence
+
+    async def request_evidence_deletion(
+        self, context: CommandContext, command: RequestEvidenceDeletion
+    ) -> EvidenceDeletionRecord:
+        """Retain metadata and a proof-bearing tombstone while deleting artifact bytes."""
+
+        self._require_any(context, frozenset({"platform_admin", "tenant_admin"}))
+        if self._evidence_artifacts is None:
+            raise RuntimeError("Evidence artifact deletion is not configured")
+        if not command.reason.strip():
+            raise ValueError("Evidence deletion reason must not be empty")
+        evidence = await self._repository.get_evidence(
+            context.identity.tenant_id, command.evidence_id
+        )
+        now = datetime.now(UTC)
+        record = EvidenceDeletionRecord(
+            context.identity.tenant_id,
+            evidence.evidence_id,
+            evidence.reference,
+            context.identity.actor_id,
+            command.reason,
+            now,
+        )
+        async with self._repository.transaction():
+            await self._repository.record_evidence_deletion(record)
+            await self._repository.record_audit(
+                self._audit(context, "evidence.deletion_requested", evidence)
+            )
+        descriptor = EvidenceArtifactDescriptor(
+            evidence.tenant_id,
+            evidence.evidence_id,
+            evidence.reference,
+            evidence.content_digest,
+            evidence.classification,
+            0,
+            evidence.retained_until or evidence.valid_until,
+            evidence.artifact_version_id,
+        )
+        try:
+            receipt = await self._evidence_artifacts.delete(descriptor)
+        except PermissionError as exc:
+            final = replace(
+                record,
+                status=EvidenceDeletionStatus.RETENTION_BLOCKED,
+                failure_reason=str(exc),
+            )
+        except Exception as exc:
+            final = replace(
+                record,
+                status=EvidenceDeletionStatus.FAILED,
+                failure_reason=type(exc).__name__,
+            )
+        else:
+            final = replace(
+                record,
+                status=EvidenceDeletionStatus.DELETED,
+                deleted_at=receipt.deleted_at,
+                provider_version_id=receipt.provider_version_id,
+                proof_digest=receipt.proof_digest,
+            )
+        async with self._repository.transaction():
+            await self._repository.record_evidence_deletion(final)
+            await self._repository.record_audit(
+                self._audit(context, f"evidence.deletion_{final.status.value}", evidence)
+            )
+        return final
 
     async def reconcile_unknown_action(
         self, context: CommandContext, command: ReconcileUnknownAction
@@ -920,6 +1188,8 @@ class GoalExecutionApplication:
 
     async def verify_outcome(self, context: CommandContext, command: VerifyOutcome) -> Outcome:
         self._require_any(context, self._OPERATORS)
+        if self._outcome_verifier is None:
+            raise RuntimeError("trusted Outcome verification is not configured")
         key = self._key("verify_outcome", context)
         async with self._repository.transaction():
             cached = await self._load_idempotency(context, key)
@@ -927,7 +1197,15 @@ class GoalExecutionApplication:
                 return await self._repository.get_outcome(context.identity.tenant_id, cached)
             run = await self._repository.get_run(context.identity.tenant_id, command.run_id)
             goal = await self._repository.get_goal(context.identity.tenant_id, run.goal_id)
-            if command.criterion_id not in {item.criterion_id for item in goal.success_criteria}:
+            criterion = next(
+                (
+                    item
+                    for item in goal.success_criteria
+                    if item.criterion_id == command.criterion_id
+                ),
+                None,
+            )
+            if criterion is None:
                 raise ValueError("Outcome criterion is not part of the Goal contract")
             items = tuple(
                 [
@@ -935,15 +1213,24 @@ class GoalExecutionApplication:
                     for item in command.evidence_ids
                 ]
             )
+            if any(item.run_id != run.run_id for item in items):
+                raise ValueError("Outcome Evidence must belong to the verified Run")
+            decision = await self._outcome_verifier.verify(
+                context.identity.tenant_id,
+                goal.subject_refs,
+                criterion,
+                items,
+                datetime.now(UTC),
+            )
             outcome = Outcome(
                 tenant_id=context.identity.tenant_id,
                 goal_id=goal.goal_id,
                 run_id=run.run_id,
                 criterion_id=command.criterion_id,
-                verifier_version=command.verifier_version,
-                status=command.status,
+                verifier_version=decision.verifier_version,
+                status=decision.status,
                 evidence=items,
-                verified_at=command.verified_at,
+                verified_at=decision.verified_at,
             )
             await self._repository.add_outcome(outcome)
             await self._repository.record_audit(self._audit(context, "outcome.verified", outcome))
@@ -1173,6 +1460,29 @@ class GoalExecutionApplication:
             )
             if hasattr(item, name)
         )
+        details: dict[str, Any] = {
+            "causation_id": str(context.causation_id),
+            "idempotency_key": context.idempotency_key,
+        }
+        for name in (
+            "goal_id",
+            "run_id",
+            "task_id",
+            "action_id",
+            "approval_id",
+            "criterion_id",
+            "policy_version",
+            "verifier_version",
+            "source_identity",
+            "tool_name",
+            "tool_version",
+        ):
+            if hasattr(item, name):
+                value = getattr(item, name)
+                details[name] = value.value if hasattr(value, "value") else str(value)
+        if isinstance(item, Outcome):
+            details["evidence_ids"] = [str(value) for value in item.evidence_ids]
+            details["outcome_status"] = item.status.value
         return AuditEvent(
             tenant_id=context.identity.tenant_id,
             actor_id=context.identity.actor_id,
@@ -1181,10 +1491,7 @@ class GoalExecutionApplication:
             object_type=object_type,
             object_id=object_id,
             correlation_id=context.correlation_id,
-            details={
-                "causation_id": str(context.causation_id),
-                "idempotency_key": context.idempotency_key,
-            },
+            details=details,
         )
 
 
@@ -1192,6 +1499,7 @@ __all__ = [
     "ActivateGoal",
     "AuthorizeActionAtExecutionTime",
     "CancelRun",
+    "CaptureAuthoritativeEvidence",
     "CommandContext",
     "CompleteRun",
     "CompleteTask",
@@ -1207,6 +1515,7 @@ __all__ = [
     "RecordActionAttempt",
     "RecordEvidence",
     "RequestApproval",
+    "RequestEvidenceDeletion",
     "RequestRun",
     "SatisfyOrFailGoal",
     "StartTask",

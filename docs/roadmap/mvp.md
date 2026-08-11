@@ -15,8 +15,8 @@
 - `unit-tested`：Capability Pack Manifest、Schema 校验和 Entry Point；
 - `unit-tested`：核心行业词汇隔离检查。
 
-已完成：P0-04 纵向 Application 用例、统一事务边界和参考验证链。未完成：真实 Tool、Policy、
-Evidence 基础设施端到端。
+已完成：P0-04 纵向 Application 用例、统一事务边界和参考验证链。未完成：连接真实第三方
+Tool、业务 Authority 与完整基础设施的外部纵向端到端。
 
 ## Phase 1：通用运行平台（`modeled` / 部分 `unit-tested`）
 
@@ -30,16 +30,18 @@ Evidence 基础设施端到端。
 未完成：Candidate Workflow 的生产发布接入、Cockpit 真实 API 数据源和 Consumer Contract。
 PostgreSQL/Temporal 的备份恢复、容量和长期运行证据仍未达到生产验证等级。
 
-## Phase 2：活动与证据骨架（`modeled` / 部分 `unit-tested`）
+## Phase 2：活动与证据骨架（部分 `integrated`）
 
 - `integrated`：Activity 函数使用进程级注入依赖，并通过真实 PostgreSQL/Temporal 恢复测试；
-- `unit-tested`：Evidence 内容摘要和分类逻辑（使用内存 Object Store）；
-- `unit-tested`：Outbox/Inbox 逻辑；
+- `integrated`：Evidence 预写入准入、KMS MinIO 版本/Object Lock、Saga 恢复、权威回读
+  Outcome、审计摘要链和删除墓碑/证明；
+- `integrated`：Outbox/Inbox 逻辑和 PostgreSQL 权威事务；
 - `unit-tested`：Unknown 对账、补偿和 Kill Switch 的隔离逻辑；
 - `unit-tested`：OIDC Validator；
 - `unit-tested`：MCP 适配器边界。
 
-未完成：MinIO 对象锁与租户策略、生产 Credential Broker、网络层出口控制和 Evidence Saga。
+未完成：生产 KMS/Bucket Policy、生产 Credential Broker、网络层出口控制、真实业务 Authority
+及第三方系统纵向端到端。
 
 ## Phase 3：进化发布算法骨架（`modeled` / 部分 `unit-tested`）
 
@@ -54,11 +56,10 @@ PostgreSQL/Temporal 的备份恢复、容量和长期运行证据仍未达到生
 
 ## 当前证据边界
 
-现有 CI 执行 Python lint/type/unit test、PostgreSQL 17、Temporal、OPA 组件测试和 Cockpit
+现有 CI 执行 Python lint/type/unit test、PostgreSQL 17、Temporal、OPA、KMS MinIO 组件测试和 Cockpit
 typecheck/build/静态页面 Playwright。以下项目尚未成为 CI 门禁，因此不得标记为
 `integrated` 或 `production-proven`：
 
-- MinIO Evidence Test；
 - API Consumer Contract Test；
 - 真实第三方系统纵向 E2E、生产级故障演练、依赖扫描和 Secret 扫描。
 

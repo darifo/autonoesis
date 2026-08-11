@@ -9,16 +9,16 @@
 |---|---|
 | `environment.yml` | `217cde3c5f49080c1b35f5a65051770ad2f9952f9cb6aad4a1c1d9a3696c3119` |
 | `pyproject.toml` | `6886d029e073f1d6d69785f0e599229fd74e619047b064d81aa25748ddad0c55` |
-| `uv.lock` | `0ef8b45b39aadf009274f8b818d3dbba0244f2a0da420baf4c3e91e85c9bf925` |
+| `uv.lock` | `95105fa4d566f4af92d38852a011c9d2c496dc2d6a591ced6fd97de227a0aeab` |
 | `package.json` | `50cb64a759a95e84c47f1cf5fe1cafa0167aa030bf0d5c806bda00eb48cfbf8a` |
 | `pnpm-lock.yaml` | `f8a6632ae5b7f346481d3cd8deb6252c6bb9fdb197a673c89067f09745e4e132` |
-| `versions.lock` | `99eec493a438c18cc24235bc325a4c8d9e45338ed4f2a75b4e794e4f421a4fe0` |
-| `infra/compose/docker-compose.yml` | `9bc9e8c9fd306fb36d65926dfc87252f1146c7d44ab3155de6c562eed7c9a9f5` |
+| `versions.lock` | `6ecd6840028c630705d0ad4103deadaf4c379d5beed4c3c4fcf75911c10970c4` |
+| `infra/compose/docker-compose.yml` | `edb93fe5466a30df2408e00a6cdac26de49b8cd6bf140f0776405e90e42e4783` |
 
 Configured Compose images (configuration inventory only; not integration evidence):
 
+- `${MINIO_IMAGE:-minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e}`
 - `jaegertracing/all-in-one:${JAEGER_VERSION:-1.69.0}`
-- `minio/minio:${MINIO_VERSION:-latest}`
 - `openpolicyagent/opa:${OPA_VERSION:-1.4.2}`
 - `otel/opentelemetry-collector:${OTEL_VERSION:-0.128.0}`
 - `postgres:${POSTGRES_VERSION:-17-alpine}`
@@ -27,16 +27,16 @@ Configured Compose images (configuration inventory only; not integration evidenc
 
 ## Database Schema Baseline
 
-- Alembic head: `0004_governed_tool_gateway`
-- SQLAlchemy metadata digest: `sha256:a96d4b9feda34f8177168959b2bcd03624a27b5412b1e4ff3e4e83d440e4b83c`
-- Declared tables (28): `action_attempts`, `actions`, `agent_versions`, `approvals`, `audit_events`, `budget_ledger`, `budgets`, `candidates`, `capability_packs`, `context_snapshots`, `deployments`, `evaluation_trials`, `evidence`, `goals`, `idempotency_records`, `improvement_proposals`, `inbox`, `kill_switches`, `outbox`, `outcomes`, `plans`, `policy_versions`, `releases`, `runs`, `skill_versions`, `tasks`, `tenants`, `tool_versions`
+- Alembic head: `0005_trusted_evidence_chain`
+- SQLAlchemy metadata digest: `sha256:4d305edf3324a1fd516ac97714798e72c30b37bc6538360de82f66ef94f676d3`
+- Declared tables (30): `action_attempts`, `actions`, `agent_versions`, `approvals`, `audit_events`, `budget_ledger`, `budgets`, `candidates`, `capability_packs`, `context_snapshots`, `deployments`, `evaluation_trials`, `evidence`, `evidence_capture_sagas`, `evidence_deletions`, `goals`, `idempotency_records`, `improvement_proposals`, `inbox`, `kill_switches`, `outbox`, `outcomes`, `plans`, `policy_versions`, `releases`, `runs`, `skill_versions`, `tasks`, `tenants`, `tool_versions`
 - Evidence level: `integrated`; CI migrates PostgreSQL 17 and runs authority/Application transaction component tests.
 
 ## HTTP API Contract Baseline
 
 - Application contract version: `0.1.0`
 - OpenAPI dialect: `3.1.x` (FastAPI default; generated contract is not frozen yet)
-- Route source digest: `sha256:0251826c6f280a881ddb84e2472f407e04cb2604da9dad12f89d6a916613ef25`
+- Route source digest: `sha256:0122299391148073ee75d78c9c049729901a6380775d2660144d4f106740c2ec`
 - Declared operations (40):
 
   - `DELETE /v1/kill-switches`
@@ -91,5 +91,5 @@ Configured Compose images (configuration inventory only; not integration evidenc
 
 - README engineering-preview disclosure: present.
 - Cockpit Prototype/Demo and static-data disclosure: present.
-- Highest allowed current maturity: `integrated` (PostgreSQL authority, Goal/Run Application use cases, Governed Tool Gateway, and Temporal orchestration).
-- Real-component integration evidence: CI PostgreSQL 17 migration, Temporal replay/recovery, OPA policy, and authority/Application/Gateway transaction tests.
+- Highest allowed current maturity: `integrated` (PostgreSQL authority, Goal/Run Application use cases, Governed Tool Gateway, Temporal orchestration, and the Evidence/Outcome/Audit trust chain).
+- Real-component integration evidence: CI PostgreSQL 17 migration, Temporal replay/recovery, OPA policy, KMS-backed MinIO retention/version tests, trusted readback, Evidence Saga recovery, and chained-audit transaction tests.

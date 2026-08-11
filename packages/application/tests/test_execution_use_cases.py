@@ -11,14 +11,18 @@ from autonoesis_adapters import (
     InMemoryAtomicExecutionReservations,
     InMemoryDelegationStore,
     InMemoryGatewayAudit,
+    InMemoryObjectStore,
     InMemoryPlatformStore,
     JsonSchemaValidator,
+    MinioEvidenceStore,
     StaticToolCatalog,
 )
 from autonoesis_application import (
     ActivateGoal,
+    AuthoritativeObservation,
     AuthorizeActionAtExecutionTime,
     CancelRun,
+    CaptureAuthoritativeEvidence,
     CommandContext,
     CompleteRun,
     CompleteTask,
@@ -33,7 +37,6 @@ from autonoesis_application import (
     ProposeAction,
     ReconcileUnknownAction,
     RecordActionAttempt,
-    RecordEvidence,
     RequestApproval,
     RequestRun,
     SatisfyOrFailGoal,
@@ -51,13 +54,10 @@ from autonoesis_domain import (
     ApprovalStatus,
     AssetStage,
     CompensationCapability,
-    DataClassification,
     Evidence,
-    EvidenceCaptureMethod,
     EvidenceIntegrity,
     GoalStatus,
     LoopPolicy,
-    OutcomeStatus,
     RiskLevel,
     RiskTier,
     RunStatus,
@@ -72,6 +72,29 @@ from autonoesis_runtime import (
     ToolReceipt,
     ToolResultStatus,
 )
+
+
+class _Readback:
+    async def observe(
+        self,
+        source: str,
+        tenant_id: UUID,
+        subject_refs: tuple[SubjectRef, ...],
+        criterion: SuccessCriterion,
+    ) -> AuthoritativeObservation:
+        _ = (tenant_id, subject_refs, criterion)
+        now = datetime.now(UTC)
+        content = b'{"status":"delivered"}'
+        return AuthoritativeObservation(
+            source,
+            "records-authority@1",
+            "records://42",
+            content.decode(),
+            content,
+            True,
+            now,
+            now + timedelta(minutes=5),
+        )
 
 
 def _manifest() -> dict[str, object]:
@@ -131,7 +154,13 @@ def _setup(
     )
     return (
         actual,
-        GoalExecutionApplication(actual.repository, actual, legacy_authorization_enabled=True),
+        GoalExecutionApplication(
+            actual.repository,
+            actual,
+            legacy_authorization_enabled=True,
+            evidence_artifacts=MinioEvidenceStore(InMemoryObjectStore()),
+            authoritative_readback=_Readback(),
+        ),
         identity,
     )
 
@@ -271,35 +300,21 @@ async def test_reference_goal_reaches_verified_outcome_without_receipt_shortcut(
         _context(identity, "complete-task-happy"),
         CompleteTask(task_id, True, "Action and readback completed"),
     )
-    now = datetime.now(UTC)
-    evidence = Evidence(
-        identity.tenant_id,
-        completed_action.run_id,
-        action.action_id,
-        "records",
-        "records-authority@1",
-        EvidenceCaptureMethod.AUTHORITATIVE_READBACK,
-        "records://42",
-        "status=delivered",
-        "a" * 64,
-        DataClassification.INTERNAL,
-        now - timedelta(seconds=1),
-        now + timedelta(minutes=5),
-        EvidenceIntegrity.VERIFIED,
-        captured_at=now,
-    )
-    await application.record_evidence(
-        _context(identity, "evidence-happy"), RecordEvidence(evidence)
+    evidence = await application.capture_authoritative_evidence(
+        _context(identity, "evidence-happy"),
+        CaptureAuthoritativeEvidence(
+            completed_action.run_id,
+            action.action_id,
+            "verified",
+            "records",
+        ),
     )
     outcome = await application.verify_outcome(
         _context(identity, "outcome-happy"),
         VerifyOutcome(
             completed_action.run_id,
             "verified",
-            "readback-verifier@1",
-            OutcomeStatus.VERIFIED,
             (evidence.evidence_id,),
-            now,
         ),
     )
     assert outcome.evidence == (evidence,)
@@ -561,7 +576,7 @@ async def test_application_executes_only_through_gateway_and_records_attempt_and
 
     assert execution.result.action.status is ActionStatus.SUCCEEDED
     assert execution.attempt.status is ActionAttemptStatus.SUCCEEDED
-    assert execution.evidence.integrity is EvidenceIntegrity.VERIFIED
+    assert execution.evidence.integrity is EvidenceIntegrity.UNVERIFIED
     assert store.actions[action.action_id].status is ActionStatus.SUCCEEDED
     assert len(store.action_attempts) == 1
     assert len(store.evidence) == 1
@@ -588,6 +603,46 @@ class _FailingRunSaveStore(InMemoryPlatformStore):
     async def save_run(self, *args: object, **kwargs: object) -> None:
         _ = (args, kwargs)
         raise ConcurrencyConflict("injected optimistic conflict")
+
+
+class _FailOnceEvidenceStore(InMemoryPlatformStore):
+    failures = 0
+
+    async def add_evidence(self, item: object) -> None:
+        if type(self).failures:
+            type(self).failures -= 1
+            raise ConcurrencyConflict("injected Evidence metadata commit failure")
+        assert isinstance(item, Evidence)
+        await super().add_evidence(item)
+
+
+@pytest.mark.asyncio
+async def test_evidence_saga_recovers_object_written_before_metadata_commit() -> None:
+    failing = _FailOnceEvidenceStore()
+    _, application, identity = _setup(failing)
+    _, _, action = await _prepare_action(application, identity, suffix="evidence-saga")
+    succeeded = (
+        action.transition_to(ActionStatus.AUTHORIZED)
+        .transition_to(ActionStatus.EXECUTING)
+        .transition_to(ActionStatus.SUCCEEDED)
+    )
+    failing.actions[action.action_id] = succeeded
+    command = CaptureAuthoritativeEvidence(
+        succeeded.run_id,
+        succeeded.action_id,
+        "verified",
+        "records",
+    )
+    context = _context(identity, "evidence-saga-capture")
+    _FailOnceEvidenceStore.failures = 1
+
+    with pytest.raises(ConcurrencyConflict, match="metadata commit failure"):
+        await application.capture_authoritative_evidence(context, command)
+    assert next(iter(failing.evidence_capture_sagas.values())).status.value == "pending"
+
+    recovered = await application.capture_authoritative_evidence(context, command)
+    assert recovered.evidence_id in failing.evidence
+    assert failing.evidence_capture_sagas[recovered.evidence_id].status.value == "committed"
 
 
 @pytest.mark.asyncio

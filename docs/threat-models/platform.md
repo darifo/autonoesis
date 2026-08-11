@@ -83,8 +83,12 @@
 **Controls**:
 - Outcome is an independent domain object, not derived from model output.
 - Verified Outcome must reference at least one Evidence object.
-- Evidence contains source, reference, observed_state, and integrity information.
+- Evidence contains configured source identity, external reference, Subject, Action, immutable
+  artifact Version ID/digest, validity, classification, retention and integrity information.
 - Tool receipt (HTTP 200) is not sufficient proof of business outcome.
+- Outcome status cannot be supplied by the caller; the verifier re-reads the configured authority
+  and verifies the exact object version before deciding.
+- Missing, stale, untrusted or digest-mismatched Evidence yields `unknown`, never Verified.
 
 ### T-006: Approval Parameter Substitution
 
@@ -135,7 +139,10 @@
 
 **Controls**:
 - Append-only audit records in PostgreSQL.
-- Digest chain linking audit events.
+- Per-Tenant monotonic sequence and SHA-256 chain serialized by a transaction advisory lock.
+- Application roles can insert but cannot update/delete Audit rows; Outbox carries the committed
+  Audit Ref and digest.
+- Deletion preserves Evidence metadata, Outcome relations, a tombstone and proof.
 - WORM (Write Once Read Many) storage export for compliance-critical environments.
 - Separation of duties: audit access is role-gated, separate from operational access.
 

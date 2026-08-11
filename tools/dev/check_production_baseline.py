@@ -252,9 +252,11 @@ def render_report() -> str:
             "- README engineering-preview disclosure: present.",
             "- Cockpit Prototype/Demo and static-data disclosure: present.",
             "- Highest allowed current maturity: `integrated` (PostgreSQL authority, "
-            "Goal/Run Application use cases, Governed Tool Gateway, and Temporal orchestration).",
+            "Goal/Run Application use cases, Governed Tool Gateway, Temporal orchestration, "
+            "and the Evidence/Outcome/Audit trust chain).",
             "- Real-component integration evidence: CI PostgreSQL 17 migration, Temporal replay/"
-            "recovery, OPA policy, and authority/Application/Gateway transaction tests.",
+            "recovery, OPA policy, KMS-backed MinIO retention/version tests, trusted readback, "
+            "Evidence Saga recovery, and chained-audit transaction tests.",
             "",
         ]
     )

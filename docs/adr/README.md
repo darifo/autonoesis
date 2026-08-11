@@ -21,3 +21,4 @@ ADRs record decisions affecting authoritative ownership, process boundaries, pro
 - [ADR-0014: Make Application Use Cases the Governed Execution Writer](0014-application-owned-execution-transactions.md)
 - [ADR-0015: Make Tool Execution an Atomic Governed Boundary](0015-atomic-governed-tool-execution.md)
 - [ADR-0016: Make Temporal Run Orchestration Recoverable and Deterministic](0016-durable-temporal-run-orchestration.md)
+- [ADR-0017: Require Immutable Evidence and Independent Outcome Verification](0017-trusted-evidence-outcome-audit-chain.md)

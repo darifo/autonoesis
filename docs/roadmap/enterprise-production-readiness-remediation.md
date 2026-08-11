@@ -363,24 +363,24 @@ Resolve Identity
 
 #### 实施任务
 
-- [ ] 在存储前完成数据分类、Secret 检测和保留策略判断；
-- [ ] 实现真实 S3/MinIO ObjectStore Adapter；
-- [ ] 使用 Tenant 前缀、服务端加密、版本控制和对象锁策略；
-- [ ] Evidence 元数据与对象写入采用可恢复的 Saga/Outbox 协调；
-- [ ] Evidence 包含内容摘要、来源、采集器、Action、Subject、时间和分类；
-- [ ] 实现外部权威 Readback Verifier；
-- [ ] Outcome Verifier 按 Success Criterion 判断，不依赖 Tool Receipt；
-- [ ] Audit 使用追加写、摘要链或不可变导出；
-- [ ] 删除请求生成墓碑、传播任务和删除证明，不静默破坏证据链；
-- [ ] 修复虚构 `audit://` 引用，只有真实持久化后才能返回 Audit Ref。
+- [x] 在存储前完成数据分类、Secret 检测和保留策略判断；
+- [x] 实现真实 S3/MinIO ObjectStore Adapter；
+- [x] 使用 Tenant 前缀、服务端加密、版本控制和对象锁策略；
+- [x] Evidence 元数据与对象写入采用可恢复的 Saga/Outbox 协调；
+- [x] Evidence 包含内容摘要、来源、采集器、Action、Subject、时间和分类；
+- [x] 实现外部权威 Readback Verifier；
+- [x] Outcome Verifier 按 Success Criterion 判断，不依赖 Tool Receipt；
+- [x] Audit 使用追加写、摘要链或不可变导出；
+- [x] 删除请求生成墓碑、传播任务和删除证明，不静默破坏证据链；
+- [x] 修复虚构 `audit://` 引用，只有真实持久化后才能返回 Audit Ref。
 
 #### 验收
 
-- 任意 Verified Outcome 都能追溯到完整 Evidence；
-- 修改对象内容会导致摘要校验失败；
-- Evidence 缺失、过期或来源不可信时 Outcome 不能验证；
-- 删除传播后仍保留合规所需的墓碑和审计关系；
-- 审计链可以重建 Actor、Principal、Policy、Approval、Action 和 Outcome。
+- [x] 任意 Verified Outcome 都能追溯到完整 Evidence；
+- [x] 修改对象内容会导致摘要校验失败；
+- [x] Evidence 缺失、过期或来源不可信时 Outcome 不能验证；
+- [x] 删除传播后仍保留合规所需的墓碑和审计关系；
+- [x] 审计链可以重建 Actor、Principal、Policy、Approval、Action 和 Outcome。
 
 ### P0-08 建立真实基础设施测试基线
 
@@ -408,8 +408,8 @@ Resolve Identity
 - [ ] TypeScript Typecheck/Build/Unit Tests；
 - [x] PostgreSQL Component Tests；
 - [x] Temporal Workflow Tests 和 Replay Tests；
-- [ ] OPA Policy Tests；
-- [ ] MinIO Evidence Tests；
+- [x] OPA Policy Tests；
+- [x] MinIO Evidence Tests；
 - [ ] API Consumer Contract Tests；
 - [x] Cockpit Playwright Tests；
 - [ ] 依赖和 Secret 扫描；
@@ -422,10 +422,10 @@ P0 只有在下列条件全部满足时才能结束：
 
 - [ ] 参考 Capability Pack 通过真实纵向闭环完成一个 Verified Goal；
 - [ ] Run 成功前真实产生 Plan、Task、Action、Evidence 和 Outcome；
-- [ ] 所有权威状态可跨 API/Worker 重启恢复；
-- [ ] 外部写并发和崩溃测试证明不会重复副作用；
-- [ ] Tool Gateway 无已知生产绕过路径；
-- [ ] PostgreSQL、Temporal、OPA、MinIO 集成测试进入 CI；
+- [x] 所有权威状态可跨 API/Worker 重启恢复；
+- [x] 外部写并发和崩溃测试证明不会重复副作用；
+- [x] Tool Gateway 无已知生产绕过路径；
+- [x] PostgreSQL、Temporal、OPA、MinIO 集成测试进入 CI；
 - [x] README 和 Cockpit 只声明已经验证的能力；
 - [x] 仍未完成的功能有明确的 Prototype/Planned 标识。
 

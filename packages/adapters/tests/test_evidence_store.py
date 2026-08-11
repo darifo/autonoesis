@@ -1,95 +1,140 @@
-# mypy: disable_error_code = no-untyped-def
-"""Tests for MinioEvidenceStore."""
+"""Tests for immutable tenant-prefixed Evidence storage and admission policy."""
+
+from dataclasses import replace
+from datetime import UTC, datetime, timedelta
+from hashlib import sha256
+from uuid import uuid4
 
 import pytest
-from autonoesis_adapters.evidence_store import (
-    InMemoryObjectStore,
-    MinioEvidenceStore,
+from autonoesis_adapters.evidence_store import InMemoryObjectStore, MinioEvidenceStore
+from autonoesis_application import (
+    EvidenceAdmissionPolicy,
+    EvidenceAdmissionRejected,
+    EvidenceArtifactDescriptor,
 )
-from autonoesis_contracts import DataClassification
+from autonoesis_domain import DataClassification
 
 
-@pytest.fixture
-def store() -> MinioEvidenceStore:
-    return MinioEvidenceStore(InMemoryObjectStore())
+def descriptor(
+    store: MinioEvidenceStore,
+    content: bytes,
+    *,
+    retained_until: datetime | None = None,
+) -> EvidenceArtifactDescriptor:
+    return store.describe(
+        uuid4(),
+        uuid4(),
+        sha256(content).hexdigest(),
+        DataClassification.INTERNAL,
+        len(content),
+        retained_until or datetime.now(UTC) + timedelta(days=30),
+    )
 
 
-class TestMinioEvidenceStore:
-    @pytest.mark.asyncio
-    async def test_store_and_retrieve(self, store) -> None:
-        artifact = await store.store("ev-1", "hello world", "text/plain")
+@pytest.mark.asyncio
+async def test_store_retrieve_and_tenant_prefix() -> None:
+    store = MinioEvidenceStore(InMemoryObjectStore())
+    item = descriptor(store, b"hello world")
+    stored = await store.store(item, b"hello world", "text/plain")
 
-        retrieved = await store.retrieve(artifact.artifact_uri)
-        assert retrieved == b"hello world"
+    assert await store.retrieve_verified(stored) == b"hello world"
+    assert f"tenants/{item.tenant_id}/evidence/{item.evidence_id}/" in stored.artifact_uri
+    assert stored.version_id is not None
 
-    @pytest.mark.asyncio
-    async def test_content_addressing_deduplicates(self, store) -> None:
-        a1 = await store.store("ev-1", "same content")
-        a2 = await store.store("ev-2", "same content")
 
-        # Same digest — content-addressed storage
-        assert a1.content_digest == a2.content_digest
-        assert a1.size_bytes == a2.size_bytes
+@pytest.mark.asyncio
+async def test_retry_same_content_reuses_object_version() -> None:
+    store = MinioEvidenceStore(InMemoryObjectStore())
+    item = descriptor(store, b"same content")
 
-    @pytest.mark.asyncio
-    async def test_different_content_different_digest(self, store) -> None:
-        a1 = await store.store("ev-1", "content A")
-        a2 = await store.store("ev-2", "content B")
+    first = await store.store(item, b"same content", "application/octet-stream")
+    second = await store.store(item, b"same content", "application/octet-stream")
+    assert second.version_id == first.version_id
 
-        assert a1.content_digest != a2.content_digest
 
-    @pytest.mark.asyncio
-    async def test_delete(self, store) -> None:
-        artifact = await store.store("ev-1", "to be deleted")
-        await store.delete(artifact.artifact_uri)
+@pytest.mark.asyncio
+async def test_descriptor_mismatch_is_rejected_before_storage() -> None:
+    store = MinioEvidenceStore(InMemoryObjectStore())
+    item = descriptor(store, b"expected")
 
-        retrieved = await store.retrieve(artifact.artifact_uri)
-        assert retrieved is None
+    with pytest.raises(ValueError, match="immutable descriptor"):
+        await store.store(item, b"modified", "application/octet-stream")
 
-    @pytest.mark.asyncio
-    async def test_retrieve_missing(self, store) -> None:
-        result = await store.retrieve("minio://autonoesis-evidence/nonexistent/key")
-        assert result is None
 
-    @pytest.mark.asyncio
-    async def test_classify_internal(self, store) -> None:
-        artifact = await store.store("ev-1", "routine operation log")
-        assert artifact.classification == DataClassification.INTERNAL
+@pytest.mark.asyncio
+async def test_tampering_is_detected_on_retrieval() -> None:
+    raw = InMemoryObjectStore()
+    store = MinioEvidenceStore(raw)
+    item = await store.store(descriptor(store, b"original"), b"original", "text/plain")
+    bucket, key = store._location(item.artifact_uri)
+    assert item.version_id is not None
+    raw.tamper(bucket, key, item.version_id, b"modified")
 
-    @pytest.mark.asyncio
-    async def test_classify_confidential_with_email(self, store) -> None:
-        artifact = await store.store("ev-1", "user: alice@example.com completed task")
-        assert artifact.classification == DataClassification.CONFIDENTIAL
+    with pytest.raises(ValueError, match="digest verification failed"):
+        await store.retrieve_verified(item)
 
-    @pytest.mark.asyncio
-    async def test_classify_confidential_with_ssn(self, store) -> None:
-        artifact = await store.store("ev-1", "subject: 123-45-6789 approved")
-        assert artifact.classification == DataClassification.CONFIDENTIAL
 
-    @pytest.mark.asyncio
-    async def test_classify_restricted_with_secret(self, store) -> None:
-        artifact = await store.store("ev-1", "config: api_key=sk-abc123")
-        assert artifact.classification == DataClassification.RESTRICTED
+@pytest.mark.asyncio
+async def test_object_retention_blocks_delete_then_emits_proof() -> None:
+    raw = InMemoryObjectStore()
+    store = MinioEvidenceStore(raw)
+    locked = await store.store(descriptor(store, b"locked"), b"locked", "text/plain")
+    with pytest.raises(PermissionError, match="retention"):
+        await store.delete(locked)
 
-    @pytest.mark.asyncio
-    async def test_classify_restricted_with_private_key(self, store) -> None:
-        artifact = await store.store("ev-1", "-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEA...")
-        assert artifact.classification == DataClassification.RESTRICTED
+    expired = descriptor(
+        store,
+        b"expired",
+        retained_until=datetime.now(UTC) - timedelta(seconds=1),
+    )
+    expired = await store.store(expired, b"expired", "text/plain")
+    receipt = await store.delete(expired)
+    assert len(receipt.proof_digest) == 64
+    with pytest.raises(LookupError, match="missing"):
+        await store.retrieve_verified(expired)
 
-    @pytest.mark.asyncio
-    async def test_artifact_uri_format(self, store) -> None:
-        artifact = await store.store("ev-42", b"\x00\x01\x02", "application/octet-stream")
 
-        assert artifact.artifact_uri.startswith("minio://autonoesis-evidence/evidence/ev-42/")
-        assert artifact.content_digest == artifact.artifact_uri.split("/")[-1]
-        assert artifact.size_bytes == 3
+@pytest.mark.asyncio
+async def test_unsupported_artifact_uri_is_rejected() -> None:
+    store = MinioEvidenceStore(InMemoryObjectStore())
+    item = replace(descriptor(store, b"content"), artifact_uri="https://example.test/object")
+    with pytest.raises(ValueError, match="unsupported Evidence artifact URI"):
+        await store.retrieve_verified(item)
 
-    @pytest.mark.asyncio
-    async def test_unsupported_uri_scheme_raises(self, store) -> None:
-        with pytest.raises(ValueError, match="unsupported artifact URI scheme"):
-            await store.retrieve("s3://bucket/key")
 
-    @pytest.mark.asyncio
-    async def test_invalid_uri_raises(self, store) -> None:
-        with pytest.raises(ValueError, match="invalid artifact URI"):
-            await store.retrieve("minio://bucket")  # no key part
+def test_admission_classifies_pii_and_rejects_secrets_before_write() -> None:
+    policy = EvidenceAdmissionPolicy()
+    assert (
+        policy.admit(
+            b"alice@example.com",
+            DataClassification.INTERNAL,
+            DataClassification.CONFIDENTIAL,
+            30,
+        )
+        is DataClassification.CONFIDENTIAL
+    )
+    with pytest.raises(EvidenceAdmissionRejected, match="detected secret"):
+        policy.admit(
+            b"api_key=secret-value",
+            DataClassification.INTERNAL,
+            DataClassification.RESTRICTED,
+            30,
+        )
+
+
+def test_admission_enforces_goal_classification_and_retention() -> None:
+    policy = EvidenceAdmissionPolicy()
+    with pytest.raises(EvidenceAdmissionRejected, match="classification exceeds"):
+        policy.admit(
+            b"alice@example.com",
+            DataClassification.INTERNAL,
+            DataClassification.INTERNAL,
+            30,
+        )
+    with pytest.raises(EvidenceAdmissionRejected, match="retention"):
+        policy.admit(
+            b"ordinary",
+            DataClassification.INTERNAL,
+            DataClassification.INTERNAL,
+            0,
+        )

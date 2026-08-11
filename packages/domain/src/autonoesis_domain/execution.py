@@ -6,6 +6,7 @@ from enum import StrEnum
 from hashlib import sha256
 from uuid import UUID, uuid4
 
+from autonoesis_domain.goals import SubjectRef
 from autonoesis_domain.transitions import (
     SYSTEM_ACTOR_ID,
     StateTransition,
@@ -488,6 +489,10 @@ class Evidence:
     valid_from: datetime
     valid_until: datetime
     integrity: EvidenceIntegrity
+    source_reference: str = ""
+    subject_refs: tuple[SubjectRef, ...] = ()
+    retained_until: datetime | None = None
+    artifact_version_id: str | None = None
     evidence_id: UUID = field(default_factory=uuid4)
     captured_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
@@ -508,6 +513,15 @@ class Evidence:
             raise ValueError("evidence timestamps must be timezone-aware")
         if self.valid_from > self.captured_at or self.valid_until < self.captured_at:
             raise ValueError("evidence capture must fall within its validity interval")
+        if self.source_reference and not self.source_reference.strip():
+            raise ValueError("evidence source reference must not be blank")
+        if len(set(self.subject_refs)) != len(self.subject_refs):
+            raise ValueError("evidence subject references must be unique")
+        if self.retained_until is not None:
+            if self.retained_until.tzinfo is None:
+                raise ValueError("evidence retention timestamp must be timezone-aware")
+            if self.retained_until < self.captured_at:
+                raise ValueError("evidence retention cannot end before capture")
 
 
 @dataclass(frozen=True, slots=True)

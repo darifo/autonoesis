@@ -7,7 +7,15 @@ from datetime import UTC, datetime
 from typing import Any, cast
 from uuid import UUID, uuid4
 
-from autonoesis_application import AuditEvent, ConcurrencyConflict, RecordNotFound
+from autonoesis_application import (
+    AuditEvent,
+    ConcurrencyConflict,
+    EvidenceCaptureSaga,
+    EvidenceCaptureStatus,
+    EvidenceDeletionRecord,
+    EvidenceDeletionStatus,
+    RecordNotFound,
+)
 from autonoesis_capability import CapabilityPackManifest, GoalTypeManifest, parse_manifest
 from autonoesis_domain import (
     Action,
@@ -39,7 +47,7 @@ from autonoesis_domain import (
     Task,
     Trial,
 )
-from sqlalchemy import func, insert, select, update
+from sqlalchemy import func, insert, select, text, update
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import CursorResult
@@ -94,6 +102,8 @@ from autonoesis_adapters.persistence_schema import (
     deployments,
     evaluation_trials,
     evidence,
+    evidence_capture_sagas,
+    evidence_deletions,
     goals,
     idempotency_records,
     improvement_proposals,
@@ -174,8 +184,7 @@ class SqlAlchemyPlatformRepository:
         now = datetime.now(UTC)
         async with self._sessions.begin() as session:
             await self._scope_tenant(session, audit.tenant_id)
-            await self._add_audit(session, audit, now)
-            await self._add_outbox(session, audit, now)
+            await self._add_audit_and_outbox(session, audit, now)
 
     async def _scope_tenant(self, session: AsyncSession, tenant_id: UUID) -> None:
         if self._uses_postgresql:
@@ -346,8 +355,7 @@ class SqlAlchemyPlatformRepository:
                     created_at=goal.created_at,
                 )
             )
-            await self._add_audit(session, audit, goal.created_at)
-            await self._add_outbox(session, audit, goal.created_at)
+            await self._add_audit_and_outbox(session, audit, goal.created_at)
 
     async def get_goal(self, tenant_id: UUID, goal_id: UUID) -> GoalContract:
         async with self._sessions() as session:
@@ -398,8 +406,7 @@ class SqlAlchemyPlatformRepository:
             if result.rowcount != 1:
                 raise ConcurrencyConflict("goal optimistic version changed")
             now = datetime.now(UTC)
-            await self._add_audit(session, audit, now)
-            await self._add_outbox(session, audit, now)
+            await self._add_audit_and_outbox(session, audit, now)
 
     async def add_run(self, run: Run, audit: AuditEvent) -> None:
         async with self._sessions.begin() as session:
@@ -417,8 +424,7 @@ class SqlAlchemyPlatformRepository:
                     created_at=run.created_at,
                 )
             )
-            await self._add_audit(session, audit, run.created_at)
-            await self._add_outbox(session, audit, run.created_at)
+            await self._add_audit_and_outbox(session, audit, run.created_at)
 
     async def get_run(self, tenant_id: UUID, run_id: UUID) -> Run:
         async with self._sessions() as session:
@@ -474,8 +480,7 @@ class SqlAlchemyPlatformRepository:
                     now,
                 )
             else:
-                await self._add_audit(session, audit, now)
-                await self._add_outbox(session, audit, now)
+                await self._add_audit_and_outbox(session, audit, now)
 
     async def list_runs(self, tenant_id: UUID, goal_id: UUID | None = None) -> tuple[Run, ...]:
         async with self._sessions() as session:
@@ -849,6 +854,171 @@ class SqlAlchemyPlatformRepository:
     async def list_evidence(self, tenant_id: UUID) -> tuple[Evidence, ...]:
         return tuple(evidence_from_row(row) for row in await self._list_rows(evidence, tenant_id))
 
+    async def start_evidence_capture(self, saga: EvidenceCaptureSaga) -> None:
+        """Persist the recoverable intent before the external object write."""
+
+        now = datetime.now(UTC)
+        async with self._sessions.begin() as session:
+            await self._scope_tenant(session, saga.tenant_id)
+            existing = (
+                (
+                    await session.execute(
+                        select(evidence_capture_sagas).where(
+                            evidence_capture_sagas.c.tenant_id == str(saga.tenant_id),
+                            evidence_capture_sagas.c.evidence_id == str(saga.evidence_id),
+                        )
+                    )
+                )
+                .mappings()
+                .one_or_none()
+            )
+            if existing is not None:
+                if any(
+                    (
+                        existing["run_id"] != str(saga.run_id),
+                        existing["action_id"] != str(saga.action_id),
+                        existing["artifact_uri"] != saga.artifact_uri,
+                        existing["expected_digest"] != saga.expected_digest,
+                        existing["definition"] != saga.definition,
+                    )
+                ):
+                    raise ConcurrencyConflict(
+                        "Evidence capture id was reused with different immutable content"
+                    )
+                return
+            await session.execute(
+                insert(evidence_capture_sagas).values(
+                    id=str(saga.evidence_id),
+                    tenant_id=str(saga.tenant_id),
+                    evidence_id=str(saga.evidence_id),
+                    run_id=str(saga.run_id),
+                    action_id=str(saga.action_id),
+                    criterion_id=saga.criterion_id,
+                    source=saga.source,
+                    artifact_uri=saga.artifact_uri,
+                    expected_digest=saga.expected_digest,
+                    status=saga.status.value,
+                    definition=saga.definition,
+                    failure_reason=saga.failure_reason,
+                    optimistic_version=1,
+                    created_at=now,
+                )
+            )
+            await self._record_fact(
+                session,
+                saga.tenant_id,
+                "evidence.capture_requested",
+                "evidence",
+                saga.evidence_id,
+                1,
+                now,
+            )
+
+    async def get_evidence_capture(self, tenant_id: UUID, evidence_id: UUID) -> EvidenceCaptureSaga:
+        row = await self._get_row(evidence_capture_sagas, tenant_id, evidence_id)
+        return EvidenceCaptureSaga(
+            UUID(row["tenant_id"]),
+            UUID(row["evidence_id"]),
+            UUID(row["run_id"]),
+            UUID(row["action_id"]),
+            row["criterion_id"],
+            row["source"],
+            row["artifact_uri"],
+            row["expected_digest"],
+            row["definition"],
+            EvidenceCaptureStatus(row["status"]),
+            row["failure_reason"],
+        )
+
+    async def complete_evidence_capture(self, tenant_id: UUID, evidence_id: UUID) -> None:
+        async with self._sessions.begin() as session:
+            await self._scope_tenant(session, tenant_id)
+            result = await session.execute(
+                update(evidence_capture_sagas)
+                .where(
+                    evidence_capture_sagas.c.tenant_id == str(tenant_id),
+                    evidence_capture_sagas.c.evidence_id == str(evidence_id),
+                    evidence_capture_sagas.c.status == EvidenceCaptureStatus.PENDING.value,
+                )
+                .values(
+                    status=EvidenceCaptureStatus.COMMITTED.value,
+                    optimistic_version=evidence_capture_sagas.c.optimistic_version + 1,
+                    updated_at=datetime.now(UTC),
+                )
+            )
+            if cast(CursorResult[Any], result).rowcount != 1:
+                status = await session.scalar(
+                    select(evidence_capture_sagas.c.status).where(
+                        evidence_capture_sagas.c.tenant_id == str(tenant_id),
+                        evidence_capture_sagas.c.evidence_id == str(evidence_id),
+                    )
+                )
+                if status != EvidenceCaptureStatus.COMMITTED.value:
+                    raise ConcurrencyConflict("Evidence capture Saga is not pending")
+
+    async def record_evidence_deletion(self, record: EvidenceDeletionRecord) -> None:
+        async with self._sessions.begin() as session:
+            await self._scope_tenant(session, record.tenant_id)
+            existing = await session.scalar(
+                select(evidence_deletions.c.id).where(
+                    evidence_deletions.c.tenant_id == str(record.tenant_id),
+                    evidence_deletions.c.evidence_id == str(record.evidence_id),
+                )
+            )
+            values = {
+                "artifact_uri": record.artifact_uri,
+                "requested_by": str(record.requested_by),
+                "reason": record.reason,
+                "requested_at": record.requested_at,
+                "status": record.status.value,
+                "deleted_at": record.deleted_at,
+                "provider_version_id": record.provider_version_id,
+                "proof_digest": record.proof_digest,
+                "failure_reason": record.failure_reason,
+                "updated_at": datetime.now(UTC),
+            }
+            if existing is None:
+                await session.execute(
+                    insert(evidence_deletions).values(
+                        id=str(record.evidence_id),
+                        tenant_id=str(record.tenant_id),
+                        evidence_id=str(record.evidence_id),
+                        optimistic_version=1,
+                        created_at=record.requested_at,
+                        **values,
+                    )
+                )
+            else:
+                await session.execute(
+                    update(evidence_deletions)
+                    .where(
+                        evidence_deletions.c.tenant_id == str(record.tenant_id),
+                        evidence_deletions.c.evidence_id == str(record.evidence_id),
+                    )
+                    .values(
+                        **values,
+                        optimistic_version=evidence_deletions.c.optimistic_version + 1,
+                    )
+                )
+
+    async def get_evidence_deletion(
+        self, tenant_id: UUID, evidence_id: UUID
+    ) -> EvidenceDeletionRecord:
+        row = await self._get_row(evidence_deletions, tenant_id, evidence_id)
+        return EvidenceDeletionRecord(
+            UUID(row["tenant_id"]),
+            UUID(row["evidence_id"]),
+            row["artifact_uri"],
+            UUID(row["requested_by"]),
+            row["reason"],
+            row["requested_at"],
+            EvidenceDeletionStatus(row["status"]),
+            row["deleted_at"],
+            row["provider_version_id"],
+            row["proof_digest"],
+            row["failure_reason"],
+        )
+
     async def add_outcome(self, item: Outcome) -> None:
         now = datetime.now(UTC)
         evidence_ids = {str(value) for value in item.evidence_ids}
@@ -1178,6 +1348,18 @@ class SqlAlchemyPlatformRepository:
         return tuple(release_from_row(row) for row in await self._list_rows(releases, tenant_id))
 
     async def list_audit_events(self, tenant_id: UUID) -> tuple[AuditEvent, ...]:
+        async with self._sessions() as session:
+            await self._scope_tenant(session, tenant_id)
+            rows = tuple(
+                dict(row)
+                for row in (
+                    await session.execute(
+                        select(audit_events)
+                        .where(audit_events.c.tenant_id == str(tenant_id))
+                        .order_by(audit_events.c.sequence.asc().nulls_first())
+                    )
+                ).mappings()
+            )
         return tuple(
             AuditEvent(
                 tenant_id=UUID(row["tenant_id"]),
@@ -1188,8 +1370,13 @@ class SqlAlchemyPlatformRepository:
                 object_id=row["object_id"],
                 correlation_id=UUID(row["correlation_id"]),
                 details=row["details"],
+                event_id=UUID(row["id"]),
+                sequence=row["sequence"],
+                previous_digest=row["previous_digest"],
+                event_digest=row["event_digest"],
+                created_at=row["created_at"],
             )
-            for row in await self._list_rows(audit_events, tenant_id)
+            for row in rows
         )
 
     async def get_idempotency(
@@ -1427,26 +1614,60 @@ class SqlAlchemyPlatformRepository:
             correlation_id=uuid4(),
             details={"version": version},
         )
-        await self._add_audit(session, audit, created_at)
-        await self._add_outbox(session, audit, created_at)
+        await self._add_audit_and_outbox(session, audit, created_at)
 
-    @staticmethod
-    async def _add_audit(session: AsyncSession, audit: AuditEvent, created_at: datetime) -> None:
+    async def _add_audit_and_outbox(
+        self,
+        session: AsyncSession,
+        audit: AuditEvent,
+        created_at: datetime,
+    ) -> AuditEvent:
+        chained = await self._add_audit(session, audit, created_at)
+        await self._add_outbox(session, chained, created_at)
+        return chained
+
+    async def _add_audit(
+        self, session: AsyncSession, audit: AuditEvent, created_at: datetime
+    ) -> AuditEvent:
+        if self._uses_postgresql:
+            await session.execute(
+                text("SELECT pg_advisory_xact_lock(hashtextextended(:tenant_id, 0))"),
+                {"tenant_id": str(audit.tenant_id)},
+            )
+        previous = (
+            await session.execute(
+                select(audit_events.c.sequence, audit_events.c.event_digest)
+                .where(
+                    audit_events.c.tenant_id == str(audit.tenant_id),
+                    audit_events.c.sequence.is_not(None),
+                    audit_events.c.event_digest.is_not(None),
+                )
+                .order_by(audit_events.c.sequence.desc())
+                .limit(1)
+            )
+        ).one_or_none()
+        sequence = int(previous.sequence) + 1 if previous is not None else 1
+        previous_digest = str(previous.event_digest) if previous is not None else "0" * 64
+        chained = audit.chained(sequence, previous_digest, created_at)
         await session.execute(
             insert(audit_events).values(
-                id=str(uuid4()),
-                tenant_id=str(audit.tenant_id),
-                actor_id=str(audit.actor_id),
-                principal_id=str(audit.principal_id),
-                event_type=audit.event_type,
-                object_type=audit.object_type,
-                object_id=audit.object_id,
-                correlation_id=str(audit.correlation_id),
-                details=audit.details,
+                id=str(chained.event_id),
+                tenant_id=str(chained.tenant_id),
+                actor_id=str(chained.actor_id),
+                principal_id=str(chained.principal_id),
+                event_type=chained.event_type,
+                object_type=chained.object_type,
+                object_id=chained.object_id,
+                correlation_id=str(chained.correlation_id),
+                details=chained.details,
+                sequence=chained.sequence,
+                previous_digest=chained.previous_digest,
+                event_digest=chained.event_digest,
                 optimistic_version=1,
                 created_at=created_at,
             )
         )
+        return chained
 
     @staticmethod
     async def _add_outbox(session: AsyncSession, audit: AuditEvent, created_at: datetime) -> None:
@@ -1460,6 +1681,9 @@ class SqlAlchemyPlatformRepository:
                     "object_type": audit.object_type,
                     "object_id": audit.object_id,
                     "correlation_id": str(audit.correlation_id),
+                    "audit_ref": audit.audit_ref,
+                    "audit_sequence": audit.sequence,
+                    "audit_digest": audit.event_digest,
                     "details": audit.details,
                 },
                 optimistic_version=1,
