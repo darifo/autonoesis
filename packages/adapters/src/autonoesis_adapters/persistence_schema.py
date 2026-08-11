@@ -203,6 +203,31 @@ actions = tenant_table(
         "unknown",
     ),
 )
+action_attempts = tenant_table(
+    "action_attempts",
+    Column("run_id", String(36), nullable=False),
+    Column("action_id", String(36), nullable=False),
+    Column("invocation_id", String(36), nullable=False),
+    Column("status", String(32), nullable=False),
+    Column("idempotency_key", String(300), nullable=False),
+    Column("receipt_ref", String(1000), nullable=False),
+    Column("definition", JSON, nullable=False),
+    tenant_reference("run_id", "runs"),
+    tenant_reference("action_id", "actions"),
+    ForeignKeyConstraint(
+        ["tenant_id", "run_id", "action_id"],
+        ["actions.tenant_id", "actions.run_id", "actions.id"],
+        name="fk_action_attempts_action_run",
+    ),
+    UniqueConstraint(
+        "tenant_id",
+        "invocation_id",
+        "status",
+        name="uq_action_attempt_invocation_status",
+    ),
+    UniqueConstraint("tenant_id", "idempotency_key", name="uq_action_attempt_idempotency"),
+    status_check("started", "succeeded", "failed", "unknown"),
+)
 approvals = tenant_table(
     "approvals",
     Column("run_id", String(36), nullable=False),
@@ -228,6 +253,7 @@ context_snapshots = tenant_table(
     Column("content_digest", String(64), nullable=False),
     tenant_reference("goal_id", "goals"),
     tenant_reference("run_id", "runs"),
+    UniqueConstraint("tenant_id", "run_id", name="uq_context_snapshot_run"),
 )
 evidence = tenant_table(
     "evidence",
@@ -391,7 +417,9 @@ AUTHORITATIVE_TABLES = (
     plans,
     tasks,
     actions,
+    action_attempts,
     approvals,
+    context_snapshots,
     evidence,
     outcomes,
     budget_ledger,

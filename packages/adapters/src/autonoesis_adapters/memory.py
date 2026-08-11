@@ -1,7 +1,10 @@
 """Deterministic in-memory platform adapters for tests and offline development."""
 
 from collections import defaultdict
-from uuid import UUID
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from copy import deepcopy
+from uuid import UUID, uuid4
 
 from autonoesis_application import (
     AuditEvent,
@@ -11,15 +14,22 @@ from autonoesis_application import (
 )
 from autonoesis_capability import CapabilityPackManifest, GoalTypeManifest
 from autonoesis_domain import (
+    Action,
+    ActionAttempt,
     AgentVersion,
     ApprovalRequest,
+    BudgetAmount,
     CandidateVersion,
+    ContextSnapshot,
     Deployment,
     Evidence,
     GoalContract,
     ImprovementProposal,
+    Outcome,
+    Plan,
     Release,
     Run,
+    Task,
     Trial,
 )
 from autonoesis_runtime import ToolReceipt
@@ -29,6 +39,11 @@ class InMemoryPlatformStore:
     def __init__(self) -> None:
         self.goals: dict[UUID, GoalContract] = {}
         self.runs: dict[UUID, Run] = {}
+        self.context_snapshots: dict[UUID, ContextSnapshot] = {}
+        self.plans: dict[UUID, Plan] = {}
+        self.tasks: dict[UUID, Task] = {}
+        self.actions: dict[UUID, Action] = {}
+        self.action_attempts: dict[UUID, ActionAttempt] = {}
         self.goal_types: dict[str, GoalTypeManifest] = {}
         self.packs: dict[str, CapabilityPackManifest] = {}
         self.tenant_goal_types: dict[tuple[UUID, str], GoalTypeManifest] = {}
@@ -38,8 +53,9 @@ class InMemoryPlatformStore:
         self.tools: dict[str, dict[str, object]] = {}
         self.policies: dict[str, dict[str, object]] = {}
         self.budgets: dict[str, dict[str, object]] = {}
-        self.approvals: dict[UUID, ApprovalRequest | dict[str, object]] = {}
-        self.evidence: dict[UUID, Evidence | dict[str, object]] = {}
+        self.approvals: dict[UUID, ApprovalRequest] = {}
+        self.evidence: dict[UUID, Evidence] = {}
+        self.outcomes: dict[UUID, Outcome] = {}
         self.audits: list[AuditEvent] = []
         self.proposals: dict[UUID, ImprovementProposal] = {}
         self.candidates: dict[UUID, CandidateVersion] = {}
@@ -47,6 +63,24 @@ class InMemoryPlatformStore:
         self.releases: dict[UUID, Release] = {}
         self.trials: dict[UUID, Trial] = {}
         self.idempotency: dict[tuple[UUID, str], UUID] = {}
+        self.idempotency_digests: dict[tuple[UUID, str], str] = {}
+
+    @property
+    def repository(self) -> "InMemoryPlatformStore":
+        return self
+
+    @asynccontextmanager
+    async def transaction(self) -> AsyncIterator[None]:
+        snapshot = deepcopy(self.__dict__)
+        try:
+            yield
+        except BaseException:
+            self.__dict__.clear()
+            self.__dict__.update(snapshot)
+            raise
+
+    async def record_audit(self, audit: AuditEvent) -> None:
+        self.audits.append(audit)
 
     @staticmethod
     def _assert_tenant(expected: UUID, actual: UUID) -> None:
@@ -115,6 +149,13 @@ class InMemoryPlatformStore:
     async def list_goals(self, tenant_id: UUID) -> tuple[GoalContract, ...]:
         return tuple(goal for goal in self.goals.values() if goal.tenant_id == tenant_id)
 
+    async def save_goal(self, goal: GoalContract, expected_version: int, audit: AuditEvent) -> None:
+        current = await self.get_goal(goal.tenant_id, goal.goal_id)
+        if current.version != expected_version:
+            raise ConcurrencyConflict("goal optimistic version changed")
+        self.goals[goal.goal_id] = goal
+        self.audits.append(audit)
+
     async def add_run(self, run: Run, audit: AuditEvent) -> None:
         self.runs[run.run_id] = run
         self.audits.append(audit)
@@ -127,17 +168,126 @@ class InMemoryPlatformStore:
         self._assert_tenant(tenant_id, run.tenant_id)
         return run
 
-    async def save_run(self, run: Run, expected_version: int) -> None:
+    async def save_run(
+        self, run: Run, expected_version: int, audit: AuditEvent | None = None
+    ) -> None:
         current = await self.get_run(run.tenant_id, run.run_id)
         if current.optimistic_version != expected_version:
             raise ConcurrencyConflict("run optimistic version changed")
         self.runs[run.run_id] = run
+        if audit is not None:
+            self.audits.append(audit)
 
     async def list_runs(self, tenant_id: UUID, goal_id: UUID | None = None) -> tuple[Run, ...]:
         return tuple(
             run
             for run in self.runs.values()
             if run.tenant_id == tenant_id and (goal_id is None or run.goal_id == goal_id)
+        )
+
+    async def add_context_snapshot(self, snapshot: ContextSnapshot) -> None:
+        if any(
+            item.tenant_id == snapshot.tenant_id and item.run_id == snapshot.run_id
+            for item in self.context_snapshots.values()
+        ):
+            raise ConcurrencyConflict("run context snapshot already exists")
+        self.context_snapshots[snapshot.snapshot_id] = snapshot
+
+    async def get_context_snapshot(self, tenant_id: UUID, run_id: UUID) -> ContextSnapshot:
+        for item in self.context_snapshots.values():
+            if item.tenant_id == tenant_id and item.run_id == run_id:
+                return item
+        raise RecordNotFound(f"context for run {run_id} was not found")
+
+    async def add_plan(self, plan: Plan) -> None:
+        self.plans[plan.plan_id] = plan
+        for task in plan.tasks:
+            self.tasks[task.task_id] = task
+
+    async def get_plan(self, tenant_id: UUID, plan_id: UUID) -> Plan:
+        try:
+            plan = self.plans[plan_id]
+        except KeyError as exc:
+            raise RecordNotFound(f"plan {plan_id} was not found") from exc
+        self._assert_tenant(tenant_id, plan.tenant_id)
+        return Plan(
+            plan.tenant_id,
+            plan.goal_id,
+            plan.run_id,
+            tuple(self.tasks[task.task_id] for task in plan.tasks),
+            plan.version,
+            plan.plan_id,
+        )
+
+    async def get_task(self, tenant_id: UUID, task_id: UUID) -> Task:
+        try:
+            task = self.tasks[task_id]
+        except KeyError as exc:
+            raise RecordNotFound(f"task {task_id} was not found") from exc
+        self._assert_tenant(tenant_id, task.tenant_id)
+        return task
+
+    async def list_tasks(self, tenant_id: UUID, run_id: UUID) -> tuple[Task, ...]:
+        return tuple(
+            task
+            for task in self.tasks.values()
+            if task.tenant_id == tenant_id and task.run_id == run_id
+        )
+
+    async def save_task(self, task: Task, expected_version: int) -> None:
+        current = await self.get_task(task.tenant_id, task.task_id)
+        if current.optimistic_version != expected_version:
+            raise ConcurrencyConflict("task optimistic version changed")
+        self.tasks[task.task_id] = task
+
+    async def add_action(self, action: Action) -> None:
+        if any(
+            item.tenant_id == action.tenant_id and item.idempotency_key == action.idempotency_key
+            for item in self.actions.values()
+        ):
+            raise ConcurrencyConflict("action idempotency key already exists")
+        self.actions[action.action_id] = action
+
+    async def get_action(self, tenant_id: UUID, action_id: UUID) -> Action:
+        try:
+            action = self.actions[action_id]
+        except KeyError as exc:
+            raise RecordNotFound(f"action {action_id} was not found") from exc
+        self._assert_tenant(tenant_id, action.tenant_id)
+        return action
+
+    async def save_action(self, action: Action, expected_version: int) -> None:
+        current = await self.get_action(action.tenant_id, action.action_id)
+        if current.optimistic_version != expected_version:
+            raise ConcurrencyConflict("action optimistic version changed")
+        self.actions[action.action_id] = action
+
+    async def list_actions(self, tenant_id: UUID, run_id: UUID) -> tuple[Action, ...]:
+        return tuple(
+            action
+            for action in self.actions.values()
+            if action.tenant_id == tenant_id and action.run_id == run_id
+        )
+
+    async def add_action_attempt(self, attempt: ActionAttempt) -> None:
+        if any(
+            item.tenant_id == attempt.tenant_id
+            and (
+                (item.invocation_id == attempt.invocation_id and item.status is attempt.status)
+                or item.idempotency_key == attempt.idempotency_key
+            )
+            for item in self.action_attempts.values()
+        ):
+            raise ConcurrencyConflict("action attempt already recorded")
+        self.action_attempts[attempt.attempt_id] = attempt
+
+    async def list_action_attempts(
+        self, tenant_id: UUID, action_id: UUID
+    ) -> tuple[ActionAttempt, ...]:
+        return tuple(
+            item
+            for item in self.action_attempts.values()
+            if item.tenant_id == tenant_id and item.action_id == action_id
         )
 
     async def add_skill(
@@ -197,32 +347,15 @@ class InMemoryPlatformStore:
     async def list_audit_events(self, tenant_id: UUID) -> tuple[AuditEvent, ...]:
         return tuple(item for item in self.audits if item.tenant_id == tenant_id)
 
-    async def list_approvals(
-        self, tenant_id: UUID
-    ) -> tuple[ApprovalRequest | dict[str, object], ...]:
-        return tuple(
-            item
-            for item in self.approvals.values()
-            if (
-                item.tenant_id == tenant_id
-                if isinstance(item, ApprovalRequest)
-                else item.get("tenant_id") == str(tenant_id)
-            )
-        )
+    async def list_approvals(self, tenant_id: UUID) -> tuple[ApprovalRequest, ...]:
+        return tuple(item for item in self.approvals.values() if item.tenant_id == tenant_id)
 
-    async def get_approval(
-        self, tenant_id: UUID, approval_id: UUID
-    ) -> ApprovalRequest | dict[str, object]:
+    async def get_approval(self, tenant_id: UUID, approval_id: UUID) -> ApprovalRequest:
         try:
             item = self.approvals[approval_id]
         except KeyError as exc:
             raise RecordNotFound("approval was not found") from exc
-        actual_tenant = (
-            item.tenant_id
-            if isinstance(item, ApprovalRequest)
-            else UUID(str(item.get("tenant_id")))
-        )
-        if actual_tenant != tenant_id:
+        if item.tenant_id != tenant_id:
             raise RecordNotFound("approval was not found")
         return item
 
@@ -231,30 +364,61 @@ class InMemoryPlatformStore:
 
     async def save_approval(self, approval: ApprovalRequest, expected_version: int) -> None:
         current = await self.get_approval(approval.tenant_id, approval.approval_id)
-        if not isinstance(current, ApprovalRequest):
-            raise TypeError("domain approval expected")
         if current.optimistic_version != expected_version:
             raise ConcurrencyConflict("approval optimistic version changed")
         self.approvals[approval.approval_id] = approval
 
-    async def save_approval_record(
-        self, tenant_id: UUID, approval_id: UUID, value: dict[str, object]
-    ) -> None:
-        current = await self.get_approval(tenant_id, approval_id)
-        if not isinstance(current, dict):
-            raise TypeError("legacy approval record expected")
-        current.update(value)
+    async def add_evidence(self, item: Evidence) -> None:
+        action = await self.get_action(item.tenant_id, item.action_id)
+        if action.run_id != item.run_id:
+            raise ValueError("evidence must bind the authoritative Action and Run")
+        self.evidence[item.evidence_id] = item
 
-    async def list_evidence(self, tenant_id: UUID) -> tuple[Evidence | dict[str, object], ...]:
+    async def get_evidence(self, tenant_id: UUID, evidence_id: UUID) -> Evidence:
+        try:
+            item = self.evidence[evidence_id]
+        except KeyError as exc:
+            raise RecordNotFound(f"evidence {evidence_id} was not found") from exc
+        self._assert_tenant(tenant_id, item.tenant_id)
+        return item
+
+    async def list_evidence(self, tenant_id: UUID) -> tuple[Evidence, ...]:
+        return tuple(item for item in self.evidence.values() if item.tenant_id == tenant_id)
+
+    async def add_outcome(self, item: Outcome) -> None:
+        for submitted in item.evidence:
+            persisted = await self.get_evidence(item.tenant_id, submitted.evidence_id)
+            if persisted != submitted:
+                raise ValueError(
+                    "outcome evidence must exactly match the authoritative persisted record"
+                )
+        self.outcomes[item.outcome_id] = item
+
+    async def get_outcome(self, tenant_id: UUID, outcome_id: UUID) -> Outcome:
+        try:
+            item = self.outcomes[outcome_id]
+        except KeyError as exc:
+            raise RecordNotFound(f"outcome {outcome_id} was not found") from exc
+        self._assert_tenant(tenant_id, item.tenant_id)
+        return item
+
+    async def list_outcomes(self, tenant_id: UUID, run_id: UUID) -> tuple[Outcome, ...]:
         return tuple(
             item
-            for item in self.evidence.values()
-            if (
-                item.tenant_id == tenant_id
-                if isinstance(item, Evidence)
-                else item.get("tenant_id") == str(tenant_id)
-            )
+            for item in self.outcomes.values()
+            if item.tenant_id == tenant_id and item.run_id == run_id
         )
+
+    async def record_budget_entry(
+        self,
+        tenant_id: UUID,
+        run_id: UUID,
+        category: str,
+        amount: BudgetAmount,
+        reference: str,
+    ) -> UUID:
+        _ = (tenant_id, run_id, category, amount, reference)
+        return uuid4()
 
     async def add_trial(self, trial: Trial) -> None:
         self.trials[trial.trial_id] = trial
@@ -279,11 +443,35 @@ class InMemoryPlatformStore:
     async def list_releases(self, tenant_id: UUID) -> tuple[Release, ...]:
         return tuple(item for item in self.releases.values() if item.tenant_id == tenant_id)
 
-    async def get_idempotency(self, tenant_id: UUID, key: str) -> UUID | None:
+    async def get_idempotency(
+        self, tenant_id: UUID, key: str, request_digest: str | None = None
+    ) -> UUID | None:
+        if (
+            request_digest is not None
+            and (accepted := self.idempotency_digests.get((tenant_id, key))) is not None
+            and accepted != request_digest
+        ):
+            raise ConcurrencyConflict("idempotency key was reused with a different request")
         return self.idempotency.get((tenant_id, key))
 
-    async def put_idempotency(self, tenant_id: UUID, key: str, external_id: UUID) -> None:
+    async def put_idempotency(
+        self,
+        tenant_id: UUID,
+        key: str,
+        external_id: UUID,
+        request_digest: str | None = None,
+    ) -> None:
+        current = self.idempotency.get((tenant_id, key))
+        if current is not None and (
+            current != external_id
+            or (
+                request_digest is not None
+                and self.idempotency_digests.get((tenant_id, key)) != request_digest
+            )
+        ):
+            raise ConcurrencyConflict("idempotency key is already bound to a different result")
         self.idempotency[(tenant_id, key)] = external_id
+        self.idempotency_digests[(tenant_id, key)] = request_digest or "0" * 64
 
     async def add_candidate(self, candidate: CandidateVersion) -> None:
         self.candidates[candidate.candidate_id] = candidate

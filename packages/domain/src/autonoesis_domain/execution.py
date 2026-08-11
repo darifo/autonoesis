@@ -48,6 +48,13 @@ class ActionStatus(StrEnum):
     UNKNOWN = "unknown"
 
 
+class ActionAttemptStatus(StrEnum):
+    STARTED = "started"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    UNKNOWN = "unknown"
+
+
 class DecisionKind(StrEnum):
     EXECUTE = "execute"
     APPROVE = "approve"
@@ -304,6 +311,36 @@ class Action:
             )
         )
         return sha256(canonical.encode("utf-8")).hexdigest()
+
+
+@dataclass(frozen=True, slots=True)
+class ActionAttempt:
+    """Immutable execution or reconciliation receipt for one Action invocation."""
+
+    tenant_id: UUID
+    run_id: UUID
+    action_id: UUID
+    invocation_id: UUID
+    status: ActionAttemptStatus
+    idempotency_key: str
+    receipt_ref: str
+    executor_identity: str
+    failure_reason: str | None = None
+    attempt_id: UUID = field(default_factory=uuid4)
+    recorded_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+
+    def __post_init__(self) -> None:
+        if any(
+            not value.strip()
+            for value in (self.idempotency_key, self.receipt_ref, self.executor_identity)
+        ):
+            raise ValueError("action attempt identity, idempotency, and receipt are required")
+        if self.recorded_at.tzinfo is None:
+            raise ValueError("action attempt timestamp must be timezone-aware")
+        if self.status is ActionAttemptStatus.FAILED and not (
+            self.failure_reason and self.failure_reason.strip()
+        ):
+            raise ValueError("failed action attempt requires a failure reason")
 
 
 @dataclass(frozen=True, slots=True)

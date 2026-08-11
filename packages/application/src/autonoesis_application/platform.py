@@ -2,23 +2,19 @@
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Protocol
+from hashlib import sha256
+from typing import Any, Protocol, cast
 from uuid import UUID
 
-from autonoesis_capability import GoalTypeManifest, validate_payload
+from autonoesis_capability import GoalTypeManifest
 from autonoesis_domain import (
     AgentVersion,
-    BudgetAmount,
     BudgetUnit,
     DataClassification,
-    DataPolicy,
     ExecutionMode,
     GoalContract,
-    GoalStatus,
-    JsonObject,
     RiskTier,
     Run,
-    RunStatus,
     SubjectRef,
     SuccessCriterion,
 )
@@ -106,48 +102,37 @@ class CreateGoalHandler:
         self._catalog = catalog
 
     async def __call__(self, identity: IdentityContext, command: CreateGoal) -> GoalContract:
-        goal_type = await self._catalog.get_goal_type(identity.tenant_id, command.goal_type)
-        validate_payload(goal_type, command.input_payload)
-        goal = GoalContract(
-            tenant_id=identity.tenant_id,
-            goal_type=command.goal_type,
-            statement=command.statement,
-            desired_outcome=command.desired_outcome,
-            subject_refs=command.subject_refs,
-            success_criteria=command.success_criteria,
-            constraints=command.constraints,
-            owner_id=command.owner_id,
-            risk_tier=command.risk_tier,
-            budget_limit=BudgetAmount(
-                command.budget_limit or goal_type.default_budget, command.budget_unit
-            ),
-            deadline=command.deadline,
-            input_payload=JsonObject.from_value(command.input_payload),
-            delegation_id=command.delegation_id,
-            data_policy=DataPolicy(
-                maximum_classification=command.maximum_classification,
-                allowed_regions=command.allowed_regions,
-                retention_days=command.retention_days,
-            ),
-            execution_mode=command.execution_mode,
-            max_concurrent_runs=command.max_concurrent_runs,
-        ).transition_to(
-            GoalStatus.ACTIVE,
-            actor_id=identity.actor_id,
-            reason="goal accepted by CreateGoal",
+        from autonoesis_application.execution import (
+            ActivateGoal,
+            CommandContext,
+            GoalExecutionApplication,
         )
-        audit = AuditEvent(
-            tenant_id=identity.tenant_id,
-            actor_id=identity.actor_id,
-            principal_id=identity.principal_id,
-            event_type="goal.created",
-            object_type="goal",
-            object_id=str(goal.goal_id),
-            correlation_id=command.correlation_id,
-            details={"goal_type": goal.goal_type, "version": goal.version},
+        from autonoesis_application.repositories import ApplicationRepository
+
+        repository = getattr(self._repository, "repository", self._repository)
+        application = GoalExecutionApplication(
+            cast(ApplicationRepository, repository), self._catalog
         )
-        await self._repository.add_goal(goal, audit)
-        return goal
+        created = await application.create_goal(
+            CommandContext(
+                identity,
+                command.correlation_id,
+                command.correlation_id,
+                f"compat-create:{command.correlation_id}",
+                sha256(repr(command).encode("utf-8")).hexdigest(),
+            ),
+            command,
+        )
+        return await application.activate_goal(
+            CommandContext(
+                identity,
+                command.correlation_id,
+                command.correlation_id,
+                f"compat-activate:{command.correlation_id}",
+                sha256(f"activate\n{created.goal_id}\ncompatibility".encode()).hexdigest(),
+            ),
+            ActivateGoal(created.goal_id, "compatibility handler activated Goal"),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -162,36 +147,24 @@ class StartGoalRunHandler:
         self._catalog = catalog
 
     async def __call__(self, identity: IdentityContext, command: StartGoalRun) -> Run:
-        goal = await self._repository.get_goal(identity.tenant_id, command.goal_id)
-        active_runs = await self._repository.list_runs(identity.tenant_id, goal.goal_id)
-        goal.assert_run_request_allowed(
-            sum(
-                run.status
-                in {
-                    RunStatus.PENDING,
-                    RunStatus.RUNNING,
-                    RunStatus.BLOCKED,
-                    RunStatus.AWAITING_EVIDENCE,
-                }
-                for run in active_runs
-            )
+        from autonoesis_application.execution import (
+            CommandContext,
+            GoalExecutionApplication,
+            RequestRun,
         )
-        goal_type = await self._catalog.get_goal_type(identity.tenant_id, goal.goal_type)
-        agent = await self._catalog.get_stable_agent(identity.tenant_id, goal_type.agent)
-        run = Run(
-            tenant_id=identity.tenant_id,
-            goal_id=goal.goal_id,
-            agent_version_id=agent.agent_version_id,
+        from autonoesis_application.repositories import ApplicationRepository
+
+        repository = getattr(self._repository, "repository", self._repository)
+        application = GoalExecutionApplication(
+            cast(ApplicationRepository, repository), self._catalog
         )
-        audit = AuditEvent(
-            tenant_id=identity.tenant_id,
-            actor_id=identity.actor_id,
-            principal_id=identity.principal_id,
-            event_type="run.requested",
-            object_type="run",
-            object_id=str(run.run_id),
-            correlation_id=command.correlation_id,
-            details={"goal_id": str(goal.goal_id), "agent_version_id": str(agent.agent_version_id)},
+        return await application.request_run(
+            CommandContext(
+                identity,
+                command.correlation_id,
+                command.correlation_id,
+                f"compat-request-run:{command.correlation_id}",
+                sha256(repr(command).encode("utf-8")).hexdigest(),
+            ),
+            RequestRun(command.goal_id),
         )
-        await self._repository.add_run(run, audit)
-        return run

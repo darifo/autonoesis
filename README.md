@@ -185,7 +185,7 @@ current evidence has been recalibrated below; P0 remediation remains in progress
 
 | Legacy Phase | Current Maturity | Production Readiness Gap |
 |---|---|---|
-| **Phase 0** | `unit-tested` | P0-02 contracts are frozen; P0-04 vertical Application use cases remain incomplete. |
+| **Phase 0** | `integrated` / partly `unit-tested` | P0-02 contracts are frozen; P0-04 Application use cases have PostgreSQL component evidence, while real Tool/Evidence end-to-end execution remains incomplete. |
 | **Phase 1** | PostgreSQL `integrated`; otherwise partial `unit-tested` | Production assembly uses PostgreSQL authority; API consumer contracts and multi-process E2E remain. |
 | **Phase 2** | `modeled` / partial `unit-tested` | PostgreSQL is a CI gate; MinIO, OPA, and Temporal recovery are not. |
 | **Phase 3** | `unit-tested` | Deployment/Release persistence exists; real Shadow traffic, Canary routing, and Release Executor remain. |

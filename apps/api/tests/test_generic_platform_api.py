@@ -3,6 +3,7 @@ from uuid import UUID, uuid4
 
 from autonoesis_adapters import InMemoryPlatformStore
 from autonoesis_api.main import build_app
+from autonoesis_domain import ApprovalRequest
 from fastapi.testclient import TestClient
 
 
@@ -95,6 +96,19 @@ def test_generic_goal_run_and_evolution_api() -> None:
         headers={**identity, "Idempotency-Key": "goal-1"},
     )
     assert duplicate.json()["goal_id"] == created.json()["goal_id"]
+    conflicting = client.post(
+        "/v1/goals",
+        json={**goal_payload, "statement": "different request"},
+        headers={**identity, "Idempotency-Key": "goal-1"},
+    )
+    assert conflicting.status_code == 409
+    assert conflicting.json()["error"]["code"] == "concurrency_conflict"
+    assert created.json()["status"] == "draft"
+    activated = client.post(
+        f"/v1/goals/{created.json()['goal_id']}/activation",
+        headers={**identity, "Idempotency-Key": "activate-goal-1"},
+    )
+    assert activated.json()["status"] == "active"
     run = client.post(
         f"/v1/goals/{created.json()['goal_id']}/runs",
         # Idempotency keys are scoped by operation, so clients may reuse a key safely.
@@ -191,11 +205,21 @@ def test_approval_decision_is_tenant_scoped_and_digest_bound() -> None:
     tenant_id, actor_id, approval_id = uuid4(), uuid4(), uuid4()
     store = InMemoryPlatformStore()
     digest = "a" * 64
-    store.approvals[approval_id] = {
-        "tenant_id": str(tenant_id),
-        "status": "pending",
-        "action_digest": digest,
-    }
+    store.approvals[approval_id] = ApprovalRequest(
+        tenant_id=tenant_id,
+        run_id=uuid4(),
+        action_id=uuid4(),
+        action_digest=digest,
+        tool_version="tool@1",
+        operation="read",
+        resource_scope="records/1",
+        argument_digest=digest,
+        policy_version="policy@1",
+        impact_summary="read record",
+        required_role="approver",
+        expires_at=datetime.now(UTC) + timedelta(minutes=5),
+        approval_id=approval_id,
+    )
     client = TestClient(build_app(store))
     response = client.post(
         f"/v1/approvals/{approval_id}/decision",

@@ -11,8 +11,8 @@
 严格类型和隔离单元测试，执行 PostgreSQL 17 迁移与权威存储组件测试，以及验证 Cockpit
 的类型检查、构建和静态页面浏览器测试。
 
-这些证据支持 PostgreSQL 权威存储的 `integrated` 声明；其余能力最高仍为 `unit-tested`，
-没有任何能力达到 `production-proven`。
+这些证据支持 PostgreSQL 权威存储和 Goal/Run Application 用例的 `integrated` 声明；
+其余能力最高仍为 `unit-tested`，没有任何能力达到 `production-proven`。
 
 ## 生产限制
 
@@ -25,7 +25,8 @@
 - Candidate/Shadow/Canary 已持久化 Deployment/Release，但没有真实流量双跑、分流、观察窗口和独立 Release Executor；
 - Cockpit 使用静态演示数据，不从公共 API 获取运营指标；
 - Compose 含本地默认凭证和未固定的 MinIO 镜像，不满足生产供应链要求；
-- 尚无完整 Goal → Plan → Task → Action → Evidence → Verified Outcome 的真实纵向 E2E。
+- 完整 Goal → Plan → Task → Action → Evidence → Verified Outcome 只在 Application 自动化
+  参考链中通过；尚未连接真实 Temporal、Tool、OPA 和 MinIO 形成外部纵向 E2E。
 
 ## 版本权威
 

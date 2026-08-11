@@ -15,7 +15,8 @@
 - `unit-tested`：Capability Pack Manifest、Schema 校验和 Entry Point；
 - `unit-tested`：核心行业词汇隔离检查。
 
-未完成：P0-04 要求的纵向 Application 用例集成。
+已完成：P0-04 纵向 Application 用例、统一事务边界和参考验证链。未完成：真实 Tool、Policy、
+Evidence 基础设施端到端。
 
 ## Phase 1：通用运行平台（`modeled` / 部分 `unit-tested`）
 
@@ -26,8 +27,8 @@
 - `unit-tested`：通用 API、SDK 和 Cockpit 构建；
 - `unit-tested`：Field Service 示例能力包与评估案例解析。
 
-未完成：Temporal Replay/恢复、Cockpit 真实 API 数据源、Consumer Contract 和统一
-Application 用例路径。PostgreSQL 的备份恢复、容量和长期运行证据仍未达到生产验证等级。
+未完成：Temporal Replay/恢复、Cockpit 真实 API 数据源和 Consumer Contract。PostgreSQL
+的备份恢复、容量和长期运行证据仍未达到生产验证等级。
 
 ## Phase 2：活动与证据骨架（`modeled` / 部分 `unit-tested`）
 
@@ -54,15 +55,15 @@ OPA 组件测试、凭证 Broker、受控出口和 Evidence Saga。
 
 ## 当前证据边界
 
-现有 CI 只执行 Python lint/type/unit test 和 Cockpit typecheck/build/静态页面 Playwright。以下项目尚未成为
-CI 门禁，因此不得标记为 `integrated` 或 `production-proven`：
+现有 CI 执行 Python lint/type/unit test、PostgreSQL 17 迁移/组件测试和 Cockpit
+typecheck/build/静态页面 Playwright。以下项目尚未成为 CI 门禁，因此不得标记为
+`integrated` 或 `production-proven`：
 
-- PostgreSQL Component Test 和 RLS 攻击测试；
 - Temporal Workflow Test、Replay 和 Worker Crash 恢复；
 - OPA Policy Test；
 - MinIO Evidence Test；
 - API Consumer Contract Test；
-- 纵向 E2E、故障注入、依赖扫描和 Secret 扫描。
+- 真实外部系统纵向 E2E、故障注入、依赖扫描和 Secret 扫描。
 
 详细限制见[生产就绪基线](production-readiness-baseline.md)，整改优先级以
 [企业级生产就绪整改路线](enterprise-production-readiness-remediation.md)为准。

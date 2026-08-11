@@ -7,8 +7,9 @@ reviewed_at = "2026-08-11"
 [application]
 workspace = "0.1.0"
 http_api = "0.1.0"
-database_revision = "0002_authoritative_state"
+database_revision = "0003_application_use_cases"
 postgres_authority_contract = 1
+vertical_use_case_contract = 1
 workflow_contract = "unversioned-prototype"
 
 [domain]

@@ -165,7 +165,7 @@ autonoesis/
 
 | 旧阶段 | 当前成熟度 | 生产就绪缺口 |
 |---|---|---|
-| **Phase 0** | `unit-tested` | P0-02 契约已冻结，P0-04 纵向 Application 用例仍未完成。 |
+| **Phase 0** | `integrated` / 部分 `unit-tested` | P0-02 契约已冻结；P0-04 Application 用例通过 PostgreSQL 组件集成，真实 Tool/Evidence 端到端仍未完成。 |
 | **Phase 1** | PostgreSQL `integrated`；其余部分 `unit-tested` | 生产装配使用 PostgreSQL 权威状态，仍缺 Consumer Contract 和多进程 E2E。 |
 | **Phase 2** | `modeled` / 部分 `unit-tested` | PostgreSQL 已进入 CI，MinIO、OPA、Temporal 恢复尚未进入。 |
 | **Phase 3** | `unit-tested` | Deployment/Release 已持久化，仍缺真实 Shadow 流量、Canary 分流和 Release Executor。 |

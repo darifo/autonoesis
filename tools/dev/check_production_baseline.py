@@ -138,7 +138,7 @@ def validate_claim_boundaries() -> list[str]:
         ),
         "maturity matrix limits integrated claims": (
             "docs/roadmap/capability-maturity.md",
-            "当前仅 PostgreSQL 权威存储达到 `integrated`",
+            "当前 PostgreSQL 权威存储和 Goal/Run Application 用例达到 `integrated`",
         ),
         "Cockpit global prototype banner": (
             "apps/cockpit/src/main.tsx",
@@ -217,7 +217,7 @@ def render_report() -> str:
             f"- SQLAlchemy metadata digest: `sha256:{schema_digest}`",
             f"- Declared tables ({len(tables)}): " + ", ".join(f"`{table}`" for table in tables),
             "- Evidence level: `integrated`; CI migrates PostgreSQL 17 and runs "
-            "authority component tests.",
+            "authority/Application transaction component tests.",
             "",
             "## HTTP API Contract Baseline",
             "",
@@ -244,9 +244,10 @@ def render_report() -> str:
             "",
             "- README engineering-preview disclosure: present.",
             "- Cockpit Prototype/Demo and static-data disclosure: present.",
-            "- Highest allowed current maturity: `integrated` (PostgreSQL authority only).",
+            "- Highest allowed current maturity: `integrated` (PostgreSQL authority and "
+            "Goal/Run Application use cases).",
             "- Real-component integration evidence: CI PostgreSQL 17 migration and "
-            "authority tests.",
+            "authority/Application transaction tests.",
             "",
         ]
     )

@@ -25,6 +25,8 @@ from autonoesis_domain.evaluation import (
 )
 from autonoesis_domain.execution import (
     Action,
+    ActionAttempt,
+    ActionAttemptStatus,
     ActionExecutionEnvelope,
     ActionStatus,
     ApprovalRequest,
@@ -75,6 +77,8 @@ from autonoesis_domain.values import (
 
 __all__ = [
     "Action",
+    "ActionAttempt",
+    "ActionAttemptStatus",
     "ActionExecutionEnvelope",
     "ActionStatus",
     "AgentDefinition",

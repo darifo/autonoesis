@@ -1,5 +1,8 @@
 """PostgreSQL repositories for tenant-authoritative platform aggregates."""
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from contextvars import ContextVar
 from datetime import UTC, datetime
 from typing import Any, cast
 from uuid import UUID, uuid4
@@ -8,12 +11,14 @@ from autonoesis_application import AuditEvent, ConcurrencyConflict, RecordNotFou
 from autonoesis_capability import CapabilityPackManifest, GoalTypeManifest, parse_manifest
 from autonoesis_domain import (
     Action,
+    ActionAttempt,
     AgentVersion,
     ApprovalRequest,
     AssetStage,
     BudgetAmount,
     BudgetUnit,
     CandidateVersion,
+    ContextSnapshot,
     DataClassification,
     DataPolicy,
     Deployment,
@@ -35,6 +40,8 @@ from autonoesis_domain import (
     Trial,
 )
 from sqlalchemy import func, insert, select, update
+from sqlalchemy.dialects.postgresql import insert as postgresql_insert
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -44,12 +51,16 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from autonoesis_adapters.persistence_codec import (
+    action_attempt_from_row,
+    action_attempt_payload,
     action_from_row,
     action_payload,
     approval_from_row,
     approval_payload,
     candidate_from_row,
     candidate_payload,
+    context_snapshot_from_row,
+    context_snapshot_payload,
     deployment_from_row,
     deployment_payload,
     evidence_from_row,
@@ -70,6 +81,7 @@ from autonoesis_adapters.persistence_codec import (
     trial_payload,
 )
 from autonoesis_adapters.persistence_schema import (
+    action_attempts,
     actions,
     agent_versions,
     approvals,
@@ -78,6 +90,7 @@ from autonoesis_adapters.persistence_schema import (
     budgets,
     candidates,
     capability_packs,
+    context_snapshots,
     deployments,
     evaluation_trials,
     evidence,
@@ -99,15 +112,70 @@ from autonoesis_adapters.persistence_schema import metadata as metadata
 from autonoesis_adapters.persistence_schema import outbox as outbox
 
 
+class _ExistingSessionContext:
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def __aenter__(self) -> AsyncSession:
+        return self._session
+
+    async def __aexit__(self, *_: object) -> None:
+        return None
+
+
+class _TransactionAwareSessions:
+    """Reuse the Application-owned session without changing aggregate methods."""
+
+    def __init__(
+        self,
+        factory: async_sessionmaker[AsyncSession],
+        current: ContextVar[AsyncSession | None],
+    ) -> None:
+        self._factory = factory
+        self._current = current
+
+    def __call__(self) -> Any:
+        session = self._current.get()
+        return _ExistingSessionContext(session) if session is not None else self._factory()
+
+    def begin(self) -> Any:
+        session = self._current.get()
+        return _ExistingSessionContext(session) if session is not None else self._factory.begin()
+
+
 class SqlAlchemyPlatformRepository:
     def __init__(self, sessions: async_sessionmaker[AsyncSession]) -> None:
-        self._sessions = sessions
+        self._session_factory = sessions
+        self._current_session: ContextVar[AsyncSession | None] = ContextVar(
+            f"autonoesis_repository_session_{id(self)}", default=None
+        )
+        self._sessions = _TransactionAwareSessions(sessions, self._current_session)
         bind = sessions.kw.get("bind")
         self._uses_postgresql = bind is not None and bind.dialect.name == "postgresql"
 
     @property
     def sessions(self) -> async_sessionmaker[AsyncSession]:
-        return self._sessions
+        return self._session_factory
+
+    @asynccontextmanager
+    async def transaction(self) -> AsyncIterator[None]:
+        """Open the explicit transaction boundary owned by an Application use case."""
+
+        if self._current_session.get() is not None:
+            raise RuntimeError("nested Application transactions are not supported")
+        async with self._session_factory.begin() as session:
+            token = self._current_session.set(session)
+            try:
+                yield
+            finally:
+                self._current_session.reset(token)
+
+    async def record_audit(self, audit: AuditEvent) -> None:
+        now = datetime.now(UTC)
+        async with self._sessions.begin() as session:
+            await self._scope_tenant(session, audit.tenant_id)
+            await self._add_audit(session, audit, now)
+            await self._add_outbox(session, audit, now)
 
     async def _scope_tenant(self, session: AsyncSession, tenant_id: UUID) -> None:
         if self._uses_postgresql:
@@ -307,6 +375,32 @@ class SqlAlchemyPlatformRepository:
             ).mappings()
             return tuple(self._goal_from_row(dict(row)) for row in rows)
 
+    async def save_goal(self, goal: GoalContract, expected_version: int, audit: AuditEvent) -> None:
+        async with self._sessions.begin() as session:
+            await self._scope_tenant(session, goal.tenant_id)
+            result = cast(
+                CursorResult[Any],
+                await session.execute(
+                    update(goals)
+                    .where(
+                        goals.c.id == str(goal.goal_id),
+                        goals.c.tenant_id == str(goal.tenant_id),
+                        goals.c.optimistic_version == expected_version,
+                    )
+                    .values(
+                        status=goal.status.value,
+                        contract=self._goal_payload(goal),
+                        optimistic_version=goal.version,
+                        updated_at=datetime.now(UTC),
+                    )
+                ),
+            )
+            if result.rowcount != 1:
+                raise ConcurrencyConflict("goal optimistic version changed")
+            now = datetime.now(UTC)
+            await self._add_audit(session, audit, now)
+            await self._add_outbox(session, audit, now)
+
     async def add_run(self, run: Run, audit: AuditEvent) -> None:
         async with self._sessions.begin() as session:
             await self._scope_tenant(session, run.tenant_id)
@@ -344,7 +438,9 @@ class SqlAlchemyPlatformRepository:
             raise RecordNotFound(f"run {run_id} was not found")
         return run_from_row(dict(row))
 
-    async def save_run(self, run: Run, expected_version: int) -> None:
+    async def save_run(
+        self, run: Run, expected_version: int, audit: AuditEvent | None = None
+    ) -> None:
         async with self._sessions.begin() as session:
             await self._scope_tenant(session, run.tenant_id)
             result = cast(
@@ -366,15 +462,20 @@ class SqlAlchemyPlatformRepository:
             )
             if result.rowcount != 1:
                 raise ConcurrencyConflict("run optimistic version changed")
-            await self._record_fact(
-                session,
-                run.tenant_id,
-                "run.updated",
-                "run",
-                run.run_id,
-                run.optimistic_version,
-                datetime.now(UTC),
-            )
+            now = datetime.now(UTC)
+            if audit is None:
+                await self._record_fact(
+                    session,
+                    run.tenant_id,
+                    "run.updated",
+                    "run",
+                    run.run_id,
+                    run.optimistic_version,
+                    now,
+                )
+            else:
+                await self._add_audit(session, audit, now)
+                await self._add_outbox(session, audit, now)
 
     async def list_runs(self, tenant_id: UUID, goal_id: UUID | None = None) -> tuple[Run, ...]:
         async with self._sessions() as session:
@@ -384,6 +485,51 @@ class SqlAlchemyPlatformRepository:
                 query = query.where(runs.c.goal_id == str(goal_id))
             rows = (await session.execute(query)).mappings()
             return tuple(run_from_row(dict(row)) for row in rows)
+
+    async def add_context_snapshot(self, snapshot: ContextSnapshot) -> None:
+        payload = context_snapshot_payload(snapshot)
+        async with self._sessions.begin() as session:
+            await self._scope_tenant(session, snapshot.tenant_id)
+            await session.execute(
+                insert(context_snapshots).values(
+                    id=str(snapshot.snapshot_id),
+                    tenant_id=str(snapshot.tenant_id),
+                    goal_id=str(snapshot.goal_id),
+                    run_id=str(snapshot.run_id),
+                    payload=payload,
+                    content_digest=JsonObject.from_value(payload).digest,
+                    optimistic_version=1,
+                    created_at=snapshot.created_at,
+                )
+            )
+            await self._record_fact(
+                session,
+                snapshot.tenant_id,
+                "run.context_prepared",
+                "context_snapshot",
+                snapshot.snapshot_id,
+                1,
+                snapshot.created_at,
+            )
+
+    async def get_context_snapshot(self, tenant_id: UUID, run_id: UUID) -> ContextSnapshot:
+        async with self._sessions() as session:
+            await self._scope_tenant(session, tenant_id)
+            row = (
+                (
+                    await session.execute(
+                        select(context_snapshots).where(
+                            context_snapshots.c.tenant_id == str(tenant_id),
+                            context_snapshots.c.run_id == str(run_id),
+                        )
+                    )
+                )
+                .mappings()
+                .one_or_none()
+            )
+        if row is None:
+            raise RecordNotFound(f"context for run {run_id} was not found")
+        return context_snapshot_from_row(dict(row))
 
     async def add_plan(self, plan: Plan) -> None:
         now = datetime.now(UTC)
@@ -445,6 +591,25 @@ class SqlAlchemyPlatformRepository:
                 ).mappings()
             )
         return plan_from_rows(dict(plan_row), [dict(row) for row in task_rows])
+
+    async def get_task(self, tenant_id: UUID, task_id: UUID) -> Task:
+        from autonoesis_adapters.persistence_codec import task_from_row
+
+        return task_from_row(await self._get_row(tasks, tenant_id, task_id))
+
+    async def list_tasks(self, tenant_id: UUID, run_id: UUID) -> tuple[Task, ...]:
+        from autonoesis_adapters.persistence_codec import task_from_row
+
+        async with self._sessions() as session:
+            await self._scope_tenant(session, tenant_id)
+            rows = (
+                await session.execute(
+                    select(tasks).where(
+                        tasks.c.tenant_id == str(tenant_id), tasks.c.run_id == str(run_id)
+                    )
+                )
+            ).mappings()
+            return tuple(task_from_row(dict(row)) for row in rows)
 
     async def save_task(self, task: Task, expected_version: int) -> None:
         async with self._sessions.begin() as session:
@@ -524,6 +689,62 @@ class SqlAlchemyPlatformRepository:
             },
             "action",
         )
+
+    async def list_actions(self, tenant_id: UUID, run_id: UUID) -> tuple[Action, ...]:
+        async with self._sessions() as session:
+            await self._scope_tenant(session, tenant_id)
+            rows = (
+                await session.execute(
+                    select(actions).where(
+                        actions.c.tenant_id == str(tenant_id),
+                        actions.c.run_id == str(run_id),
+                    )
+                )
+            ).mappings()
+            return tuple(action_from_row(dict(row)) for row in rows)
+
+    async def add_action_attempt(self, attempt: ActionAttempt) -> None:
+        async with self._sessions.begin() as session:
+            await self._scope_tenant(session, attempt.tenant_id)
+            await session.execute(
+                insert(action_attempts).values(
+                    id=str(attempt.attempt_id),
+                    tenant_id=str(attempt.tenant_id),
+                    run_id=str(attempt.run_id),
+                    action_id=str(attempt.action_id),
+                    invocation_id=str(attempt.invocation_id),
+                    status=attempt.status.value,
+                    idempotency_key=attempt.idempotency_key,
+                    receipt_ref=attempt.receipt_ref,
+                    definition=action_attempt_payload(attempt),
+                    optimistic_version=1,
+                    created_at=attempt.recorded_at,
+                )
+            )
+            await self._record_fact(
+                session,
+                attempt.tenant_id,
+                "action.attempt_recorded",
+                "action_attempt",
+                attempt.attempt_id,
+                1,
+                attempt.recorded_at,
+            )
+
+    async def list_action_attempts(
+        self, tenant_id: UUID, action_id: UUID
+    ) -> tuple[ActionAttempt, ...]:
+        async with self._sessions() as session:
+            await self._scope_tenant(session, tenant_id)
+            rows = (
+                await session.execute(
+                    select(action_attempts).where(
+                        action_attempts.c.tenant_id == str(tenant_id),
+                        action_attempts.c.action_id == str(action_id),
+                    )
+                )
+            ).mappings()
+            return tuple(action_attempt_from_row(dict(row)) for row in rows)
 
     async def add_approval(self, approval: ApprovalRequest) -> None:
         now = datetime.now(UTC)
@@ -686,6 +907,27 @@ class SqlAlchemyPlatformRepository:
         evidence_ids = [UUID(item) for item in row["result"].get("evidence_ids", ())]
         items = tuple([await self.get_evidence(tenant_id, item) for item in evidence_ids])
         return outcome_from_row(row, items)
+
+    async def list_outcomes(self, tenant_id: UUID, run_id: UUID) -> tuple[Outcome, ...]:
+        async with self._sessions() as session:
+            await self._scope_tenant(session, tenant_id)
+            rows = tuple(
+                dict(row)
+                for row in (
+                    await session.execute(
+                        select(outcomes).where(
+                            outcomes.c.tenant_id == str(tenant_id),
+                            outcomes.c.run_id == str(run_id),
+                        )
+                    )
+                ).mappings()
+            )
+        result: list[Outcome] = []
+        for row in rows:
+            evidence_ids = [UUID(item) for item in row["result"].get("evidence_ids", ())]
+            items = tuple([await self.get_evidence(tenant_id, item) for item in evidence_ids])
+            result.append(outcome_from_row(row, items))
+        return tuple(result)
 
     async def record_budget_entry(
         self,
@@ -950,35 +1192,81 @@ class SqlAlchemyPlatformRepository:
             for row in await self._list_rows(audit_events, tenant_id)
         )
 
-    async def get_idempotency(self, tenant_id: UUID, key: str) -> UUID | None:
+    async def get_idempotency(
+        self, tenant_id: UUID, key: str, request_digest: str | None = None
+    ) -> UUID | None:
         async with self._sessions() as session:
             await self._scope_tenant(session, tenant_id)
-            value = await session.scalar(
-                select(idempotency_records.c.external_id).where(
-                    idempotency_records.c.tenant_id == str(tenant_id),
-                    idempotency_records.c.idempotency_key == key,
-                    idempotency_records.c.status == "completed",
+            row = (
+                await session.execute(
+                    select(
+                        idempotency_records.c.external_id,
+                        idempotency_records.c.request_digest,
+                    ).where(
+                        idempotency_records.c.tenant_id == str(tenant_id),
+                        idempotency_records.c.idempotency_key == key,
+                        idempotency_records.c.status == "completed",
+                    )
                 )
-            )
-        return UUID(value) if value else None
+            ).one_or_none()
+        if row is None:
+            return None
+        if request_digest is not None and row.request_digest != request_digest:
+            raise ConcurrencyConflict("idempotency key was reused with a different request")
+        return UUID(row.external_id)
 
-    async def put_idempotency(self, tenant_id: UUID, key: str, external_id: UUID) -> None:
+    async def put_idempotency(
+        self,
+        tenant_id: UUID,
+        key: str,
+        external_id: UUID,
+        request_digest: str | None = None,
+    ) -> None:
         now = datetime.now(UTC)
         async with self._sessions.begin() as session:
             await self._scope_tenant(session, tenant_id)
-            await session.execute(
-                insert(idempotency_records).values(
-                    id=str(uuid4()),
-                    tenant_id=str(tenant_id),
-                    idempotency_key=key,
-                    request_digest="0" * 64,
-                    external_id=str(external_id),
-                    status="completed",
-                    response=None,
-                    optimistic_version=1,
-                    created_at=now,
-                )
+            values = {
+                "id": str(uuid4()),
+                "tenant_id": str(tenant_id),
+                "idempotency_key": key,
+                "request_digest": request_digest or "0" * 64,
+                "external_id": str(external_id),
+                "status": "completed",
+                "response": None,
+                "optimistic_version": 1,
+                "created_at": now,
+            }
+            statement = (
+                postgresql_insert(idempotency_records)
+                if self._uses_postgresql
+                else sqlite_insert(idempotency_records)
+            ).values(**values)
+            result = cast(
+                CursorResult[Any],
+                await session.execute(
+                    statement.on_conflict_do_nothing(
+                        index_elements=["tenant_id", "idempotency_key"]
+                    )
+                ),
             )
+            if result.rowcount == 0:
+                accepted = (
+                    await session.execute(
+                        select(
+                            idempotency_records.c.external_id,
+                            idempotency_records.c.request_digest,
+                        ).where(
+                            idempotency_records.c.tenant_id == str(tenant_id),
+                            idempotency_records.c.idempotency_key == key,
+                        )
+                    )
+                ).one()
+                if accepted.external_id != str(external_id) or (
+                    request_digest is not None and accepted.request_digest != request_digest
+                ):
+                    raise ConcurrencyConflict(
+                        "idempotency key is already bound to a different result"
+                    )
 
     async def _get_row(self, table: Any, tenant_id: UUID, object_id: UUID) -> dict[str, Any]:
         async with self._sessions() as session:

@@ -9,10 +9,23 @@ These replace the placeholder stubs from Phase 1.  Every activity:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from uuid import UUID, uuid4
+from hashlib import sha256
+from uuid import UUID
 
 from autonoesis_adapters import InMemoryPlatformStore, PostgreSQLPlatformStore
-from autonoesis_application import CandidateLifecycleService
+from autonoesis_application import (
+    CancelRun,
+    CandidateLifecycleService,
+    CommandContext,
+    CompleteRun,
+    CreateValidatedPlan,
+    FailRun,
+    GoalExecutionApplication,
+    IdentityContext,
+    PrepareRunContext,
+    StartTask,
+    TaskDefinition,
+)
 from temporalio import activity
 
 # ── Activity inputs ──────────────────────────────────────────────────────────
@@ -73,32 +86,57 @@ class PromoteCandidateInput:
 PlatformStore = InMemoryPlatformStore | PostgreSQLPlatformStore
 
 
+def _application(store: PlatformStore) -> GoalExecutionApplication:
+    return GoalExecutionApplication(store.repository, store)
+
+
+def _context(tenant_id: str, run_id: str, operation: str) -> CommandContext:
+    actor = UUID(int=0)
+    correlation = UUID(run_id)
+    return CommandContext(
+        IdentityContext(
+            tenant_id=UUID(tenant_id),
+            actor_id=actor,
+            principal_id=actor,
+            roles=frozenset({"worker"}),
+            agent_id="temporal-worker",
+        ),
+        correlation,
+        correlation,
+        f"temporal:{operation}:{run_id}",
+        sha256(f"{operation}\n{run_id}".encode()).hexdigest(),
+    )
+
+
 @activity.defn
 async def prepare_run(
     input: PrepareRunInput,
     store: PlatformStore,
 ) -> str:
-    """Build a Plan for the Run and persist it.
-
-    In Phase 2 this produces a real Plan from the Goal's context.  For now
-    it validates that the Run exists and transitions it to RUNNING.
-    """
-    run = await store.get_run(UUID(input.tenant_id), UUID(input.run_id))
-    from autonoesis_domain import RunExecutionSnapshot, RunStatus
-
-    if run.status is not RunStatus.RUNNING:
-        run = run.bind_execution(
-            RunExecutionSnapshot(
-                plan_id=uuid4(),
-                context_snapshot_id=uuid4(),
-                agent_version_id=run.agent_version_id,
-                skill_versions=(),
-                tool_versions=(),
-                model_route="prototype-route",
-                policy_version="development-policy",
-            )
-        ).transition_to(RunStatus.RUNNING, reason="prototype run prepared")
-        await store.save_run(run, run.optimistic_version - 1)
+    """Prepare immutable Context and a validated Plan through Application use cases."""
+    application = _application(store)
+    await application.prepare_run_context(
+        _context(input.tenant_id, input.run_id, "prepare-context"),
+        PrepareRunContext(
+            run_id=UUID(input.run_id),
+            environment_facts=(),
+            knowledge_refs=(),
+            memory_ids=(),
+            history_digest=f"temporal:{input.run_id}",
+            tool_versions=(),
+        ),
+    )
+    await application.create_validated_plan(
+        _context(input.tenant_id, input.run_id, "create-plan"),
+        CreateValidatedPlan(
+            run_id=UUID(input.run_id),
+            tasks=(TaskDefinition("execute goal", "required Outcomes verified"),),
+            skill_versions=(),
+            tool_versions=(),
+            model_route="configured-by-capability-pack",
+            policy_version="development-policy@1",
+        ),
+    )
     return "planned"
 
 
@@ -108,13 +146,12 @@ async def cancel_run(
     store: PlatformStore,
 ) -> str:
     """Cancel a Run and record the reason."""
-    run = await store.get_run(UUID(input.tenant_id), UUID(input.run_id))
-    from autonoesis_domain import RunStatus
-
-    if run.status is RunStatus.CANCELLED:
-        return "already_cancelled"
-    run = run.transition_to(RunStatus.CANCELLED, reason=input.reason)
-    await store.save_run(run, run.optimistic_version - 1)
+    run = await _application(store).cancel_run(
+        _context(input.tenant_id, input.run_id, "cancel"),
+        CancelRun(UUID(input.run_id), input.reason),
+    )
+    if run.status.value != "cancelled":
+        raise ValueError("Application did not accept Run cancellation")
     return "cancelled"
 
 
@@ -124,13 +161,12 @@ async def reject_run(
     store: PlatformStore,
 ) -> str:
     """Reject a Run and record the reason."""
-    run = await store.get_run(UUID(input.tenant_id), UUID(input.run_id))
-    from autonoesis_domain import RunStatus
-
-    if run.status is RunStatus.FAILED:
-        return "already_rejected"
-    run = run.transition_to(RunStatus.FAILED, reason=input.reason)
-    await store.save_run(run, run.optimistic_version - 1)
+    run = await _application(store).fail_run(
+        _context(input.tenant_id, input.run_id, "reject"),
+        FailRun(UUID(input.run_id), input.reason),
+    )
+    if run.status.value != "failed":
+        raise ValueError("Application did not accept Run rejection")
     return "rejected"
 
 
@@ -139,27 +175,21 @@ async def execute_run(
     input: ExecuteRunInput,
     store: PlatformStore,
 ) -> str:
-    """Execute the Run's Plan: process Tasks and governed Actions.
-
-    Idempotent: if the Run is already SUCCEEDED or FAILED, returns immediately.
-    """
+    """Dispatch ready Tasks; success remains an Application verification decision."""
     run = await store.get_run(UUID(input.tenant_id), UUID(input.run_id))
     from autonoesis_domain import RunStatus
 
     if run.status in {RunStatus.SUCCEEDED, RunStatus.FAILED, RunStatus.CANCELLED}:
         return run.status.value
 
-    # In a full implementation this would:
-    # 1. Load the Plan and its Tasks
-    # 2. For each Task, call the Harness to produce a TaskResult
-    # 3. For each Action proposal, route through GovernedToolGateway
-    # 4. Collect Evidence and evaluate Outcomes
-    #
-    # For Phase 2 we mark the Run as succeeded once the plan is executed
-    # without errors — real Task/Harness integration arrives in Phase 3.
-    run = run.transition_to(RunStatus.SUCCEEDED, reason="prototype execution completed")
-    await store.save_run(run, run.optimistic_version - 1)
-    return "succeeded"
+    application = _application(store)
+    for task in await store.repository.list_tasks(UUID(input.tenant_id), UUID(input.run_id)):
+        if task.status.value == "pending":
+            await application.start_task(
+                _context(input.tenant_id, input.run_id, f"start-task:{task.task_id}"),
+                StartTask(task.task_id),
+            )
+    return "dispatched"
 
 
 @activity.defn
@@ -167,11 +197,15 @@ async def evaluate_run(
     input: EvaluateRunInput,
     store: PlatformStore,
 ) -> str:
-    """Evaluate whether the Run's Outcomes satisfy the Goal's success criteria.
-
-    Returns the Run's status as a string.
-    """
-    run = await store.get_run(UUID(input.tenant_id), UUID(input.run_id))
+    """Ask Application to evaluate completion from persisted Tasks and Outcomes."""
+    application = _application(store)
+    try:
+        run = await application.complete_run(
+            _context(input.tenant_id, input.run_id, "complete-run"),
+            CompleteRun(UUID(input.run_id)),
+        )
+    except ValueError:
+        run = await store.get_run(UUID(input.tenant_id), UUID(input.run_id))
     return run.status.value
 
 

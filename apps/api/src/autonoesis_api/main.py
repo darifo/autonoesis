@@ -5,6 +5,7 @@ import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import datetime
+from hashlib import sha256
 from pathlib import Path
 from typing import Annotated, Any
 from uuid import UUID, uuid4
@@ -17,14 +18,17 @@ from autonoesis_adapters import (
     SqlKillSwitchStore,
 )
 from autonoesis_application import (
+    ActivateGoal,
     CandidateLifecycleService,
+    CommandContext,
+    ConcurrencyConflict,
     CreateGoal,
-    CreateGoalHandler,
+    DecideApproval,
     EvaluationDecision,
+    GoalExecutionApplication,
     IdentityContext,
     RecordNotFound,
-    StartGoalRun,
-    StartGoalRunHandler,
+    RequestRun,
     TenantBoundaryViolation,
 )
 from autonoesis_capability import ManifestError, load_manifest, parse_manifest
@@ -215,8 +219,7 @@ def build_app(store: PlatformStore | None = None) -> FastAPI:
             return app.state.kill_switch.for_tenant(context.tenant_id)
         return app.state.kill_switch
 
-    goal_handler = CreateGoalHandler(platform_store, platform_store)
-    run_handler = StartGoalRunHandler(platform_store, platform_store)
+    execution = GoalExecutionApplication(platform_store.repository, platform_store)
     evolution = CandidateLifecycleService(platform_store)
 
     @app.exception_handler(RecordNotFound)
@@ -238,6 +241,16 @@ def build_app(store: PlatformStore | None = None) -> FastAPI:
     @app.exception_handler(PermissionError)
     async def forbidden(_: Request, exc: PermissionError) -> JSONResponse:
         return error_response(403, "permission_denied", str(exc), False, "request authorization")
+
+    @app.exception_handler(ConcurrencyConflict)
+    async def conflict(_: Request, exc: ConcurrencyConflict) -> JSONResponse:
+        return error_response(
+            409,
+            "concurrency_conflict",
+            str(exc),
+            True,
+            "reload authoritative state and retry with a new idempotency key",
+        )
 
     @app.exception_handler(HTTPException)
     async def http_error(_: Request, exc: HTTPException) -> JSONResponse:
@@ -279,6 +292,29 @@ def build_app(store: PlatformStore | None = None) -> FastAPI:
     def require_role(context: IdentityContext, allowed: set[str]) -> None:
         if not context.roles.intersection(allowed):
             raise PermissionError("the current principal does not have the required role")
+
+    def command_context(
+        request: Request,
+        identity_context: IdentityContext,
+        idempotency_key: str,
+        payload: object,
+    ) -> CommandContext:
+        try:
+            correlation_id = UUID(request.headers.get("X-Correlation-ID", str(uuid4())))
+            causation_id = UUID(request.headers.get("X-Causation-ID", str(correlation_id)))
+        except ValueError as exc:
+            raise HTTPException(400, "correlation and causation headers must be UUIDs") from exc
+        request_payload = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
+        request_digest = sha256(
+            f"{request.method}\n{request.url.path}\n{request_payload}".encode()
+        ).hexdigest()
+        return CommandContext(
+            identity_context,
+            correlation_id,
+            causation_id,
+            idempotency_key,
+            request_digest,
+        )
 
     async def write_key(
         idempotency_key: Annotated[str, Header(alias="Idempotency-Key")],
@@ -468,13 +504,12 @@ def build_app(store: PlatformStore | None = None) -> FastAPI:
         ]
 
     @app.post("/v1/goals", status_code=201, tags=["goals"])
-    async def create_goal(body: GoalRequest, context: Identity, key: WriteKey) -> dict[str, Any]:
-        cached = await platform_store.get_idempotency(context.tenant_id, f"create_goal:{key}")
-        if cached is not None:
-            goal = await platform_store.get_goal(context.tenant_id, cached)
-            return goal_view(goal)
-        goal = await goal_handler(
-            context,
+    async def create_goal(
+        body: GoalRequest, request: Request, context: Identity, key: WriteKey
+    ) -> dict[str, Any]:
+        use_case_context = command_context(request, context, key, body.model_dump(mode="json"))
+        goal = await execution.create_goal(
+            use_case_context,
             CreateGoal(
                 goal_type=body.goal_type,
                 statement=body.statement,
@@ -496,11 +531,21 @@ def build_app(store: PlatformStore | None = None) -> FastAPI:
                 retention_days=body.retention_days,
                 execution_mode=body.execution_mode,
                 max_concurrent_runs=body.max_concurrent_runs,
-                correlation_id=uuid4(),
+                correlation_id=use_case_context.correlation_id,
             ),
         )
-        await platform_store.put_idempotency(context.tenant_id, f"create_goal:{key}", goal.goal_id)
         return goal_view(goal)
+
+    @app.post("/v1/goals/{goal_id}/activation", tags=["goals"])
+    async def activate_goal(
+        goal_id: UUID, request: Request, context: Identity, key: WriteKey
+    ) -> dict[str, Any]:
+        return goal_view(
+            await execution.activate_goal(
+                command_context(request, context, key, {"goal_id": str(goal_id)}),
+                ActivateGoal(goal_id),
+            )
+        )
 
     @app.get("/v1/goals", tags=["goals"])
     async def list_goals(context: Identity) -> list[dict[str, Any]]:
@@ -511,12 +556,13 @@ def build_app(store: PlatformStore | None = None) -> FastAPI:
         return goal_view(await platform_store.get_goal(context.tenant_id, goal_id))
 
     @app.post("/v1/goals/{goal_id}/runs", status_code=202, tags=["runs"])
-    async def start_run(goal_id: UUID, context: Identity, key: WriteKey) -> dict[str, Any]:
-        cached = await platform_store.get_idempotency(context.tenant_id, f"start_run:{key}")
-        if cached is not None:
-            return run_view(await platform_store.get_run(context.tenant_id, cached))
-        run = await run_handler(context, StartGoalRun(goal_id, uuid4()))
-        await platform_store.put_idempotency(context.tenant_id, f"start_run:{key}", run.run_id)
+    async def start_run(
+        goal_id: UUID, request: Request, context: Identity, key: WriteKey
+    ) -> dict[str, Any]:
+        run = await execution.request_run(
+            command_context(request, context, key, {"goal_id": str(goal_id)}),
+            RequestRun(goal_id),
+        )
         if os.getenv("AUTONOESIS_TEMPORAL_START", "false").lower() == "true":
             client = await Client.connect(os.getenv("AUTONOESIS_TEMPORAL_TARGET", "localhost:7233"))
             await client.start_workflow(
@@ -561,29 +607,20 @@ def build_app(store: PlatformStore | None = None) -> FastAPI:
     async def decide_approval(
         approval_id: UUID,
         body: ApprovalDecisionRequest,
+        request: Request,
         context: Identity,
-        _: WriteKey,
+        key: WriteKey,
     ) -> dict[str, object]:
-        require_role(context, {"platform_admin", "tenant_admin", "approver"})
-        approval = await platform_store.get_approval(context.tenant_id, approval_id)
-        current_view = approval_view(approval)
-        if current_view.get("action_digest") != body.action_digest:
-            raise PermissionError("approval does not match the exact action parameters")
-        decision = "approved" if body.approved else "rejected"
-        current = str(current_view.get("status", "pending"))
-        if current != "pending" and current != decision:
-            raise ValueError("approval has already received a different decision")
-        if isinstance(approval, ApprovalRequest):
-            decided = approval.decide(context.actor_id, body.approved, body.reason)
-            await platform_store.save_approval(decided, approval.optimistic_version)
-            return approval_view(decided)
-        value: dict[str, object] = {
-            "status": decision,
-            "decided_by": str(context.actor_id),
-            "reason": body.reason,
-        }
-        await platform_store.save_approval_record(context.tenant_id, approval_id, value)
-        return {**approval, **value}
+        decided = await execution.decide_approval(
+            command_context(
+                request,
+                context,
+                key,
+                {"approval_id": str(approval_id), **body.model_dump(mode="json")},
+            ),
+            DecideApproval(approval_id, body.action_digest, body.approved, body.reason),
+        )
+        return approval_view(decided)
 
     @app.get("/v1/evidence", tags=["evidence"])
     async def list_evidence(context: Identity) -> list[dict[str, object]]:
@@ -702,7 +739,6 @@ def build_app(store: PlatformStore | None = None) -> FastAPI:
     async def rollback_release(release_id: UUID, context: Identity, _: WriteKey) -> dict[str, Any]:
         require_role(context, {"platform_admin", "tenant_admin", "approver"})
         release = await evolution.rollback(context, release_id)
-        await platform_store.add_release(release)
         return {
             "release_id": release.release_id,
             "stable_version_id": release.stable_version_id,

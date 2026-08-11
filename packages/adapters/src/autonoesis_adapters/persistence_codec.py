@@ -6,6 +6,8 @@ from uuid import UUID
 
 from autonoesis_domain import (
     Action,
+    ActionAttempt,
+    ActionAttemptStatus,
     ActionStatus,
     ApprovalRequest,
     ApprovalStatus,
@@ -14,9 +16,11 @@ from autonoesis_domain import (
     CandidateStatus,
     CandidateVersion,
     CompensationCapability,
+    ContextSnapshot,
     DataClassification,
     Deployment,
     DeploymentStatus,
+    EnvironmentFact,
     Evidence,
     EvidenceCaptureMethod,
     EvidenceIntegrity,
@@ -24,6 +28,7 @@ from autonoesis_domain import (
     ImprovementProposal,
     ImprovementTarget,
     JsonObject,
+    KnowledgeRef,
     Outcome,
     OutcomeStatus,
     Plan,
@@ -37,6 +42,7 @@ from autonoesis_domain import (
     TaskStatus,
     Trial,
     TrialStatus,
+    TrustLevel,
 )
 
 
@@ -197,6 +203,100 @@ def action_from_row(row: dict[str, Any]) -> Action:
         status=ActionStatus(row["status"]),
         optimistic_version=row["optimistic_version"],
         transitions=transitions_from(definition.get("transitions")),
+    )
+
+
+def action_attempt_payload(item: ActionAttempt) -> dict[str, Any]:
+    return {
+        "executor_identity": item.executor_identity,
+        "failure_reason": item.failure_reason,
+        "recorded_at": item.recorded_at.isoformat(),
+    }
+
+
+def action_attempt_from_row(row: dict[str, Any]) -> ActionAttempt:
+    definition = row["definition"]
+    return ActionAttempt(
+        tenant_id=UUID(row["tenant_id"]),
+        run_id=UUID(row["run_id"]),
+        action_id=UUID(row["action_id"]),
+        invocation_id=UUID(row["invocation_id"]),
+        status=ActionAttemptStatus(row["status"]),
+        idempotency_key=row["idempotency_key"],
+        receipt_ref=row["receipt_ref"],
+        executor_identity=definition["executor_identity"],
+        failure_reason=definition.get("failure_reason"),
+        attempt_id=UUID(row["id"]),
+        recorded_at=datetime.fromisoformat(definition["recorded_at"]),
+    )
+
+
+def context_snapshot_payload(item: ContextSnapshot) -> dict[str, Any]:
+    return {
+        "environment_facts": [
+            {
+                "fact_id": fact.fact_id,
+                "source": fact.source,
+                "subject": fact.subject,
+                "value": fact.value,
+                "observed_at": fact.observed_at.isoformat(),
+                "valid_until": fact.valid_until.isoformat(),
+                "trust": fact.trust.value,
+            }
+            for fact in item.environment_facts
+        ],
+        "knowledge_refs": [
+            {
+                "knowledge_id": ref.knowledge_id,
+                "version": ref.version,
+                "source": ref.source,
+                "citation": ref.citation,
+                "trust": ref.trust.value,
+            }
+            for ref in item.knowledge_refs
+        ],
+        "memory_ids": [str(value) for value in item.memory_ids],
+        "history_digest": item.history_digest,
+        "tool_versions": list(item.tool_versions),
+        "conflicts": list(item.conflicts),
+        "created_at": item.created_at.isoformat(),
+    }
+
+
+def context_snapshot_from_row(row: dict[str, Any]) -> ContextSnapshot:
+    payload = row["payload"]
+    return ContextSnapshot(
+        tenant_id=UUID(row["tenant_id"]),
+        goal_id=UUID(row["goal_id"]),
+        run_id=UUID(row["run_id"]),
+        environment_facts=tuple(
+            EnvironmentFact(
+                fact_id=fact["fact_id"],
+                source=fact["source"],
+                subject=fact["subject"],
+                value=fact["value"],
+                observed_at=datetime.fromisoformat(fact["observed_at"]),
+                valid_until=datetime.fromisoformat(fact["valid_until"]),
+                trust=TrustLevel(fact["trust"]),
+            )
+            for fact in payload["environment_facts"]
+        ),
+        knowledge_refs=tuple(
+            KnowledgeRef(
+                knowledge_id=ref["knowledge_id"],
+                version=ref["version"],
+                source=ref["source"],
+                citation=ref["citation"],
+                trust=TrustLevel(ref["trust"]),
+            )
+            for ref in payload["knowledge_refs"]
+        ),
+        memory_ids=tuple(UUID(value) for value in payload["memory_ids"]),
+        history_digest=payload["history_digest"],
+        tool_versions=tuple(payload["tool_versions"]),
+        conflicts=tuple(payload["conflicts"]),
+        snapshot_id=UUID(row["id"]),
+        created_at=datetime.fromisoformat(payload["created_at"]),
     )
 
 

@@ -147,7 +147,7 @@ class CandidateLifecycleService:
                 reason="release rollback requested",
             )
         )
-        return Release(
+        rollback_release = Release(
             tenant_id=identity.tenant_id,
             candidate_id=release.candidate_id,
             deployment_id=release.deployment_id,
@@ -155,3 +155,5 @@ class CandidateLifecycleService:
             previous_stable_version_id=release.stable_version_id,
             approved_by=identity.actor_id,
         )
+        await self._repository.add_release(rollback_release)
+        return rollback_release

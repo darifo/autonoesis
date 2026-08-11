@@ -170,8 +170,16 @@ class PostgreSQLPlatformStore:
     async def list_releases(self, tenant_id: UUID) -> tuple[Release, ...]:
         return await self.repository.list_releases(tenant_id)
 
-    async def get_idempotency(self, tenant_id: UUID, key: str) -> UUID | None:
-        return await self.repository.get_idempotency(tenant_id, key)
+    async def get_idempotency(
+        self, tenant_id: UUID, key: str, request_digest: str | None = None
+    ) -> UUID | None:
+        return await self.repository.get_idempotency(tenant_id, key, request_digest)
 
-    async def put_idempotency(self, tenant_id: UUID, key: str, external_id: UUID) -> None:
-        await self.repository.put_idempotency(tenant_id, key, external_id)
+    async def put_idempotency(
+        self,
+        tenant_id: UUID,
+        key: str,
+        external_id: UUID,
+        request_digest: str | None = None,
+    ) -> None:
+        await self.repository.put_idempotency(tenant_id, key, external_id, request_digest)

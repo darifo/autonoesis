@@ -185,7 +185,7 @@ class TestRejectRun:
 
 class TestExecuteRun:
     @pytest.mark.asyncio
-    async def test_transitions_run_to_succeeded(self) -> None:
+    async def test_dispatches_task_without_declaring_business_success(self) -> None:
         store, identity, tenant_id = _setup_store()
         goal_id = await _make_goal(store, identity)
         run_id = await _start_run(store, identity, goal_id)
@@ -196,13 +196,13 @@ class TestExecuteRun:
         result = await execute_run(
             ExecuteRunInput(tenant_id=tenant_id, goal_id=goal_id, run_id=run_id), store
         )
-        assert result == "succeeded"
+        assert result == "dispatched"
 
         updated = await store.get_run(identity.tenant_id, UUID(run_id))
-        assert updated.status is RunStatus.SUCCEEDED
+        assert updated.status is RunStatus.RUNNING
 
     @pytest.mark.asyncio
-    async def test_idempotent_when_already_succeeded(self) -> None:
+    async def test_dispatch_is_idempotent(self) -> None:
         store, identity, tenant_id = _setup_store()
         goal_id = await _make_goal(store, identity)
         run_id = await _start_run(store, identity, goal_id)
@@ -216,7 +216,7 @@ class TestExecuteRun:
         result = await execute_run(
             ExecuteRunInput(tenant_id=tenant_id, goal_id=goal_id, run_id=run_id), store
         )
-        assert result == "succeeded"
+        assert result == "dispatched"
 
 
 class TestEvaluateRun:
@@ -235,4 +235,4 @@ class TestEvaluateRun:
         result = await evaluate_run(
             EvaluateRunInput(tenant_id=tenant_id, goal_id=goal_id, run_id=run_id), store
         )
-        assert result == "succeeded"
+        assert result == "running"

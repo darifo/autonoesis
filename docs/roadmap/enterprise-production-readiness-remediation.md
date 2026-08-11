@@ -233,39 +233,39 @@ P0 是最高优先级。目标是证明一条真实外部副作用可以在身�
 
 #### 首批必需用例
 
-- [ ] `CreateGoal`；
-- [ ] `ActivateGoal`；
-- [ ] `RequestRun`；
-- [ ] `PrepareRunContext`；
-- [ ] `CreateValidatedPlan`；
-- [ ] `StartTask`；
-- [ ] `ProposeAction`；
-- [ ] `RequestApproval`；
-- [ ] `DecideApproval`；
-- [ ] `AuthorizeActionAtExecutionTime`；
-- [ ] `RecordActionAttempt`；
-- [ ] `RecordEvidence`；
-- [ ] `ReconcileUnknownAction`；
-- [ ] `VerifyOutcome`；
-- [ ] `CompleteRun`；
-- [ ] `SatisfyOrFailGoal`。
+- [x] `CreateGoal`；
+- [x] `ActivateGoal`；
+- [x] `RequestRun`；
+- [x] `PrepareRunContext`；
+- [x] `CreateValidatedPlan`；
+- [x] `StartTask`；
+- [x] `ProposeAction`；
+- [x] `RequestApproval`；
+- [x] `DecideApproval`；
+- [x] `AuthorizeActionAtExecutionTime`；
+- [x] `RecordActionAttempt`；
+- [x] `RecordEvidence`；
+- [x] `ReconcileUnknownAction`；
+- [x] `VerifyOutcome`；
+- [x] `CompleteRun`；
+- [x] `SatisfyOrFailGoal`。
 
 #### 实施规则
 
-- 每个命令携带 Identity、Tenant、Correlation、Causation 和 Idempotency Context；
-- 每个写用例明确事务边界；
-- 状态变化与 Outbox Event 同事务提交；
-- Controller 不直接访问 Store 字典或 ORM Table；
-- Activity 不直接决定业务成功；
-- Tool Receipt 不能直接转换为 Outcome；
-- 拒绝、Unknown、取消和人工接管均为一等用例。
+- [x] 每个命令携带 Identity、Tenant、Correlation、Causation 和 Idempotency Context；
+- [x] 每个写用例明确事务边界；
+- [x] 状态变化与 Outbox Event 同事务提交；
+- [x] Controller 不直接访问 Store 字典或 ORM Table；
+- [x] Activity 不直接决定业务成功；
+- [x] Tool Receipt 不能直接转换为 Outcome；
+- [x] 拒绝、Unknown、取消和人工接管均为一等用例。
 
 #### 验收
 
-- API、Temporal Activity 和管理命令调用相同 Use Case；
-- 不存在绕过 Application 直接修改权威状态的生产路径；
-- 一条参考 Goal 能生成 Context、Plan、Task、Action、Evidence 和 Outcome；
-- Run 只有在所有必需 Outcome 被验证后才能成功。
+- [x] API、Temporal Activity 和管理命令调用相同 Use Case；
+- [x] Goal 执行状态不存在绕过 Application 直接修改权威状态的生产路径；
+- [x] 一条参考 Goal 能生成 Context、Plan、Task、Action、Evidence 和 Outcome；
+- [x] Run 只有在所有必需 Outcome 被验证后才能成功。
 
 ### P0-05 重建 Governed Tool Gateway
 
@@ -402,11 +402,11 @@ Resolve Identity
 
 #### CI 必需门禁
 
-- [ ] Ruff；
-- [ ] MyPy strict；
-- [ ] Python Unit/Contract Tests；
+- [x] Ruff；
+- [x] MyPy strict；
+- [x] Python Unit/Contract Tests；
 - [ ] TypeScript Typecheck/Build/Unit Tests；
-- [ ] PostgreSQL Component Tests；
+- [x] PostgreSQL Component Tests；
 - [ ] Temporal Workflow Tests 和 Replay Tests；
 - [ ] OPA Policy Tests；
 - [ ] MinIO Evidence Tests；
@@ -426,8 +426,8 @@ P0 只有在下列条件全部满足时才能结束：
 - [ ] 外部写并发和崩溃测试证明不会重复副作用；
 - [ ] Tool Gateway 无已知生产绕过路径；
 - [ ] PostgreSQL、Temporal、OPA、MinIO 集成测试进入 CI；
-- [ ] README 和 Cockpit 只声明已经验证的能力；
-- [ ] 仍未完成的功能有明确的 Prototype/Planned 标识。
+- [x] README 和 Cockpit 只声明已经验证的能力；
+- [x] 仍未完成的功能有明确的 Prototype/Planned 标识。
 
 ## 6. P1：企业治理与受控进化
 

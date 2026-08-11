@@ -3,16 +3,39 @@
 import os
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from hashlib import sha256
 from uuid import UUID, uuid4
 
 import pytest
 from autonoesis_adapters import PostgreSQLPlatformStore, SqlKillSwitchStore
 from autonoesis_adapters.persistence_schema import audit_events, goals, outbox, releases, runs
-from autonoesis_application import AuditEvent, ConcurrencyConflict, RecordNotFound
+from autonoesis_application import (
+    ActivateGoal,
+    AuditEvent,
+    AuthorizeActionAtExecutionTime,
+    CommandContext,
+    ConcurrencyConflict,
+    CreateGoal,
+    CreateValidatedPlan,
+    GoalExecutionApplication,
+    IdentityContext,
+    PrepareRunContext,
+    ProposeAction,
+    ReconcileUnknownAction,
+    RecordActionAttempt,
+    RecordNotFound,
+    RequestRun,
+    StartTask,
+    TaskDefinition,
+)
 from autonoesis_capability import parse_manifest
 from autonoesis_domain import (
     Action,
+    ActionAttemptStatus,
+    ActionStatus,
+    AgentVersion,
     ApprovalRequest,
+    AssetStage,
     BudgetAmount,
     CandidateStatus,
     CandidateVersion,
@@ -23,6 +46,7 @@ from autonoesis_domain import (
     EvidenceIntegrity,
     GoalContract,
     JsonObject,
+    LoopPolicy,
     Outcome,
     OutcomeStatus,
     Plan,
@@ -118,6 +142,17 @@ def audit_for(goal: GoalContract) -> AuditEvent:
         object_id=str(goal.goal_id),
         correlation_id=uuid4(),
         details={"version": goal.version},
+    )
+
+
+def command_context(identity: IdentityContext, key: str) -> CommandContext:
+    correlation_id = uuid4()
+    return CommandContext(
+        identity,
+        correlation_id,
+        correlation_id,
+        key,
+        sha256(key.encode("utf-8")).hexdigest(),
     )
 
 
@@ -394,6 +429,156 @@ async def test_verified_outcome_requires_persisted_evidence() -> None:
         )
     finally:
         await store.close()
+
+
+@pytest.mark.asyncio
+async def test_application_transaction_persists_context_plan_and_unknown_reconciliation() -> None:
+    tenant_id, actor_id = uuid4(), uuid4()
+    await provision_tenant(tenant_id)
+    first = PostgreSQLPlatformStore.from_url(os.environ["AUTONOESIS_TEST_DATABASE_URL"])
+    second = PostgreSQLPlatformStore.from_url(os.environ["AUTONOESIS_TEST_DATABASE_URL"])
+    identity = IdentityContext(
+        tenant_id,
+        actor_id,
+        actor_id,
+        frozenset({"operator", "tenant_admin"}),
+        "authority-agent",
+    )
+    try:
+        await first.add_capability_pack(tenant_id, parse_manifest(manifest_payload()))
+        agent = AgentVersion(
+            tenant_id,
+            uuid4(),
+            1,
+            "execute authority test",
+            "balanced",
+            (),
+            ("records",),
+            LoopPolicy(5, 1000, 100, 60),
+            AssetStage.STABLE,
+        )
+        await first.add_agent("authority-agent", agent)
+        application = GoalExecutionApplication(first.repository, first)
+        created = await application.create_goal(
+            command_context(identity, "component-goal"),
+            CreateGoal(
+                "authority.verify",
+                "Persist through Application",
+                "facts visible across processes",
+                (SubjectRef("records", "record", "component"),),
+                (SuccessCriterion("persisted", "state persisted", "readback"),),
+                (),
+                actor_id,
+                RiskTier.MEDIUM,
+                100,
+                datetime.now(UTC) + timedelta(hours=1),
+                {"request": "persist"},
+                uuid4(),
+            ),
+        )
+        with pytest.raises(ConcurrencyConflict, match="different request"):
+            await application.create_goal(
+                CommandContext(identity, uuid4(), uuid4(), "component-goal", "b" * 64),
+                CreateGoal(
+                    "authority.verify",
+                    "Different request",
+                    "must conflict",
+                    (SubjectRef("records", "record", "component"),),
+                    (SuccessCriterion("persisted", "state persisted", "readback"),),
+                    (),
+                    actor_id,
+                    RiskTier.MEDIUM,
+                    100,
+                    datetime.now(UTC) + timedelta(hours=1),
+                    {"request": "persist"},
+                    uuid4(),
+                ),
+            )
+        await application.activate_goal(
+            command_context(identity, "component-activate"), ActivateGoal(created.goal_id)
+        )
+        run = await application.request_run(
+            command_context(identity, "component-run"), RequestRun(created.goal_id)
+        )
+        context = await application.prepare_run_context(
+            command_context(identity, "component-context"),
+            PrepareRunContext(run.run_id, (), (), (), "component-history", ("records@1.0",)),
+        )
+        task_id = uuid4()
+        plan = await application.create_validated_plan(
+            command_context(identity, "component-plan"),
+            CreateValidatedPlan(
+                run.run_id,
+                (TaskDefinition("read state", "state returned", task_id=task_id),),
+                (),
+                ("records@1.0",),
+                "balanced",
+                "authority-policy@1",
+            ),
+        )
+        await application.start_task(
+            command_context(identity, "component-task"), StartTask(task_id)
+        )
+        action = await application.propose_action(
+            command_context(identity, "component-action"),
+            ProposeAction(
+                task_id,
+                "records",
+                "1.0",
+                "read",
+                "records/component",
+                {},
+                RiskLevel.L1_READ,
+                "state returned",
+            ),
+        )
+        envelope = await application.authorize_action_at_execution_time(
+            command_context(identity, "component-authorize"),
+            AuthorizeActionAtExecutionTime(
+                action.action_id,
+                "authority-policy@1",
+                True,
+                "read allowed",
+                None,
+                "authority-agent@1",
+                "delegation://component",
+                "budget://component",
+                datetime.now(UTC) + timedelta(minutes=5),
+                "00-component-trace",
+            ),
+        )
+        unknown = await application.record_action_attempt(
+            command_context(identity, "component-attempt"),
+            RecordActionAttempt(
+                action.action_id,
+                envelope.invocation_id,
+                ActionAttemptStatus.UNKNOWN,
+                "receipt://unknown",
+                "component-adapter@1",
+            ),
+        )
+        assert unknown.status is ActionStatus.UNKNOWN
+        reconciled = await application.reconcile_unknown_action(
+            command_context(identity, "component-reconcile"),
+            ReconcileUnknownAction(
+                action.action_id,
+                envelope.invocation_id,
+                True,
+                "readback://component",
+                "component-reconciler@1",
+            ),
+        )
+        assert reconciled.status is ActionStatus.SUCCEEDED
+        assert (await second.repository.get_context_snapshot(tenant_id, run.run_id)) == context
+        assert (await second.repository.get_plan(tenant_id, plan.plan_id)).plan_id == plan.plan_id
+        attempts = await second.repository.list_action_attempts(tenant_id, action.action_id)
+        assert {item.status for item in attempts} == {
+            ActionAttemptStatus.UNKNOWN,
+            ActionAttemptStatus.SUCCEEDED,
+        }
+    finally:
+        await first.close()
+        await second.close()
 
 
 @pytest.mark.asyncio
