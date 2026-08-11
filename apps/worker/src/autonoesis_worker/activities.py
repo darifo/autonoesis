@@ -1,6 +1,6 @@
 """Real Temporal Activity implementations for Goal and Candidate lifecycles.
 
-These replace the placeholder stubs from Phase 1.  Every activity:
+These replace the placeholder stubs from Phase 1. Every activity:
 - Accepts a strongly-typed input dataclass.
 - Is idempotent (safe to retry).
 - Reports outcomes via the platform store.
@@ -8,6 +8,7 @@ These replace the placeholder stubs from Phase 1.  Every activity:
 
 from __future__ import annotations
 
+from contextlib import suppress
 from dataclasses import dataclass
 from hashlib import sha256
 from uuid import UUID
@@ -28,66 +29,47 @@ from autonoesis_application import (
 )
 from temporalio import activity
 
-# ── Activity inputs ──────────────────────────────────────────────────────────
-
-
-@dataclass(frozen=True, slots=True)
-class PrepareRunInput:
-    tenant_id: str
-    goal_id: str
-    run_id: str
-
-
-@dataclass(frozen=True, slots=True)
-class CancelRunInput:
-    tenant_id: str
-    goal_id: str
-    run_id: str
-    reason: str = "cancelled_by_user"
-
-
-@dataclass(frozen=True, slots=True)
-class RejectRunInput:
-    tenant_id: str
-    goal_id: str
-    run_id: str
-    reason: str = "rejected_by_approver"
-
-
-@dataclass(frozen=True, slots=True)
-class ExecuteRunInput:
-    tenant_id: str
-    goal_id: str
-    run_id: str
-
-
-@dataclass(frozen=True, slots=True)
-class EvaluateRunInput:
-    tenant_id: str
-    goal_id: str
-    run_id: str
-
-
-@dataclass(frozen=True, slots=True)
-class EvaluateCandidateInput:
-    tenant_id: str
-    candidate_id: str
-
-
-@dataclass(frozen=True, slots=True)
-class PromoteCandidateInput:
-    tenant_id: str
-    candidate_id: str
-    stable_version_id: str
-
+from autonoesis_worker.contracts import (
+    ApprovalLookupInput,
+    ApprovalState,
+    CancelRunInput,
+    EvaluateCandidateInput,
+    EvaluateRunInput,
+    ExecuteRunInput,
+    PrepareRunInput,
+    PromoteCandidateInput,
+    RejectRunInput,
+    TakeOverRunInput,
+)
 
 # ── Activity implementations ─────────────────────────────────────────────────
 
 PlatformStore = InMemoryPlatformStore | PostgreSQLPlatformStore
 
 
-def _application(store: PlatformStore) -> GoalExecutionApplication:
-    return GoalExecutionApplication(store.repository, store)
+@dataclass(frozen=True, slots=True)
+class ActivityDependencies:
+    """Process-level dependencies injected into every Activity invocation."""
+
+    store: PlatformStore
+    application: GoalExecutionApplication
+    evolution: CandidateLifecycleService | None = None
+
+
+def build_activity_dependencies(
+    store: PlatformStore, evolution: CandidateLifecycleService | None = None
+) -> ActivityDependencies:
+    return ActivityDependencies(
+        store=store,
+        application=GoalExecutionApplication(store.repository, store),
+        evolution=evolution,
+    )
+
+
+def _heartbeat(stage: str) -> None:
+    # Direct unit tests do not run inside a Temporal Activity context.
+    with suppress(RuntimeError):
+        activity.heartbeat(stage)
 
 
 def _context(tenant_id: str, run_id: str, operation: str) -> CommandContext:
@@ -111,10 +93,11 @@ def _context(tenant_id: str, run_id: str, operation: str) -> CommandContext:
 @activity.defn
 async def prepare_run(
     input: PrepareRunInput,
-    store: PlatformStore,
+    dependencies: ActivityDependencies,
 ) -> str:
     """Prepare immutable Context and a validated Plan through Application use cases."""
-    application = _application(store)
+    _heartbeat("prepare_context")
+    application = dependencies.application
     await application.prepare_run_context(
         _context(input.tenant_id, input.run_id, "prepare-context"),
         PrepareRunContext(
@@ -137,16 +120,18 @@ async def prepare_run(
             policy_version="development-policy@1",
         ),
     )
+    _heartbeat("plan_persisted")
     return "planned"
 
 
 @activity.defn
 async def cancel_run(
     input: CancelRunInput,
-    store: PlatformStore,
+    dependencies: ActivityDependencies,
 ) -> str:
     """Cancel a Run and record the reason."""
-    run = await _application(store).cancel_run(
+    _heartbeat("cancel_requested")
+    run = await dependencies.application.cancel_run(
         _context(input.tenant_id, input.run_id, "cancel"),
         CancelRun(UUID(input.run_id), input.reason),
     )
@@ -158,10 +143,11 @@ async def cancel_run(
 @activity.defn
 async def reject_run(
     input: RejectRunInput,
-    store: PlatformStore,
+    dependencies: ActivityDependencies,
 ) -> str:
     """Reject a Run and record the reason."""
-    run = await _application(store).fail_run(
+    _heartbeat("rejection_requested")
+    run = await dependencies.application.fail_run(
         _context(input.tenant_id, input.run_id, "reject"),
         FailRun(UUID(input.run_id), input.reason),
     )
@@ -171,49 +157,84 @@ async def reject_run(
 
 
 @activity.defn
+async def take_over_run(
+    input: TakeOverRunInput,
+    dependencies: ActivityDependencies,
+) -> str:
+    """Confirm an already-authorized Application takeover before automation stops."""
+
+    _heartbeat("confirm_takeover")
+    run = await dependencies.store.get_run(UUID(input.tenant_id), UUID(input.run_id))
+    if run.status.value != "blocked":
+        raise PermissionError(
+            "manual takeover must be authorized and persisted before signaling Workflow"
+        )
+    return "taken_over"
+
+
+@activity.defn
+async def load_approval(
+    input: ApprovalLookupInput,
+    dependencies: ActivityDependencies,
+) -> ApprovalState:
+    """Reload the authoritative Approval; a Signal is only a wake-up reference."""
+
+    _heartbeat("load_approval")
+    approval = await dependencies.store.repository.get_approval(
+        UUID(input.tenant_id), UUID(input.approval_id)
+    )
+    if approval.run_id != UUID(input.run_id):
+        raise PermissionError("Approval Signal does not belong to the Workflow Run")
+    return ApprovalState(str(approval.approval_id), approval.status.value)
+
+
+@activity.defn
 async def execute_run(
     input: ExecuteRunInput,
-    store: PlatformStore,
+    dependencies: ActivityDependencies,
 ) -> str:
     """Dispatch ready Tasks; success remains an Application verification decision."""
+    _heartbeat("load_run")
+    store = dependencies.store
     run = await store.get_run(UUID(input.tenant_id), UUID(input.run_id))
     from autonoesis_domain import RunStatus
 
     if run.status in {RunStatus.SUCCEEDED, RunStatus.FAILED, RunStatus.CANCELLED}:
         return run.status.value
 
-    application = _application(store)
+    application = dependencies.application
     for task in await store.repository.list_tasks(UUID(input.tenant_id), UUID(input.run_id)):
         if task.status.value == "pending":
             await application.start_task(
                 _context(input.tenant_id, input.run_id, f"start-task:{task.task_id}"),
                 StartTask(task.task_id),
             )
+            _heartbeat(f"task_started:{task.task_id}")
     return "dispatched"
 
 
 @activity.defn
 async def evaluate_run(
     input: EvaluateRunInput,
-    store: PlatformStore,
+    dependencies: ActivityDependencies,
 ) -> str:
     """Ask Application to evaluate completion from persisted Tasks and Outcomes."""
-    application = _application(store)
+    _heartbeat("evaluate_run")
+    application = dependencies.application
     try:
         run = await application.complete_run(
             _context(input.tenant_id, input.run_id, "complete-run"),
             CompleteRun(UUID(input.run_id)),
         )
     except ValueError:
-        run = await store.get_run(UUID(input.tenant_id), UUID(input.run_id))
+        run = await dependencies.store.get_run(UUID(input.tenant_id), UUID(input.run_id))
     return run.status.value
 
 
 @activity.defn
 async def evaluate_candidate(
     input: EvaluateCandidateInput,
-    store: PlatformStore,
-    evolution: CandidateLifecycleService | None,
+    dependencies: ActivityDependencies,
 ) -> bool:
     """Run the evaluation suite against a Candidate.
 
@@ -222,7 +243,9 @@ async def evaluate_candidate(
     tenant_id = UUID(input.tenant_id)
     candidate_id = UUID(input.candidate_id)
 
+    evolution = dependencies.evolution
     if evolution is not None:
+        _heartbeat("evaluate_candidate")
         await evolution.submit_for_evaluation(tenant_id, candidate_id)
         from autonoesis_application import EvaluationDecision
 
@@ -244,11 +267,12 @@ async def evaluate_candidate(
 @activity.defn
 async def promote_candidate(
     input: PromoteCandidateInput,
-    store: PlatformStore,
-    evolution: CandidateLifecycleService | None,
+    dependencies: ActivityDependencies,
 ) -> str:
     """Promote an approved Candidate to Stable and create a Release."""
+    evolution = dependencies.evolution
     if evolution is not None:
+        _heartbeat("promote_candidate")
         from autonoesis_application import IdentityContext
 
         identity = IdentityContext(

@@ -21,26 +21,25 @@ Evidence 基础设施端到端。
 ## Phase 1：通用运行平台（`modeled` / 部分 `unit-tested`）
 
 - `integrated`：PostgreSQL 权威 Schema、冻结 Alembic、RLS、角色、Repository、Outbox/Inbox 和幂等表；
-- `modeled`：Temporal Goal 与 Candidate Workflow；
+- `integrated`：Temporal Goal Workflow、Run Outbox Dispatcher、固定 Workflow ID、Reconciler、Signal、Continue-as-New 和 Replay；
 - `unit-tested`：OIDC、预算、审批和 Tool Gateway 的部分隔离逻辑；
 - `unit-tested`：模型适配器边界；
 - `unit-tested`：通用 API、SDK 和 Cockpit 构建；
 - `unit-tested`：Field Service 示例能力包与评估案例解析。
 
-未完成：Temporal Replay/恢复、Cockpit 真实 API 数据源和 Consumer Contract。PostgreSQL
-的备份恢复、容量和长期运行证据仍未达到生产验证等级。
+未完成：Candidate Workflow 的生产发布接入、Cockpit 真实 API 数据源和 Consumer Contract。
+PostgreSQL/Temporal 的备份恢复、容量和长期运行证据仍未达到生产验证等级。
 
 ## Phase 2：活动与证据骨架（`modeled` / 部分 `unit-tested`）
 
-- `unit-tested`：Activity 函数与进程内 Store 的协作；
+- `integrated`：Activity 函数使用进程级注入依赖，并通过真实 PostgreSQL/Temporal 恢复测试；
 - `unit-tested`：Evidence 内容摘要和分类逻辑（使用内存 Object Store）；
 - `unit-tested`：Outbox/Inbox 逻辑；
 - `unit-tested`：Unknown 对账、补偿和 Kill Switch 的隔离逻辑；
 - `unit-tested`：OIDC Validator；
 - `unit-tested`：MCP 适配器边界。
 
-未完成：真实 Temporal Worker 恢复、MinIO 对象锁与租户策略、PostgreSQL 原子幂等、
-OPA 组件测试、凭证 Broker、受控出口和 Evidence Saga。
+未完成：MinIO 对象锁与租户策略、生产 Credential Broker、网络层出口控制和 Evidence Saga。
 
 ## Phase 3：进化发布算法骨架（`modeled` / 部分 `unit-tested`）
 
@@ -55,15 +54,13 @@ OPA 组件测试、凭证 Broker、受控出口和 Evidence Saga。
 
 ## 当前证据边界
 
-现有 CI 执行 Python lint/type/unit test、PostgreSQL 17 迁移/组件测试和 Cockpit
+现有 CI 执行 Python lint/type/unit test、PostgreSQL 17、Temporal、OPA 组件测试和 Cockpit
 typecheck/build/静态页面 Playwright。以下项目尚未成为 CI 门禁，因此不得标记为
 `integrated` 或 `production-proven`：
 
-- Temporal Workflow Test、Replay 和 Worker Crash 恢复；
-- OPA Policy Test；
 - MinIO Evidence Test；
 - API Consumer Contract Test；
-- 真实外部系统纵向 E2E、故障注入、依赖扫描和 Secret 扫描。
+- 真实第三方系统纵向 E2E、生产级故障演练、依赖扫描和 Secret 扫描。
 
 详细限制见[生产就绪基线](production-readiness-baseline.md)，整改优先级以
 [企业级生产就绪整改路线](enterprise-production-readiness-remediation.md)为准。

@@ -116,6 +116,7 @@ services:
       api: {condition: service_healthy}
     environment:
       AUTONOESIS_DATABASE_URL: postgresql+psycopg://autonoesis_worker:autonoesis-local-only@postgres:5432/autonoesis
+      AUTONOESIS_DISPATCH_DATABASE_URL: postgresql+psycopg://autonoesis_outbox:autonoesis-local-only@postgres:5432/autonoesis
       AUTONOESIS_TEMPORAL_TARGET: temporal:7233
       AUTONOESIS_TEMPORAL_TASK_QUEUE: autonoesis
 

@@ -15,6 +15,7 @@ from autonoesis_application import (
 from autonoesis_capability import parse_manifest
 from autonoesis_domain import (
     AgentVersion,
+    ApprovalRequest,
     AssetStage,
     LoopPolicy,
     RiskTier,
@@ -23,16 +24,23 @@ from autonoesis_domain import (
     SuccessCriterion,
 )
 from autonoesis_worker.activities import (
+    build_activity_dependencies,
+    cancel_run,
+    evaluate_run,
+    execute_run,
+    load_approval,
+    prepare_run,
+    reject_run,
+    take_over_run,
+)
+from autonoesis_worker.contracts import (
+    ApprovalLookupInput,
     CancelRunInput,
     EvaluateRunInput,
     ExecuteRunInput,
     PrepareRunInput,
     RejectRunInput,
-    cancel_run,
-    evaluate_run,
-    execute_run,
-    prepare_run,
-    reject_run,
+    TakeOverRunInput,
 )
 
 
@@ -121,7 +129,8 @@ class TestPrepareRun:
         run_id = await _start_run(store, identity, goal_id)
 
         result = await prepare_run(
-            PrepareRunInput(tenant_id=tenant_id, goal_id=goal_id, run_id=run_id), store
+            PrepareRunInput(tenant_id=tenant_id, goal_id=goal_id, run_id=run_id),
+            build_activity_dependencies(store),
         )
         assert result == "planned"
 
@@ -135,10 +144,12 @@ class TestPrepareRun:
         run_id = await _start_run(store, identity, goal_id)
 
         await prepare_run(
-            PrepareRunInput(tenant_id=tenant_id, goal_id=goal_id, run_id=run_id), store
+            PrepareRunInput(tenant_id=tenant_id, goal_id=goal_id, run_id=run_id),
+            build_activity_dependencies(store),
         )
         result = await prepare_run(
-            PrepareRunInput(tenant_id=tenant_id, goal_id=goal_id, run_id=run_id), store
+            PrepareRunInput(tenant_id=tenant_id, goal_id=goal_id, run_id=run_id),
+            build_activity_dependencies(store),
         )
         assert result == "planned"
 
@@ -150,12 +161,13 @@ class TestCancelRun:
         goal_id = await _make_goal(store, identity)
         run_id = await _start_run(store, identity, goal_id)
         await prepare_run(
-            PrepareRunInput(tenant_id=tenant_id, goal_id=goal_id, run_id=run_id), store
+            PrepareRunInput(tenant_id=tenant_id, goal_id=goal_id, run_id=run_id),
+            build_activity_dependencies(store),
         )
 
         result = await cancel_run(
             CancelRunInput(tenant_id=tenant_id, goal_id=goal_id, run_id=run_id, reason="test"),
-            store,
+            build_activity_dependencies(store),
         )
         assert result == "cancelled"
 
@@ -170,12 +182,13 @@ class TestRejectRun:
         goal_id = await _make_goal(store, identity)
         run_id = await _start_run(store, identity, goal_id)
         await prepare_run(
-            PrepareRunInput(tenant_id=tenant_id, goal_id=goal_id, run_id=run_id), store
+            PrepareRunInput(tenant_id=tenant_id, goal_id=goal_id, run_id=run_id),
+            build_activity_dependencies(store),
         )
 
         result = await reject_run(
             RejectRunInput(tenant_id=tenant_id, goal_id=goal_id, run_id=run_id, reason="test"),
-            store,
+            build_activity_dependencies(store),
         )
         assert result == "rejected"
 
@@ -190,11 +203,13 @@ class TestExecuteRun:
         goal_id = await _make_goal(store, identity)
         run_id = await _start_run(store, identity, goal_id)
         await prepare_run(
-            PrepareRunInput(tenant_id=tenant_id, goal_id=goal_id, run_id=run_id), store
+            PrepareRunInput(tenant_id=tenant_id, goal_id=goal_id, run_id=run_id),
+            build_activity_dependencies(store),
         )
 
         result = await execute_run(
-            ExecuteRunInput(tenant_id=tenant_id, goal_id=goal_id, run_id=run_id), store
+            ExecuteRunInput(tenant_id=tenant_id, goal_id=goal_id, run_id=run_id),
+            build_activity_dependencies(store),
         )
         assert result == "dispatched"
 
@@ -207,14 +222,17 @@ class TestExecuteRun:
         goal_id = await _make_goal(store, identity)
         run_id = await _start_run(store, identity, goal_id)
         await prepare_run(
-            PrepareRunInput(tenant_id=tenant_id, goal_id=goal_id, run_id=run_id), store
+            PrepareRunInput(tenant_id=tenant_id, goal_id=goal_id, run_id=run_id),
+            build_activity_dependencies(store),
         )
         await execute_run(
-            ExecuteRunInput(tenant_id=tenant_id, goal_id=goal_id, run_id=run_id), store
+            ExecuteRunInput(tenant_id=tenant_id, goal_id=goal_id, run_id=run_id),
+            build_activity_dependencies(store),
         )
 
         result = await execute_run(
-            ExecuteRunInput(tenant_id=tenant_id, goal_id=goal_id, run_id=run_id), store
+            ExecuteRunInput(tenant_id=tenant_id, goal_id=goal_id, run_id=run_id),
+            build_activity_dependencies(store),
         )
         assert result == "dispatched"
 
@@ -226,13 +244,71 @@ class TestEvaluateRun:
         goal_id = await _make_goal(store, identity)
         run_id = await _start_run(store, identity, goal_id)
         await prepare_run(
-            PrepareRunInput(tenant_id=tenant_id, goal_id=goal_id, run_id=run_id), store
+            PrepareRunInput(tenant_id=tenant_id, goal_id=goal_id, run_id=run_id),
+            build_activity_dependencies(store),
         )
         await execute_run(
-            ExecuteRunInput(tenant_id=tenant_id, goal_id=goal_id, run_id=run_id), store
+            ExecuteRunInput(tenant_id=tenant_id, goal_id=goal_id, run_id=run_id),
+            build_activity_dependencies(store),
         )
 
         result = await evaluate_run(
-            EvaluateRunInput(tenant_id=tenant_id, goal_id=goal_id, run_id=run_id), store
+            EvaluateRunInput(tenant_id=tenant_id, goal_id=goal_id, run_id=run_id),
+            build_activity_dependencies(store),
         )
         assert result == "running"
+
+
+@pytest.mark.asyncio
+async def test_approval_signal_reference_is_reloaded_and_run_bound() -> None:
+    store, identity, tenant_id = _setup_store()
+    goal_id = await _make_goal(store, identity)
+    run_id = await _start_run(store, identity, goal_id)
+    now = datetime.now(UTC)
+    approval = ApprovalRequest(
+        tenant_id=identity.tenant_id,
+        run_id=UUID(run_id),
+        action_id=uuid4(),
+        action_digest="a" * 64,
+        tool_version="1.0.0",
+        operation="write",
+        resource_scope="records/1",
+        argument_digest="b" * 64,
+        policy_version="policy@1",
+        impact_summary="one write",
+        required_role="approver",
+        expires_at=now + timedelta(minutes=5),
+        created_at=now,
+    ).decide(uuid4(), True, "approved")
+    await store.add_approval(approval)
+    dependencies = build_activity_dependencies(store)
+
+    state = await load_approval(
+        ApprovalLookupInput(tenant_id, run_id, str(approval.approval_id)), dependencies
+    )
+    assert state.status == "approved"
+    with pytest.raises(PermissionError, match="does not belong"):
+        await load_approval(
+            ApprovalLookupInput(tenant_id, str(uuid4()), str(approval.approval_id)),
+            dependencies,
+        )
+
+
+@pytest.mark.asyncio
+async def test_takeover_signal_only_confirms_persisted_application_state() -> None:
+    store, identity, tenant_id = _setup_store()
+    goal_id = await _make_goal(store, identity)
+    run_id = await _start_run(store, identity, goal_id)
+    dependencies = build_activity_dependencies(store)
+    with pytest.raises(PermissionError, match="must be authorized"):
+        await take_over_run(TakeOverRunInput(tenant_id, goal_id, run_id, "manual"), dependencies)
+    await prepare_run(PrepareRunInput(tenant_id, goal_id, run_id), dependencies)
+    running = await store.get_run(identity.tenant_id, UUID(run_id))
+    await store.save_run(
+        running.transition_to(RunStatus.BLOCKED, reason="authorized manual takeover"),
+        running.optimistic_version,
+    )
+    assert (
+        await take_over_run(TakeOverRunInput(tenant_id, goal_id, run_id, "manual"), dependencies)
+        == "taken_over"
+    )

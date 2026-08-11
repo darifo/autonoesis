@@ -11,14 +11,15 @@
 严格类型和隔离单元测试，执行 PostgreSQL 17 迁移与权威存储组件测试，以及验证 Cockpit
 的类型检查、构建和静态页面浏览器测试。
 
-这些证据支持 PostgreSQL 权威存储、Goal/Run Application 用例和 Governed Tool Gateway 的
-`integrated` 声明；其余能力最高仍为 `unit-tested`，没有任何能力达到
+这些证据支持 PostgreSQL 权威存储、Goal/Run Application 用例、Governed Tool Gateway 和
+Temporal 耐久编排的 `integrated` 声明；其余能力最高仍为 `unit-tested`，没有任何能力达到
 `production-proven`。
 
 ## 生产限制
 
 - PostgreSQL 已有冻结迁移、租户复合外键、角色、RLS 和组件测试，但尚无生产备份恢复、容量、故障和滚动升级演练；
-- Temporal 只有流程骨架，没有 Outbox Dispatcher、DB/Workflow Reconciler、Replay 和崩溃恢复证据；
+- Temporal 已有 Outbox Dispatcher、固定 Workflow ID、DB/Workflow Reconciler、Replay、Worker
+  重启和故障注入组件测试；尚无生产 Namespace 隔离、HA/备份、积压容量和滚动升级演练；
 - Tool Gateway 已使用 PostgreSQL 原子协调预算与幂等 Reservation，并以真实 OPA 验证策略；
   但生产 Credential Broker、网络层出口策略及第三方系统端到端写入仍未演练；
 - Evidence 测试使用内存 Object Store；真实 MinIO 租户策略、加密、版本、对象锁和 Saga 尚未验证；

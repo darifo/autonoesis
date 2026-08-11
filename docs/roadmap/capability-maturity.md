@@ -13,7 +13,8 @@
 5. 证据失效、CI 门禁移除或实现路径改变时，必须在同一个变更中降级声明；
 6. 文档、README、API 元数据和 Cockpit 不得给出高于本矩阵的声明。
 
-当前 PostgreSQL 权威存储和 Goal/Run Application 用例达到 `integrated`；没有任何能力达到 `production-proven`。
+当前 PostgreSQL 权威存储、Goal/Run Application 用例、Governed Tool Gateway 和 Temporal
+耐久编排达到 `integrated`；没有任何能力达到 `production-proven`。
 
 ## 当前矩阵
 
@@ -23,9 +24,9 @@
 | Capability Pack Manifest | `unit-tested` | `packages/capability/tests/`；CI `python` job | 签名、SBOM、隔离安装和真实供应链测试 |
 | Goal/Run Application 用例 | `integrated` | 完整 InMemory 参考链；CI PostgreSQL Application 事务、跨 Store Context/Plan/Unknown 对账组件测试 | 真实 Temporal/Tool/Evidence 端到端与故障恢复 |
 | HTTP API/SDK | `unit-tested` | `apps/api/tests/`；Goal/Run/Approval 统一 Application 路径；生产 PostgreSQL Store 装配 | Consumer Contract 与真实多副本 API 测试 |
-| PostgreSQL 权威存储 | `integrated` | CI PostgreSQL 17；Alembic `0001 → 0003`；`test_postgres_authority.py` | 备份恢复、故障注入、容量/升级演练和长期运行证据 |
-| Temporal 耐久编排 | `modeled` | 两个 Workflow 类型和 Activity 单元测试 | Dispatcher、Reconciler、Replay、Signal 权威复核和崩溃恢复 |
-| Governed Tool Gateway | `unit-tested` | 完整 Envelope 与 Approval 绑定、内存 Policy/Budget/Idempotency 测试 | 原子 Reservation、执行时授权和受控出口 |
+| PostgreSQL 权威存储 | `integrated` | CI PostgreSQL 17；Alembic `0001 → 0004`；`test_postgres_authority.py` | 备份恢复、故障注入、容量/升级演练和长期运行证据 |
+| Temporal 耐久编排 | `integrated` | CI 真实 Temporal：Outbox Dispatcher、固定 ID、Reconciler、Worker 重启、Continue-as-New、Signal 和 Replay 测试 | Namespace/队列隔离、HA/备份、容量、网络分区和滚动升级演练 |
+| Governed Tool Gateway | `integrated` | PostgreSQL 原子预算/幂等 Reservation、真实 OPA、凭证租约、受控出口和故障语义组件测试 | 生产 Credential Broker、网络层出口策略和第三方系统故障演练 |
 | Identity/Policy/Approval | `unit-tested` | OIDC Validator、Application 审批拒绝/冲突/执行时精确绑定、数据库角色职责分离 | 进程级 JWKS、委托撤销、OPA 组件测试、业务职责分离 |
 | Evidence/Outcome/Audit | `unit-tested` | 完整参考链、Evidence/Outcome 持久化与 Audit/Outbox 原子回滚测试 | MinIO、可信 Readback、Evidence Saga、真实 Audit Ref |
 | Context/Environment/Memory | `unit-tested` | Context 持久化及跨 Store 读取；对应包隔离测试 | 来源 ACL、冲突处理和删除传播集成 |

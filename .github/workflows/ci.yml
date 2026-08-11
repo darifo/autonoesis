@@ -25,6 +25,16 @@ jobs:
           --health-interval 5s
           --health-timeout 3s
           --health-retries 20
+      temporal:
+        image: temporalio/auto-setup:1.28.1
+        env:
+          DB: postgres12
+          DB_PORT: 5432
+          POSTGRES_USER: autonoesis
+          POSTGRES_PWD: autonoesis
+          POSTGRES_SEEDS: postgres
+        ports:
+          - 7233:7233
     defaults:
       run:
         shell: bash -el {0}
@@ -37,6 +47,13 @@ jobs:
           auto-activate-base: false
       - name: Install workspace
         run: UV_PROJECT_ENVIRONMENT="$CONDA_PREFIX" uv sync --inexact --all-packages --dev --locked
+      - name: Wait for Temporal component
+        run: |
+          for attempt in {1..30}; do
+            python -c "import asyncio; from temporalio.client import Client; asyncio.run(Client.connect('localhost:7233'))" && exit 0
+            sleep 1
+          done
+          exit 1
       - name: Initialize PostgreSQL authority roles
         env:
           PGPASSWORD: autonoesis
@@ -63,7 +80,9 @@ jobs:
         env:
           AUTONOESIS_TEST_DATABASE_URL: postgresql+psycopg://autonoesis_api:autonoesis-ci-only@localhost:5432/autonoesis
           AUTONOESIS_TEST_ADMIN_DATABASE_URL: postgresql+psycopg://autonoesis:autonoesis@localhost:5432/autonoesis
+          AUTONOESIS_TEST_DISPATCH_DATABASE_URL: postgresql+psycopg://autonoesis_outbox:autonoesis-ci-only@localhost:5432/autonoesis
           AUTONOESIS_TEST_OPA_URL: http://localhost:8181
+          AUTONOESIS_TEST_TEMPORAL_TARGET: localhost:7233
         run: pytest
 
   cockpit:

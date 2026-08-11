@@ -13,7 +13,7 @@
 | `package.json` | `50cb64a759a95e84c47f1cf5fe1cafa0167aa030bf0d5c806bda00eb48cfbf8a` |
 | `pnpm-lock.yaml` | `f8a6632ae5b7f346481d3cd8deb6252c6bb9fdb197a673c89067f09745e4e132` |
 | `versions.lock` | `99eec493a438c18cc24235bc325a4c8d9e45338ed4f2a75b4e794e4f421a4fe0` |
-| `infra/compose/docker-compose.yml` | `1ff12c568c8f1abe994e2ff0e246a7d13b1d048b7745d367caefb30e7f4040d3` |
+| `infra/compose/docker-compose.yml` | `9bc9e8c9fd306fb36d65926dfc87252f1146c7d44ab3155de6c562eed7c9a9f5` |
 
 Configured Compose images (configuration inventory only; not integration evidence):
 
@@ -82,14 +82,14 @@ Configured Compose images (configuration inventory only; not integration evidenc
 
 ## Workflow Type Baseline
 
-- Workflow source digest: `sha256:28768ba64f134284965f41f7a1b468bcf11e163cfad090c893d5df0bc43c0ffd`
+- Workflow source digest: `sha256:c9621c4ec94ac0d75f43ffc26106947aa47e8353ccd6a85bb66c23586600cf01`
 - Declared Workflow types (2): `CandidateLifecycleWorkflow`, `GoalRunWorkflow`
-- Workflow patch/version marker: not established.
-- Replay evidence: not established.
+- Workflow patch/version markers: `p0-06-approval-id-signal`
+- Replay evidence: CI real-Temporal history replay test.
 
 ## Maturity Guard Result
 
 - README engineering-preview disclosure: present.
 - Cockpit Prototype/Demo and static-data disclosure: present.
-- Highest allowed current maturity: `integrated` (PostgreSQL authority and Goal/Run Application use cases).
-- Real-component integration evidence: CI PostgreSQL 17 migration and authority/Application transaction tests.
+- Highest allowed current maturity: `integrated` (PostgreSQL authority, Goal/Run Application use cases, Governed Tool Gateway, and Temporal orchestration).
+- Real-component integration evidence: CI PostgreSQL 17 migration, Temporal replay/recovery, OPA policy, and authority/Application/Gateway transaction tests.

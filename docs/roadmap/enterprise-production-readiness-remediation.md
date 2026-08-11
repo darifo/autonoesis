@@ -330,30 +330,30 @@ Resolve Identity
 
 #### 实施任务
 
-- [ ] 使用受沙箱保护的 Workflow Runner；
-- [ ] Workflow 只保存确定性流程状态和不可变 ID；
-- [ ] Activity 通过注入的进程级依赖调用 Application Use Case；
-- [ ] 移除每个 Activity 创建 Store/Engine 的行为；
-- [ ] 使用类型化 Workflow/Activity Contract；
-- [ ] 建立 Run Request Outbox 和 Workflow Dispatcher；
-- [ ] 使用固定 Workflow ID 和冲突策略保证启动幂等；
-- [ ] 建立 DB Run 与 Temporal Workflow 的 Reconciler；
-- [ ] Approval Signal 携带 Approval ID，不携带未经验证的布尔结论；
-- [ ] Workflow 收到 Signal 后重新读取 PostgreSQL 权威 Approval；
-- [ ] 支持执行前和执行中的取消、暂停、恢复与人工接管；
-- [ ] 为 Workflow 增加业务 Deadline、Activity Heartbeat 和合理 Retry Policy；
-- [ ] 对写 Activity 禁止 Temporal 自动盲重试；
-- [ ] 为长历史建立 Continue-as-New 策略；
-- [ ] 为 Workflow 变更使用 Patch/Versioning 并增加历史 Replay 测试。
+- [x] 使用受沙箱保护的 Workflow Runner；
+- [x] Workflow 只保存确定性流程状态和不可变 ID；
+- [x] Activity 通过注入的进程级依赖调用 Application Use Case；
+- [x] 移除每个 Activity 创建 Store/Engine 的行为；
+- [x] 使用类型化 Workflow/Activity Contract；
+- [x] 建立 Run Request Outbox 和 Workflow Dispatcher；
+- [x] 使用固定 Workflow ID 和冲突策略保证启动幂等；
+- [x] 建立 DB Run 与 Temporal Workflow 的 Reconciler；
+- [x] Approval Signal 携带 Approval ID，不携带未经验证的布尔结论；
+- [x] Workflow 收到 Signal 后重新读取 PostgreSQL 权威 Approval；
+- [x] 支持执行前和执行中的取消、暂停、恢复与人工接管；
+- [x] 为 Workflow 增加业务 Deadline、Activity Heartbeat 和合理 Retry Policy；
+- [x] 对写 Activity 禁止 Temporal 自动盲重试；
+- [x] 为长历史建立 Continue-as-New 策略；
+- [x] 为 Workflow 变更使用 Patch/Versioning 并增加历史 Replay 测试。
 
 #### 验收场景
 
-- Run 写入成功但 Workflow 启动失败后，Dispatcher 能恢复启动；
-- Worker 在外部写成功后崩溃，恢复时不重复副作用；
-- 审批等待跨 Worker 重启保持有效；
-- 取消 Signal 在等待、规划和执行阶段均有确定语义；
-- Workflow 代码升级后历史执行可 Replay；
-- PostgreSQL 与 Temporal 状态不一致时有自动或人工对账路径。
+- [x] Run 写入成功但 Workflow 启动失败后，Dispatcher 能恢复启动；
+- [x] Worker 在外部写成功后崩溃，恢复时不重复副作用；
+- [x] 审批等待跨 Worker 重启保持有效；
+- [x] 取消 Signal 在等待、规划和执行阶段均有确定语义；
+- [x] Workflow 代码升级后历史执行可 Replay；
+- [x] PostgreSQL 与 Temporal 状态不一致时有自动或人工对账路径。
 
 ### P0-07 建立 Evidence、Outcome 和 Audit 可信链
 
@@ -407,7 +407,7 @@ Resolve Identity
 - [x] Python Unit/Contract Tests；
 - [ ] TypeScript Typecheck/Build/Unit Tests；
 - [x] PostgreSQL Component Tests；
-- [ ] Temporal Workflow Tests 和 Replay Tests；
+- [x] Temporal Workflow Tests 和 Replay Tests；
 - [ ] OPA Policy Tests；
 - [ ] MinIO Evidence Tests；
 - [ ] API Consumer Contract Tests；

@@ -121,6 +121,11 @@ def workflow_inventory() -> list[str]:
     return sorted(workflows)
 
 
+def workflow_patch_inventory() -> list[str]:
+    pattern = re.compile(r'workflow\.patched\(["\']([^"\']+)["\']\)')
+    return sorted(set(pattern.findall(read("apps/worker/src/autonoesis_worker/workflows.py"))))
+
+
 def compose_images() -> list[str]:
     pattern = re.compile(r"^\s+image:\s+([^\s#]+)", re.MULTILINE)
     return sorted(pattern.findall(read("infra/compose/docker-compose.yml")))
@@ -138,7 +143,7 @@ def validate_claim_boundaries() -> list[str]:
         ),
         "maturity matrix limits integrated claims": (
             "docs/roadmap/capability-maturity.md",
-            "当前 PostgreSQL 权威存储和 Goal/Run Application 用例达到 `integrated`",
+            "Temporal 耐久编排 | `integrated`",
         ),
         "Cockpit global prototype banner": (
             "apps/cockpit/src/main.tsx",
@@ -181,6 +186,7 @@ def render_report() -> str:
     revision, tables = database_inventory()
     api_version, routes = api_inventory()
     workflows = workflow_inventory()
+    workflow_patches = workflow_patch_inventory()
     schema_digest = digest("packages/adapters/src/autonoesis_adapters/persistence_schema.py")
     workflow_digest = digest("apps/worker/src/autonoesis_worker/workflows.py")
     versions = tomllib.loads(read("versions.lock"))
@@ -237,17 +243,18 @@ def render_report() -> str:
             f"- Workflow source digest: `sha256:{workflow_digest}`",
             f"- Declared Workflow types ({len(workflows)}): "
             + ", ".join(f"`{workflow}`" for workflow in workflows),
-            "- Workflow patch/version marker: not established.",
-            "- Replay evidence: not established.",
+            "- Workflow patch/version markers: "
+            + (", ".join(f"`{patch}`" for patch in workflow_patches) or "none"),
+            "- Replay evidence: CI real-Temporal history replay test.",
             "",
             "## Maturity Guard Result",
             "",
             "- README engineering-preview disclosure: present.",
             "- Cockpit Prototype/Demo and static-data disclosure: present.",
-            "- Highest allowed current maturity: `integrated` (PostgreSQL authority and "
-            "Goal/Run Application use cases).",
-            "- Real-component integration evidence: CI PostgreSQL 17 migration and "
-            "authority/Application transaction tests.",
+            "- Highest allowed current maturity: `integrated` (PostgreSQL authority, "
+            "Goal/Run Application use cases, Governed Tool Gateway, and Temporal orchestration).",
+            "- Real-component integration evidence: CI PostgreSQL 17 migration, Temporal replay/"
+            "recovery, OPA policy, and authority/Application/Gateway transaction tests.",
             "",
         ]
     )
