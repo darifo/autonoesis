@@ -151,3 +151,9 @@ P0-02 domain contracts are implemented as frozen dataclasses and constrained val
 - `improvement.py` — ImprovementProposal, CandidateVersion, Deployment, Release
 - `transitions.py` — StateTransition, InvalidStateTransition, require_transition
 - `values.py` — RiskTier, BudgetAmount/Unit, DataClassification, DataPolicy, ExecutionMode, canonical JsonObject
+
+P0-03 persists these contracts through aggregate-oriented PostgreSQL repositories. Current metadata
+lives in `packages/adapters/src/autonoesis_adapters/persistence_schema.py`; frozen Alembic head
+`0002_authoritative_state` adds Tenant Authority/composite foreign keys, optimistic versions,
+Deployment/Release constraints, and transactional Audit/Outbox records. In-memory persistence is
+limited to tests and explicit offline development.

@@ -88,7 +88,7 @@ ruff format --check . && ruff check . && mypy apps packages --ignore-missing-imp
 docker compose -f infra/compose/docker-compose.yml up --build
 ```
 
-该栈仅用于本地开发；默认凭证、进程内应用装配、未固定的 MinIO 镜像和基础设施配置均不满足生产安全要求。
+该栈仅用于本地开发；默认凭证、未固定的 MinIO 镜像和未完成加固的基础设施配置均不满足生产安全要求。API/Worker 已使用 PostgreSQL 权威状态，但这不等于整套系统生产就绪。
 
 | 服务 | 地址 |
 |---|---|
@@ -165,10 +165,10 @@ autonoesis/
 
 | 旧阶段 | 当前成熟度 | 生产就绪缺口 |
 |---|---|---|
-| **Phase 0** | `unit-tested` | 核心类型已存在，但 P0-02 不变量和冻结契约尚未完成。 |
-| **Phase 1** | `modeled` / 部分 `unit-tested` | API 和适配器已存在，生产装配仍使用进程内状态。 |
-| **Phase 2** | `modeled` / 部分 `unit-tested` | 测试依赖 Fake，真实 PostgreSQL、MinIO、OPA、Temporal 恢复尚未进入 CI。 |
-| **Phase 3** | `modeled` / 部分 `unit-tested` | 已有进化算法，但缺少持久化 Shadow/Canary 发布链路。 |
+| **Phase 0** | `unit-tested` | P0-02 契约已冻结，P0-04 纵向 Application 用例仍未完成。 |
+| **Phase 1** | PostgreSQL `integrated`；其余部分 `unit-tested` | 生产装配使用 PostgreSQL 权威状态，仍缺 Consumer Contract 和多进程 E2E。 |
+| **Phase 2** | `modeled` / 部分 `unit-tested` | PostgreSQL 已进入 CI，MinIO、OPA、Temporal 恢复尚未进入。 |
+| **Phase 3** | `unit-tested` | Deployment/Release 已持久化，仍缺真实 Shadow 流量、Canary 分流和 Release Executor。 |
 | **Phase 4** | `specified` | 生产运维和加固仅处于计划状态。 |
 
 当前生产限制和可重复基线证据见[生产就绪基线](docs/roadmap/production-readiness-baseline.md)。

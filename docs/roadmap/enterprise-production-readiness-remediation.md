@@ -152,7 +152,7 @@ P0 是最高优先级。目标是证明一条真实外部副作用可以在身�
 #### 验收
 
 - [x] 文档中不再把占位实现描述为生产完成；
-- [x] 每项 `integrated` 或 `production-proven` 能力都有 CI 任务或演练报告引用（当前无此等级声明）；
+- [x] 每项 `integrated` 或 `production-proven` 能力都有 CI 任务或演练报告引用（PostgreSQL 权威存储由 CI 真实组件任务支持）；
 - [x] Cockpit 不再展示无法从真实 API 获取的指标而不标注为示例。
 
 ### P0-02 收敛领域模型与不变量
@@ -186,7 +186,7 @@ P0 是最高优先级。目标是证明一条真实外部副作用可以在身�
 
 - [x] Plan 循环依赖、过期 Goal、非法预算和不完整 Approval 在领域层被拒绝；
 - [x] 修改 Tool、Operation、Resource 或参数都会改变 Action 摘要；
-- [x] Verified Outcome 无完整 Evidence 时无法构造；持久化拒绝由 P0-03 Repository 组件测试覆盖；
+- [x] Verified Outcome 无完整 Evidence 时无法构造或持久化；
 - [x] Candidate 未完成部署门禁时无法成为 Stable。
 
 ### P0-03 建立完整 PostgreSQL 权威存储
@@ -197,17 +197,17 @@ P0 是最高优先级。目标是证明一条真实外部副作用可以在身�
 
 #### 实施任务
 
-- [ ] 为 Goal、Run、Plan、Task、Action、Approval、Evidence、Outcome、Budget、Audit、Candidate、Trial、Deployment 和 Release 建立 Repository；
-- [ ] Repository 接口按聚合和 Use Case 组织，避免暴露通用 CRUD；
-- [ ] 所有写操作支持乐观锁或数据库原子条件更新；
-- [ ] 添加租户内版本唯一约束、幂等唯一约束、稳定版本唯一约束和合法状态 Check Constraint；
-- [ ] 使用租户复合外键，禁止跨租户引用；
-- [ ] `tenant_id` 关联 Tenant Authority，不允许任意孤立 Tenant ID；
-- [ ] 将 Audit 和 Outbox 与业务状态在同一事务提交；
-- [ ] 将 Alembic Migration 改为冻结的显式操作，不在历史 Revision 中动态 `metadata.create_all()`；
-- [ ] 建立 Migration Owner、Application Role、Relay Role 和只读审计角色；
-- [ ] 移除生产装配中的 InMemoryPlatformStore；
-- [ ] 为 Store 和 Engine 建立进程级生命周期与优雅关闭。
+- [x] 为 Goal、Run、Plan、Task、Action、Approval、Evidence、Outcome、Budget、Audit、Candidate、Trial、Deployment 和 Release 建立 Repository；
+- [x] Repository 接口按聚合和 Use Case 组织，避免暴露通用 CRUD；
+- [x] 所有写操作支持乐观锁或数据库原子条件更新；
+- [x] 添加租户内版本唯一约束、幂等唯一约束、稳定版本唯一约束和合法状态 Check Constraint；
+- [x] 使用租户复合外键，禁止跨租户引用；
+- [x] `tenant_id` 关联 Tenant Authority，不允许任意孤立 Tenant ID；
+- [x] 将 Audit 和 Outbox 与业务状态在同一事务提交；
+- [x] 将 Alembic Migration 改为冻结的显式操作，不在历史 Revision 中动态 `metadata.create_all()`；
+- [x] 建立 Migration Owner、Application Role、Relay Role 和只读审计角色；
+- [x] 移除生产装配中的 InMemoryPlatformStore；
+- [x] 为 Store 和 Engine 建立进程级生命周期与优雅关闭。
 
 #### 交付物
 
@@ -219,11 +219,11 @@ P0 是最高优先级。目标是证明一条真实外部副作用可以在身�
 
 #### 验收
 
-- API/Worker 重启后所有运行和治理状态完整；
-- 两个 API 副本读取到一致的 Capability、Approval 和 Release；
-- 并发状态更新只有一个成功，其余返回明确冲突；
-- 数据库层拒绝跨租户外键和重复 Stable Pointer；
-- 业务写入失败时 Audit 和 Outbox 同时回滚。
+- [x] 两个独立 Store/Engine 重建后读取到完整运行和治理状态；
+- [x] 两个独立 Store 读取到一致的 Capability、Approval、Kill Switch 和 Release；
+- [x] 并发状态更新只有一个成功，其余返回明确冲突；
+- [x] 数据库层拒绝跨租户外键和重复 Active Stable Pointer；
+- [x] 业务写入失败时业务状态、Audit 和 Outbox 同时回滚。
 
 ### P0-04 实现 Application 纵向用例
 

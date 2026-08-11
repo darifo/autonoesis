@@ -72,7 +72,7 @@ class PlatformRepository(Protocol):
 
 
 class CapabilityCatalog(Protocol):
-    async def get_goal_type(self, goal_type: str) -> GoalTypeManifest: ...
+    async def get_goal_type(self, tenant_id: UUID, goal_type: str) -> GoalTypeManifest: ...
 
     async def get_stable_agent(self, tenant_id: UUID, agent_name: str) -> AgentVersion: ...
 
@@ -106,7 +106,7 @@ class CreateGoalHandler:
         self._catalog = catalog
 
     async def __call__(self, identity: IdentityContext, command: CreateGoal) -> GoalContract:
-        goal_type = await self._catalog.get_goal_type(command.goal_type)
+        goal_type = await self._catalog.get_goal_type(identity.tenant_id, command.goal_type)
         validate_payload(goal_type, command.input_payload)
         goal = GoalContract(
             tenant_id=identity.tenant_id,
@@ -176,7 +176,7 @@ class StartGoalRunHandler:
                 for run in active_runs
             )
         )
-        goal_type = await self._catalog.get_goal_type(goal.goal_type)
+        goal_type = await self._catalog.get_goal_type(identity.tenant_id, goal.goal_type)
         agent = await self._catalog.get_stable_agent(identity.tenant_id, goal_type.agent)
         run = Run(
             tenant_id=identity.tenant_id,

@@ -4,7 +4,7 @@ import argparse
 import asyncio
 import os
 
-from autonoesis_adapters import InMemoryPlatformStore, PostgreSQLPlatformStore
+from autonoesis_adapters import PostgreSQLPlatformStore
 from autonoesis_application import CandidateLifecycleService
 from temporalio import activity
 from temporalio.client import Client
@@ -31,49 +31,52 @@ from autonoesis_worker.workflows import (
     GoalRunWorkflow,
 )
 
+_process_store: PostgreSQLPlatformStore | None = None
 
-def _build_store() -> InMemoryPlatformStore:
-    database_url = os.getenv("AUTONOESIS_DATABASE_URL")
-    if database_url:
-        return PostgreSQLPlatformStore.from_url(database_url)
-    return InMemoryPlatformStore()
+
+def _get_store() -> PostgreSQLPlatformStore:
+    global _process_store
+    if _process_store is None:
+        database_url = os.environ["AUTONOESIS_DATABASE_URL"]
+        _process_store = PostgreSQLPlatformStore.from_url(database_url)
+    return _process_store
 
 
 @activity.defn(name="prepare_run")
 async def _prepare(input: PrepareRunInput) -> str:
-    return await prepare_run(input, _build_store())
+    return await prepare_run(input, _get_store())
 
 
 @activity.defn(name="cancel_run")
 async def _cancel(input: CancelRunInput) -> str:
-    return await cancel_run(input, _build_store())
+    return await cancel_run(input, _get_store())
 
 
 @activity.defn(name="reject_run")
 async def _reject(input: RejectRunInput) -> str:
-    return await reject_run(input, _build_store())
+    return await reject_run(input, _get_store())
 
 
 @activity.defn(name="execute_run")
 async def _execute(input: ExecuteRunInput) -> str:
-    return await execute_run(input, _build_store())
+    return await execute_run(input, _get_store())
 
 
 @activity.defn(name="evaluate_run")
 async def _evaluate(input: EvaluateRunInput) -> str:
-    return await evaluate_run(input, _build_store())
+    return await evaluate_run(input, _get_store())
 
 
 @activity.defn(name="evaluate_candidate")
 async def _evaluate_candidate(input: EvaluateCandidateInput) -> bool:
-    store = _build_store()
+    store = _get_store()
     evolution = CandidateLifecycleService(store)
     return await evaluate_candidate(input, store, evolution)
 
 
 @activity.defn(name="promote_candidate")
 async def _promote(input: PromoteCandidateInput) -> str:
-    store = _build_store()
+    store = _get_store()
     evolution = CandidateLifecycleService(store)
     return await promote_candidate(input, store, evolution)
 
@@ -105,7 +108,11 @@ async def run_worker() -> None:
             _promote,
         ],
     )
-    await worker.run()
+    try:
+        await worker.run()
+    finally:
+        if _process_store is not None:
+            await _process_store.close()
 
 
 def main() -> int:

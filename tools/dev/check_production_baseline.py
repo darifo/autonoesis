@@ -37,10 +37,30 @@ def assigned_string(tree: ast.AST, name: str) -> str:
 
 
 def database_inventory() -> tuple[str, list[str]]:
-    migration_tree = ast.parse(read("infra/migrations/versions/0001_initial_platform.py"))
-    revision = assigned_string(migration_tree, "revision")
+    revisions: dict[str, str | None] = {}
+    for migration in (ROOT / "infra/migrations/versions").glob("*.py"):
+        tree = ast.parse(migration.read_text(encoding="utf-8"))
+        revision = assigned_string(tree, "revision")
+        down_revision: str | None = None
+        for node in tree.body:
+            if (
+                isinstance(node, ast.Assign)
+                and any(
+                    isinstance(target, ast.Name) and target.id == "down_revision"
+                    for target in node.targets
+                )
+                and isinstance(node.value, ast.Constant)
+            ):
+                down_revision = node.value.value
+        revisions[revision] = down_revision
+    parents = {value for value in revisions.values() if value is not None}
+    heads = sorted(set(revisions) - parents)
+    if len(heads) != 1:
+        raise ValueError(f"expected one Alembic head, found {heads}")
 
-    persistence_tree = ast.parse(read("packages/adapters/src/autonoesis_adapters/persistence.py"))
+    persistence_tree = ast.parse(
+        read("packages/adapters/src/autonoesis_adapters/persistence_schema.py")
+    )
     tables: list[str] = []
     for node in persistence_tree.body:
         if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Call):
@@ -51,7 +71,7 @@ def database_inventory() -> tuple[str, list[str]]:
         first_arg = node.value.args[0]
         if isinstance(first_arg, ast.Constant) and isinstance(first_arg.value, str):
             tables.append(first_arg.value)
-    return revision, sorted(tables)
+    return heads[0], sorted(tables)
 
 
 def api_inventory() -> tuple[str, list[str]]:
@@ -116,9 +136,9 @@ def validate_claim_boundaries() -> list[str]:
             "README.zh-CN.md",
             "架构原型和工程预览",
         ),
-        "maturity matrix denies integrated claims": (
+        "maturity matrix limits integrated claims": (
             "docs/roadmap/capability-maturity.md",
-            "当前没有任何能力达到 `integrated` 或 `production-proven`",
+            "当前仅 PostgreSQL 权威存储达到 `integrated`",
         ),
         "Cockpit global prototype banner": (
             "apps/cockpit/src/main.tsx",
@@ -161,7 +181,7 @@ def render_report() -> str:
     revision, tables = database_inventory()
     api_version, routes = api_inventory()
     workflows = workflow_inventory()
-    schema_digest = digest("packages/adapters/src/autonoesis_adapters/persistence.py")
+    schema_digest = digest("packages/adapters/src/autonoesis_adapters/persistence_schema.py")
     workflow_digest = digest("apps/worker/src/autonoesis_worker/workflows.py")
     versions = tomllib.loads(read("versions.lock"))
     reviewed_at = versions["reviewed_at"]
@@ -196,7 +216,8 @@ def render_report() -> str:
             f"- Alembic head: `{revision}`",
             f"- SQLAlchemy metadata digest: `sha256:{schema_digest}`",
             f"- Declared tables ({len(tables)}): " + ", ".join(f"`{table}`" for table in tables),
-            "- Evidence level: `modeled`; this inventory does not execute PostgreSQL migrations.",
+            "- Evidence level: `integrated`; CI migrates PostgreSQL 17 and runs "
+            "authority component tests.",
             "",
             "## HTTP API Contract Baseline",
             "",
@@ -223,8 +244,9 @@ def render_report() -> str:
             "",
             "- README engineering-preview disclosure: present.",
             "- Cockpit Prototype/Demo and static-data disclosure: present.",
-            "- Highest allowed current maturity: `unit-tested`.",
-            "- Real-component integration evidence: none recorded.",
+            "- Highest allowed current maturity: `integrated` (PostgreSQL authority only).",
+            "- Real-component integration evidence: CI PostgreSQL 17 migration and "
+            "authority tests.",
             "",
         ]
     )

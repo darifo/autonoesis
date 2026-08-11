@@ -11,6 +11,20 @@ permissions:
 jobs:
   python:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: autonoesis
+          POSTGRES_PASSWORD: autonoesis
+          POSTGRES_DB: autonoesis
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U autonoesis -d autonoesis"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
     defaults:
       run:
         shell: bash -el {0}
@@ -23,6 +37,15 @@ jobs:
           auto-activate-base: false
       - name: Install workspace
         run: UV_PROJECT_ENVIRONMENT="$CONDA_PREFIX" uv sync --inexact --all-packages --dev --locked
+      - name: Initialize PostgreSQL authority roles
+        env:
+          PGPASSWORD: autonoesis
+        run: psql -h localhost -U autonoesis -d autonoesis -v ON_ERROR_STOP=1 -f infra/postgres/ci-users.sql
+      - name: Migrate PostgreSQL authority schema
+        env:
+          AUTONOESIS_MIGRATION_DATABASE_URL: postgresql+psycopg://autonoesis_migrator:autonoesis-ci-only@localhost:5432/autonoesis
+          AUTONOESIS_MIGRATION_ROLE: autonoesis_migration
+        run: alembic upgrade head
       - name: Production baseline claims
         run: python3 tools/dev/check_production_baseline.py
       - name: Lint
@@ -30,6 +53,9 @@ jobs:
       - name: Type check
         run: mypy apps packages --ignore-missing-imports
       - name: Test
+        env:
+          AUTONOESIS_TEST_DATABASE_URL: postgresql+psycopg://autonoesis_api:autonoesis-ci-only@localhost:5432/autonoesis
+          AUTONOESIS_TEST_ADMIN_DATABASE_URL: postgresql+psycopg://autonoesis:autonoesis@localhost:5432/autonoesis
         run: pytest
 
   cockpit:

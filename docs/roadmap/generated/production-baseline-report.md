@@ -12,8 +12,8 @@
 | `uv.lock` | `8e419c1b984b7fc2df3eec71bdc117e201b7c3a4b8275bb75a03536f512ec09e` |
 | `package.json` | `50cb64a759a95e84c47f1cf5fe1cafa0167aa030bf0d5c806bda00eb48cfbf8a` |
 | `pnpm-lock.yaml` | `f8a6632ae5b7f346481d3cd8deb6252c6bb9fdb197a673c89067f09745e4e132` |
-| `versions.lock` | `ddcae469c41ddf5d1ae0bb99b8102cd1ef69b824a6c23da4a5219a2ca3591598` |
-| `infra/compose/docker-compose.yml` | `05626e8f667a19ba8ae61a8163af06aab99085c6d007bd83d1fd0c88f31eb6d5` |
+| `versions.lock` | `6b46b5a4d13afef30a68d8e90fb8af2c984d8428cddad754ee3936bded4a2859` |
+| `infra/compose/docker-compose.yml` | `1ff12c568c8f1abe994e2ff0e246a7d13b1d048b7745d367caefb30e7f4040d3` |
 
 Configured Compose images (configuration inventory only; not integration evidence):
 
@@ -27,16 +27,16 @@ Configured Compose images (configuration inventory only; not integration evidenc
 
 ## Database Schema Baseline
 
-- Alembic head: `0001_initial_platform`
-- SQLAlchemy metadata digest: `sha256:4ec18793646a108d9dec690409bc8b4e33630125d5f79c203502a808cfb8fa0a`
-- Declared tables (24): `actions`, `agent_versions`, `approvals`, `audit_events`, `budget_ledger`, `candidates`, `capability_packs`, `context_snapshots`, `evaluation_trials`, `evidence`, `goals`, `idempotency_records`, `improvement_proposals`, `inbox`, `kill_switches`, `outbox`, `outcomes`, `plans`, `releases`, `runs`, `skill_versions`, `tasks`, `tenants`, `tool_versions`
-- Evidence level: `modeled`; this inventory does not execute PostgreSQL migrations.
+- Alembic head: `0002_authoritative_state`
+- SQLAlchemy metadata digest: `sha256:9b98a4bd430795adb9f00e9b8994abb5335e8f9b220b603dfd2a9334816a5c3e`
+- Declared tables (27): `actions`, `agent_versions`, `approvals`, `audit_events`, `budget_ledger`, `budgets`, `candidates`, `capability_packs`, `context_snapshots`, `deployments`, `evaluation_trials`, `evidence`, `goals`, `idempotency_records`, `improvement_proposals`, `inbox`, `kill_switches`, `outbox`, `outcomes`, `plans`, `policy_versions`, `releases`, `runs`, `skill_versions`, `tasks`, `tenants`, `tool_versions`
+- Evidence level: `integrated`; CI migrates PostgreSQL 17 and runs authority component tests.
 
 ## HTTP API Contract Baseline
 
 - Application contract version: `0.1.0`
 - OpenAPI dialect: `3.1.x` (FastAPI default; generated contract is not frozen yet)
-- Route source digest: `sha256:7cc81059da06eb68c3cfbcc767642adad699168bd904de57852bba43097ec2fc`
+- Route source digest: `sha256:02f892f8993afacfebb595a79f72d570dfae35fa5fd9538ffdf25f4728d95fee`
 - Declared operations (39):
 
   - `DELETE /v1/kill-switches`
@@ -90,5 +90,5 @@ Configured Compose images (configuration inventory only; not integration evidenc
 
 - README engineering-preview disclosure: present.
 - Cockpit Prototype/Demo and static-data disclosure: present.
-- Highest allowed current maturity: `unit-tested`.
-- Real-component integration evidence: none recorded.
+- Highest allowed current maturity: `integrated` (PostgreSQL authority only).
+- Real-component integration evidence: CI PostgreSQL 17 migration and authority tests.

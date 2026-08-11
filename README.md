@@ -185,10 +185,10 @@ current evidence has been recalibrated below; P0 remediation remains in progress
 
 | Legacy Phase | Current Maturity | Production Readiness Gap |
 |---|---|---|
-| **Phase 0** | `unit-tested` | Core types exist, but P0-02 invariants and frozen contracts remain incomplete. |
-| **Phase 1** | `modeled` / partial `unit-tested` | API and adapters exist; production assembly still uses process-local state. |
-| **Phase 2** | `modeled` / partial `unit-tested` | Tests use fakes; real PostgreSQL, MinIO, OPA, and Temporal recovery are not CI gates. |
-| **Phase 3** | `modeled` / partial `unit-tested` | Evolution algorithms exist without a persistent Shadow/Canary release path. |
+| **Phase 0** | `unit-tested` | P0-02 contracts are frozen; P0-04 vertical Application use cases remain incomplete. |
+| **Phase 1** | PostgreSQL `integrated`; otherwise partial `unit-tested` | Production assembly uses PostgreSQL authority; API consumer contracts and multi-process E2E remain. |
+| **Phase 2** | `modeled` / partial `unit-tested` | PostgreSQL is a CI gate; MinIO, OPA, and Temporal recovery are not. |
+| **Phase 3** | `unit-tested` | Deployment/Release persistence exists; real Shadow traffic, Canary routing, and Release Executor remain. |
 | **Phase 4** | `specified` | Production operations and hardening are planned only. |
 
 Current production limitations and reproducible baseline evidence are recorded in

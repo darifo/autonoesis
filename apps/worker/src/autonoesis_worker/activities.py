@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from uuid import UUID, uuid4
 
-from autonoesis_adapters import InMemoryPlatformStore
+from autonoesis_adapters import InMemoryPlatformStore, PostgreSQLPlatformStore
 from autonoesis_application import CandidateLifecycleService
 from temporalio import activity
 
@@ -70,11 +70,13 @@ class PromoteCandidateInput:
 
 # ── Activity implementations ─────────────────────────────────────────────────
 
+PlatformStore = InMemoryPlatformStore | PostgreSQLPlatformStore
+
 
 @activity.defn
 async def prepare_run(
     input: PrepareRunInput,
-    store: InMemoryPlatformStore,
+    store: PlatformStore,
 ) -> str:
     """Build a Plan for the Run and persist it.
 
@@ -103,7 +105,7 @@ async def prepare_run(
 @activity.defn
 async def cancel_run(
     input: CancelRunInput,
-    store: InMemoryPlatformStore,
+    store: PlatformStore,
 ) -> str:
     """Cancel a Run and record the reason."""
     run = await store.get_run(UUID(input.tenant_id), UUID(input.run_id))
@@ -119,7 +121,7 @@ async def cancel_run(
 @activity.defn
 async def reject_run(
     input: RejectRunInput,
-    store: InMemoryPlatformStore,
+    store: PlatformStore,
 ) -> str:
     """Reject a Run and record the reason."""
     run = await store.get_run(UUID(input.tenant_id), UUID(input.run_id))
@@ -135,7 +137,7 @@ async def reject_run(
 @activity.defn
 async def execute_run(
     input: ExecuteRunInput,
-    store: InMemoryPlatformStore,
+    store: PlatformStore,
 ) -> str:
     """Execute the Run's Plan: process Tasks and governed Actions.
 
@@ -163,7 +165,7 @@ async def execute_run(
 @activity.defn
 async def evaluate_run(
     input: EvaluateRunInput,
-    store: InMemoryPlatformStore,
+    store: PlatformStore,
 ) -> str:
     """Evaluate whether the Run's Outcomes satisfy the Goal's success criteria.
 
@@ -176,7 +178,7 @@ async def evaluate_run(
 @activity.defn
 async def evaluate_candidate(
     input: EvaluateCandidateInput,
-    store: InMemoryPlatformStore,
+    store: PlatformStore,
     evolution: CandidateLifecycleService | None,
 ) -> bool:
     """Run the evaluation suite against a Candidate.
@@ -208,7 +210,7 @@ async def evaluate_candidate(
 @activity.defn
 async def promote_candidate(
     input: PromoteCandidateInput,
-    store: InMemoryPlatformStore,
+    store: PlatformStore,
     evolution: CandidateLifecycleService | None,
 ) -> str:
     """Promote an approved Candidate to Stable and create a Release."""

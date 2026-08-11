@@ -15,19 +15,19 @@
 - `unit-tested`：Capability Pack Manifest、Schema 校验和 Entry Point；
 - `unit-tested`：核心行业词汇隔离检查。
 
-未完成：P0-03 要求的完整持久化映射和 P0-04 要求的纵向 Application 用例集成。
+未完成：P0-04 要求的纵向 Application 用例集成。
 
 ## Phase 1：通用运行平台（`modeled` / 部分 `unit-tested`）
 
-- `modeled`：PostgreSQL Schema、Alembic、RLS、Outbox/Inbox 和幂等表；
+- `integrated`：PostgreSQL 权威 Schema、冻结 Alembic、RLS、角色、Repository、Outbox/Inbox 和幂等表；
 - `modeled`：Temporal Goal 与 Candidate Workflow；
 - `unit-tested`：OIDC、预算、审批和 Tool Gateway 的部分隔离逻辑；
 - `unit-tested`：模型适配器边界；
 - `unit-tested`：通用 API、SDK 和 Cockpit 构建；
 - `unit-tested`：Field Service 示例能力包与评估案例解析。
 
-未完成：生产装配默认使用 PostgreSQL Repository、冻结的显式 Migration、真实 RLS
-攻击测试、Temporal Replay/恢复、Cockpit 真实 API 数据源和统一 Application 用例路径。
+未完成：Temporal Replay/恢复、Cockpit 真实 API 数据源、Consumer Contract 和统一
+Application 用例路径。PostgreSQL 的备份恢复、容量和长期运行证据仍未达到生产验证等级。
 
 ## Phase 2：活动与证据骨架（`modeled` / 部分 `unit-tested`）
 

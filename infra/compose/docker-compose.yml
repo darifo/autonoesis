@@ -13,7 +13,10 @@ services:
       timeout: 3s
       retries: 20
     ports: ["5432:5432"]
-    volumes: ["postgres-data:/var/lib/postgresql/data"]
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ../postgres/compose-init.sql:/docker-entrypoint-initdb.d/001-compose-init.sql:ro
+      - ../postgres/roles.sql:/docker-entrypoint-initdb.d/roles.sql:ro
 
   temporal:
     image: temporalio/auto-setup:${TEMPORAL_VERSION:-1.28.1}
@@ -65,20 +68,42 @@ services:
     build:
       context: ../..
       dockerfile: Dockerfile
-    command: ["sh", "-c", "alembic upgrade head && uvicorn autonoesis_api.main:app --host 0.0.0.0 --port 8000"]
+    command:
+      - sh
+      - -c
+      - >-
+        alembic upgrade head &&
+        python tools/admin/provision_tenant.py
+        --tenant-id 00000000-0000-0000-0000-000000000001
+        --name local-compose &&
+        uvicorn autonoesis_api.main:app --host 0.0.0.0 --port 8000
     depends_on:
       postgres: {condition: service_healthy}
       temporal: {condition: service_started}
       opa: {condition: service_started}
     environment:
       AUTONOESIS_AUTH_MODE: development
-      AUTONOESIS_DATABASE_URL: postgresql+psycopg://autonoesis:autonoesis@postgres:5432/autonoesis
+      AUTONOESIS_DATABASE_URL: postgresql+psycopg://autonoesis_api:autonoesis-local-only@postgres:5432/autonoesis
+      AUTONOESIS_MIGRATION_DATABASE_URL: postgresql+psycopg://autonoesis_migrator:autonoesis-local-only@postgres:5432/autonoesis
+      AUTONOESIS_MIGRATION_ROLE: autonoesis_migration
       AUTONOESIS_TEMPORAL_TARGET: temporal:7233
       AUTONOESIS_TEMPORAL_START: "true"
       AUTONOESIS_CAPABILITY_PACK: /workspace/examples/field-service/capability-pack.yaml
+      AUTONOESIS_BOOTSTRAP_TENANT_ID: 00000000-0000-0000-0000-000000000001
       AUTONOESIS_OPA_URL: http://opa:8181
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
     ports: ["8000:8000"]
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - >-
+          import urllib.request;
+          urllib.request.urlopen('http://localhost:8000/health/live', timeout=2)
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
   worker:
     build:
@@ -88,8 +113,9 @@ services:
     depends_on:
       temporal: {condition: service_started}
       postgres: {condition: service_healthy}
+      api: {condition: service_healthy}
     environment:
-      AUTONOESIS_DATABASE_URL: postgresql+psycopg://autonoesis:autonoesis@postgres:5432/autonoesis
+      AUTONOESIS_DATABASE_URL: postgresql+psycopg://autonoesis_worker:autonoesis-local-only@postgres:5432/autonoesis
       AUTONOESIS_TEMPORAL_TARGET: temporal:7233
       AUTONOESIS_TEMPORAL_TASK_QUEUE: autonoesis
 

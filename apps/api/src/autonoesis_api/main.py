@@ -3,6 +3,7 @@
 import json
 import os
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Any
@@ -13,6 +14,7 @@ from autonoesis_adapters import (
     OIDCSettings,
     OIDCValidator,
     PostgreSQLPlatformStore,
+    SqlKillSwitchStore,
 )
 from autonoesis_application import (
     CandidateLifecycleService,
@@ -29,10 +31,12 @@ from autonoesis_capability import ManifestError, load_manifest, parse_manifest
 from autonoesis_domain import (
     AgentDefinition,
     AgentVersion,
+    ApprovalRequest,
     AssetStage,
     BudgetUnit,
     CandidateVersion,
     DataClassification,
+    Evidence,
     ExecutionMode,
     GoalContract,
     ImprovementProposal,
@@ -41,6 +45,7 @@ from autonoesis_domain import (
     RiskTier,
     SubjectRef,
     SuccessCriterion,
+    Trial,
 )
 from autonoesis_governance import InMemoryKillSwitchStore, KillSwitchDimension
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
@@ -167,16 +172,49 @@ def error_response(
     )
 
 
-def build_app(store: InMemoryPlatformStore | None = None) -> FastAPI:
+PlatformStore = InMemoryPlatformStore | PostgreSQLPlatformStore
+
+
+def build_app(store: PlatformStore | None = None) -> FastAPI:
     platform_store = store or InMemoryPlatformStore()
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        pack_path = os.getenv("AUTONOESIS_CAPABILITY_PACK")
+        if pack_path:
+            manifest = load_manifest(Path(pack_path))
+            if isinstance(platform_store, PostgreSQLPlatformStore):
+                tenant_value = os.getenv("AUTONOESIS_BOOTSTRAP_TENANT_ID")
+                if tenant_value is None:
+                    raise RuntimeError(
+                        "AUTONOESIS_BOOTSTRAP_TENANT_ID is required for a production pack"
+                    )
+                tenant_id = UUID(tenant_value)
+                await platform_store.add_capability_pack(tenant_id, manifest)
+            else:
+                platform_store.register_pack(manifest)
+        yield
+        if isinstance(platform_store, PostgreSQLPlatformStore):
+            await platform_store.close()
+
     app = FastAPI(
         title="Autonoesis API",
         description="Engineering preview of a goal-driven governed agent platform",
         version="0.1.0",
+        lifespan=lifespan,
     )
     app.state.store = platform_store
-    app.state.idempotency = {}
-    app.state.kill_switch = InMemoryKillSwitchStore()
+    app.state.kill_switch = (
+        SqlKillSwitchStore(platform_store.repository.sessions)
+        if isinstance(platform_store, PostgreSQLPlatformStore)
+        else InMemoryKillSwitchStore()
+    )
+
+    def kill_switch_for(context: IdentityContext) -> Any:
+        if isinstance(app.state.kill_switch, SqlKillSwitchStore):
+            return app.state.kill_switch.for_tenant(context.tenant_id)
+        return app.state.kill_switch
+
     goal_handler = CreateGoalHandler(platform_store, platform_store)
     run_handler = StartGoalRunHandler(platform_store, platform_store)
     evolution = CandidateLifecycleService(platform_store)
@@ -271,7 +309,7 @@ def build_app(store: InMemoryPlatformStore | None = None) -> FastAPI:
     ) -> dict[str, Any]:
         require_role(context, {"platform_admin", "tenant_admin", "developer"})
         manifest = parse_manifest(body.manifest)
-        platform_store.register_pack(manifest)
+        await platform_store.add_capability_pack(context.tenant_id, manifest)
         return {"pack_id": manifest.pack_id, "version": manifest.version, "status": "enabled"}
 
     @app.get("/v1/capability-packs", tags=["configuration"])
@@ -283,7 +321,7 @@ def build_app(store: InMemoryPlatformStore | None = None) -> FastAPI:
                 "version": item.version,
                 "goal_types": [g.goal_type for g in item.goal_types],
             }
-            for item in platform_store.packs.values()
+            for item in await platform_store.list_capability_packs(context.tenant_id)
         ]
 
     @app.post("/v1/agents", status_code=201, tags=["configuration"])
@@ -303,7 +341,7 @@ def build_app(store: InMemoryPlatformStore | None = None) -> FastAPI:
             ),
             stage=AssetStage.STABLE,
         )
-        platform_store.register_agent(body.name, version)
+        await platform_store.add_agent(body.name, version)
         return {
             "agent_id": definition.agent_id,
             "agent_version_id": version.agent_version_id,
@@ -319,79 +357,52 @@ def build_app(store: InMemoryPlatformStore | None = None) -> FastAPI:
                 "version": version.version,
                 "stage": version.stage,
             }
-            for (tenant_id, name), version in platform_store.agents.items()
-            if tenant_id == context.tenant_id
+            for name, version in await platform_store.list_agents(context.tenant_id)
         ]
-
-    async def save_config_asset(
-        collection: dict[str, dict[str, object]],
-        body: ConfigAssetRequest,
-        context: IdentityContext,
-    ) -> dict[str, object]:
-        require_role(context, {"platform_admin", "tenant_admin", "developer"})
-        value: dict[str, object] = {
-            "asset_id": body.asset_id,
-            "tenant_id": str(context.tenant_id),
-            "definition": body.definition,
-        }
-        collection[body.asset_id] = value
-        return value
 
     @app.post("/v1/skills", status_code=201, tags=["configuration"])
     async def create_skill(
         body: ConfigAssetRequest, context: Identity, _: WriteKey
     ) -> dict[str, object]:
-        return await save_config_asset(platform_store.skills, body, context)
+        require_role(context, {"platform_admin", "tenant_admin", "developer"})
+        return await platform_store.add_skill(context.tenant_id, body.asset_id, body.definition)
 
     @app.get("/v1/skills", tags=["configuration"])
     async def list_skills(context: Identity) -> list[dict[str, object]]:
-        return [
-            item
-            for item in platform_store.skills.values()
-            if item["tenant_id"] == str(context.tenant_id)
-        ]
+        return list(await platform_store.list_skills(context.tenant_id))
 
     @app.post("/v1/tools", status_code=201, tags=["configuration"])
     async def create_tool(
         body: ConfigAssetRequest, context: Identity, _: WriteKey
     ) -> dict[str, object]:
-        return await save_config_asset(platform_store.tools, body, context)
+        require_role(context, {"platform_admin", "tenant_admin", "developer"})
+        return await platform_store.add_tool(context.tenant_id, body.asset_id, body.definition)
 
     @app.get("/v1/tools", tags=["configuration"])
     async def list_tools(context: Identity) -> list[dict[str, object]]:
-        return [
-            item
-            for item in platform_store.tools.values()
-            if item["tenant_id"] == str(context.tenant_id)
-        ]
+        return list(await platform_store.list_tools(context.tenant_id))
 
     @app.post("/v1/policies", status_code=201, tags=["governance"])
     async def create_policy(
         body: ConfigAssetRequest, context: Identity, _: WriteKey
     ) -> dict[str, object]:
-        return await save_config_asset(platform_store.policies, body, context)
+        require_role(context, {"platform_admin", "tenant_admin", "developer"})
+        return await platform_store.add_policy(context.tenant_id, body.asset_id, body.definition)
 
     @app.get("/v1/policies", tags=["governance"])
     async def list_policies(context: Identity) -> list[dict[str, object]]:
-        return [
-            item
-            for item in platform_store.policies.values()
-            if item["tenant_id"] == str(context.tenant_id)
-        ]
+        return list(await platform_store.list_policies(context.tenant_id))
 
     @app.post("/v1/budgets", status_code=201, tags=["governance"])
     async def create_budget(
         body: ConfigAssetRequest, context: Identity, _: WriteKey
     ) -> dict[str, object]:
-        return await save_config_asset(platform_store.budgets, body, context)
+        require_role(context, {"platform_admin", "tenant_admin", "developer"})
+        return await platform_store.add_budget(context.tenant_id, body.asset_id, body.definition)
 
     @app.get("/v1/budgets", tags=["governance"])
     async def list_budgets(context: Identity) -> list[dict[str, object]]:
-        return [
-            item
-            for item in platform_store.budgets.values()
-            if item["tenant_id"] == str(context.tenant_id)
-        ]
+        return list(await platform_store.list_budgets(context.tenant_id))
 
     # ── Kill Switch ────────────────────────────────────────────────────
 
@@ -409,7 +420,7 @@ def build_app(store: InMemoryPlatformStore | None = None) -> FastAPI:
         body: KillSwitchActivateRequest, context: Identity, _: WriteKey
     ) -> dict[str, Any]:
         require_role(context, {"platform_admin", "tenant_admin", "operator"})
-        record = await app.state.kill_switch.activate(
+        record = await kill_switch_for(context).activate(
             KillSwitchDimension(body.dimension),
             body.target,
             body.reason,
@@ -429,7 +440,7 @@ def build_app(store: InMemoryPlatformStore | None = None) -> FastAPI:
         body: KillSwitchDeactivateRequest, context: Identity, _: WriteKey
     ) -> dict[str, Any]:
         require_role(context, {"platform_admin", "tenant_admin", "operator"})
-        record = await app.state.kill_switch.deactivate(
+        record = await kill_switch_for(context).deactivate(
             KillSwitchDimension(body.dimension), body.target
         )
         if record is None:
@@ -453,12 +464,12 @@ def build_app(store: InMemoryPlatformStore | None = None) -> FastAPI:
                 "activated_by": r.activated_by,
                 "activated_at": r.activated_at.isoformat(),
             }
-            for r in await app.state.kill_switch.list_active()
+            for r in await kill_switch_for(context).list_active()
         ]
 
     @app.post("/v1/goals", status_code=201, tags=["goals"])
     async def create_goal(body: GoalRequest, context: Identity, key: WriteKey) -> dict[str, Any]:
-        cached = app.state.idempotency.get(("create_goal", context.tenant_id, key))
+        cached = await platform_store.get_idempotency(context.tenant_id, f"create_goal:{key}")
         if cached is not None:
             goal = await platform_store.get_goal(context.tenant_id, cached)
             return goal_view(goal)
@@ -488,7 +499,7 @@ def build_app(store: InMemoryPlatformStore | None = None) -> FastAPI:
                 correlation_id=uuid4(),
             ),
         )
-        app.state.idempotency[("create_goal", context.tenant_id, key)] = goal.goal_id
+        await platform_store.put_idempotency(context.tenant_id, f"create_goal:{key}", goal.goal_id)
         return goal_view(goal)
 
     @app.get("/v1/goals", tags=["goals"])
@@ -501,11 +512,11 @@ def build_app(store: InMemoryPlatformStore | None = None) -> FastAPI:
 
     @app.post("/v1/goals/{goal_id}/runs", status_code=202, tags=["runs"])
     async def start_run(goal_id: UUID, context: Identity, key: WriteKey) -> dict[str, Any]:
-        cached = app.state.idempotency.get(("start_run", context.tenant_id, key))
+        cached = await platform_store.get_idempotency(context.tenant_id, f"start_run:{key}")
         if cached is not None:
             return run_view(await platform_store.get_run(context.tenant_id, cached))
         run = await run_handler(context, StartGoalRun(goal_id, uuid4()))
-        app.state.idempotency[("start_run", context.tenant_id, key)] = run.run_id
+        await platform_store.put_idempotency(context.tenant_id, f"start_run:{key}", run.run_id)
         if os.getenv("AUTONOESIS_TEMPORAL_START", "false").lower() == "true":
             client = await Client.connect(os.getenv("AUTONOESIS_TEMPORAL_TARGET", "localhost:7233"))
             await client.start_workflow(
@@ -531,8 +542,8 @@ def build_app(store: InMemoryPlatformStore | None = None) -> FastAPI:
         async def stream() -> AsyncIterator[str]:
             events = [
                 event
-                for event in platform_store.audits
-                if event.tenant_id == context.tenant_id and event.object_id == str(run_id)
+                for event in await platform_store.list_audit_events(context.tenant_id)
+                if event.object_id == str(run_id)
             ]
             for event in events:
                 yield f"event: {event.event_type}\ndata: {json.dumps(event.details)}\n\n"
@@ -543,9 +554,7 @@ def build_app(store: InMemoryPlatformStore | None = None) -> FastAPI:
     @app.get("/v1/approvals", tags=["governance"])
     async def list_approvals(context: Identity) -> list[dict[str, object]]:
         return [
-            item
-            for item in platform_store.approvals.values()
-            if item.get("tenant_id") == str(context.tenant_id)
+            approval_view(item) for item in await platform_store.list_approvals(context.tenant_id)
         ]
 
     @app.post("/v1/approvals/{approval_id}/decision", tags=["governance"])
@@ -556,43 +565,46 @@ def build_app(store: InMemoryPlatformStore | None = None) -> FastAPI:
         _: WriteKey,
     ) -> dict[str, object]:
         require_role(context, {"platform_admin", "tenant_admin", "approver"})
-        approval = platform_store.approvals.get(approval_id)
-        if approval is None or approval.get("tenant_id") != str(context.tenant_id):
-            raise RecordNotFound("approval was not found")
-        if approval.get("action_digest") != body.action_digest:
+        approval = await platform_store.get_approval(context.tenant_id, approval_id)
+        current_view = approval_view(approval)
+        if current_view.get("action_digest") != body.action_digest:
             raise PermissionError("approval does not match the exact action parameters")
         decision = "approved" if body.approved else "rejected"
-        current = str(approval.get("status", "pending"))
+        current = str(current_view.get("status", "pending"))
         if current != "pending" and current != decision:
             raise ValueError("approval has already received a different decision")
-        approval.update(
-            {
-                "status": decision,
-                "decided_by": str(context.actor_id),
-                "reason": body.reason,
-            }
-        )
-        return approval
+        if isinstance(approval, ApprovalRequest):
+            decided = approval.decide(context.actor_id, body.approved, body.reason)
+            await platform_store.save_approval(decided, approval.optimistic_version)
+            return approval_view(decided)
+        value: dict[str, object] = {
+            "status": decision,
+            "decided_by": str(context.actor_id),
+            "reason": body.reason,
+        }
+        await platform_store.save_approval_record(context.tenant_id, approval_id, value)
+        return {**approval, **value}
 
     @app.get("/v1/evidence", tags=["evidence"])
     async def list_evidence(context: Identity) -> list[dict[str, object]]:
         return [
-            item
-            for item in platform_store.evidence.values()
-            if item.get("tenant_id") == str(context.tenant_id)
+            evidence_view(item) for item in await platform_store.list_evidence(context.tenant_id)
         ]
 
     @app.get("/v1/evaluation-suites", tags=["evaluation"])
     async def evaluation_suites(context: Identity) -> list[str]:
         _ = context
         return sorted(
-            {suite for pack in platform_store.packs.values() for suite in pack.evaluation_suites}
+            {
+                suite
+                for pack in await platform_store.list_capability_packs(context.tenant_id)
+                for suite in pack.evaluation_suites
+            }
         )
 
     @app.get("/v1/trials", tags=["evaluation"])
     async def trials(context: Identity) -> list[object]:
-        _ = context
-        return []
+        return [trial_view(item) for item in await platform_store.list_trials(context.tenant_id)]
 
     @app.post("/v1/improvement-proposals", status_code=201, tags=["improvement"])
     async def create_proposal(
@@ -609,23 +621,21 @@ def build_app(store: InMemoryPlatformStore | None = None) -> FastAPI:
             rollback_plan=body.rollback_plan,
             proposer_id=body.proposer_id,
         )
-        platform_store.proposals[proposal.proposal_id] = proposal
+        await platform_store.add_proposal(proposal)
         return {"proposal_id": proposal.proposal_id, "target": proposal.target}
 
     @app.get("/v1/improvement-proposals", tags=["improvement"])
     async def list_proposals(context: Identity) -> list[dict[str, Any]]:
         return [
             {"proposal_id": item.proposal_id, "target": item.target, "diagnosis": item.diagnosis}
-            for item in platform_store.proposals.values()
-            if item.tenant_id == context.tenant_id
+            for item in await platform_store.list_proposals(context.tenant_id)
         ]
 
     @app.post("/v1/candidates", status_code=201, tags=["improvement"])
     async def create_candidate(
         body: CandidateRequest, context: Identity, _: WriteKey
     ) -> dict[str, Any]:
-        if body.proposal_id not in platform_store.proposals:
-            raise RecordNotFound("proposal was not found")
+        await platform_store.get_proposal(context.tenant_id, body.proposal_id)
         candidate = CandidateVersion(
             tenant_id=context.tenant_id,
             proposal_id=body.proposal_id,
@@ -707,8 +717,7 @@ def build_app(store: InMemoryPlatformStore | None = None) -> FastAPI:
                 "stable_version_id": item.stable_version_id,
                 "candidate_id": item.candidate_id,
             }
-            for item in platform_store.releases.values()
-            if item.tenant_id == context.tenant_id
+            for item in await platform_store.list_releases(context.tenant_id)
         ]
 
     @app.get("/v1/audit-events", tags=["audit"])
@@ -722,8 +731,7 @@ def build_app(store: InMemoryPlatformStore | None = None) -> FastAPI:
                 "correlation_id": item.correlation_id,
                 "details": item.details,
             }
-            for item in platform_store.audits
-            if item.tenant_id == context.tenant_id
+            for item in await platform_store.list_audit_events(context.tenant_id)
         ]
 
     return app
@@ -774,16 +782,55 @@ def candidate_view(candidate: CandidateVersion) -> dict[str, Any]:
     }
 
 
-def configured_store() -> InMemoryPlatformStore:
+def approval_view(item: ApprovalRequest | dict[str, object]) -> dict[str, object]:
+    if isinstance(item, dict):
+        return item
+    return {
+        "approval_id": str(item.approval_id),
+        "tenant_id": str(item.tenant_id),
+        "run_id": str(item.run_id),
+        "action_id": str(item.action_id),
+        "action_digest": item.action_digest,
+        "status": item.status.value,
+        "expires_at": item.expires_at.isoformat(),
+        "decided_by": str(item.decided_by) if item.decided_by else None,
+        "reason": item.reason,
+    }
+
+
+def evidence_view(item: Evidence | dict[str, object]) -> dict[str, object]:
+    if isinstance(item, dict):
+        return item
+    return {
+        "evidence_id": str(item.evidence_id),
+        "tenant_id": str(item.tenant_id),
+        "run_id": str(item.run_id),
+        "action_id": str(item.action_id),
+        "source": item.source,
+        "reference": item.reference,
+        "content_digest": item.content_digest,
+        "integrity": item.integrity.value,
+    }
+
+
+def trial_view(item: Trial) -> dict[str, object]:
+    return {
+        "trial_id": str(item.trial_id),
+        "suite_id": item.suite_id,
+        "suite_version": item.suite_version,
+        "subject_version_id": str(item.subject_version_id),
+        "harness_version": item.harness_version,
+        "status": item.status.value,
+    }
+
+
+def configured_store() -> PlatformStore:
     database_url = os.getenv("AUTONOESIS_DATABASE_URL")
-    store: InMemoryPlatformStore
+    store: PlatformStore
     if database_url:
         store = PostgreSQLPlatformStore.from_url(database_url)
     else:
         store = InMemoryPlatformStore()
-    pack_path = os.getenv("AUTONOESIS_CAPABILITY_PACK")
-    if pack_path:
-        store.register_pack(load_manifest(Path(pack_path)))
     return store
 
 

@@ -1,42 +1,40 @@
-"""PostgreSQL metadata and authoritative Goal/Run repository."""
+"""PostgreSQL repositories for tenant-authoritative platform aggregates."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, cast
 from uuid import UUID, uuid4
 
 from autonoesis_application import AuditEvent, ConcurrencyConflict, RecordNotFound
+from autonoesis_capability import CapabilityPackManifest, GoalTypeManifest, parse_manifest
 from autonoesis_domain import (
+    Action,
+    AgentVersion,
+    ApprovalRequest,
+    AssetStage,
     BudgetAmount,
     BudgetUnit,
+    CandidateVersion,
     DataClassification,
     DataPolicy,
+    Deployment,
+    Evidence,
     ExecutionMode,
     GoalContract,
     GoalStatus,
+    ImprovementProposal,
     JsonObject,
+    LoopPolicy,
+    Outcome,
+    Plan,
+    Release,
     RiskTier,
     Run,
-    RunStatus,
     SubjectRef,
     SuccessCriterion,
+    Task,
+    Trial,
 )
-from sqlalchemy import (
-    JSON,
-    BigInteger,
-    Boolean,
-    Column,
-    DateTime,
-    ForeignKey,
-    Integer,
-    MetaData,
-    String,
-    Table,
-    UniqueConstraint,
-    func,
-    insert,
-    select,
-    update,
-)
+from sqlalchemy import func, insert, select, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -45,206 +43,60 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-metadata = MetaData(
-    naming_convention={
-        "ix": "ix_%(column_0_label)s",
-        "uq": "uq_%(table_name)s_%(column_0_name)s",
-        "ck": "ck_%(table_name)s_%(constraint_name)s",
-        "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s",
-        "pk": "pk_%(table_name)s",
-    }
+from autonoesis_adapters.persistence_codec import (
+    action_from_row,
+    action_payload,
+    approval_from_row,
+    approval_payload,
+    candidate_from_row,
+    candidate_payload,
+    deployment_from_row,
+    deployment_payload,
+    evidence_from_row,
+    evidence_payload,
+    outcome_from_row,
+    outcome_payload,
+    plan_from_rows,
+    proposal_from_row,
+    proposal_payload,
+    release_from_row,
+    release_payload,
+    run_from_row,
+    run_payload,
+    task_payload,
+    transition_payload,
+    transitions_from,
+    trial_from_row,
+    trial_payload,
 )
-
-
-def tenant_table(name: str, *columns: Column[Any]) -> Table:
-    return Table(
-        name,
-        metadata,
-        Column("id", String(36), primary_key=True),
-        Column("tenant_id", String(36), nullable=False, index=True),
-        *columns,
-        Column("optimistic_version", Integer, nullable=False, default=1),
-        Column("created_at", DateTime(timezone=True), nullable=False),
-        Column("updated_at", DateTime(timezone=True), nullable=True),
-    )
-
-
-tenants = Table(
-    "tenants",
-    metadata,
-    Column("id", String(36), primary_key=True),
-    Column("name", String(200), nullable=False),
-    Column("created_at", DateTime(timezone=True), nullable=False),
+from autonoesis_adapters.persistence_schema import (
+    actions,
+    agent_versions,
+    approvals,
+    audit_events,
+    budget_ledger,
+    budgets,
+    candidates,
+    capability_packs,
+    deployments,
+    evaluation_trials,
+    evidence,
+    goals,
+    idempotency_records,
+    improvement_proposals,
+    outcomes,
+    plans,
+    policy_versions,
+    releases,
+    runs,
+    skill_versions,
+    tasks,
+    tool_versions,
 )
-capability_packs = tenant_table(
-    "capability_packs",
-    Column("pack_id", String(200), nullable=False),
-    Column("version", String(64), nullable=False),
-    Column("manifest", JSON, nullable=False),
-    Column("enabled", Boolean, nullable=False, default=True),
-)
-agent_versions = tenant_table(
-    "agent_versions",
-    Column("agent_id", String(36), nullable=False),
-    Column("version", Integer, nullable=False),
-    Column("stage", String(32), nullable=False),
-    Column("definition", JSON, nullable=False),
-)
-skill_versions = tenant_table(
-    "skill_versions",
-    Column("skill_id", String(200), nullable=False),
-    Column("version", String(64), nullable=False),
-    Column("definition", JSON, nullable=False),
-)
-tool_versions = tenant_table(
-    "tool_versions",
-    Column("tool_id", String(200), nullable=False),
-    Column("version", String(64), nullable=False),
-    Column("definition", JSON, nullable=False),
-)
-goals = tenant_table(
-    "goals",
-    Column("goal_type", String(200), nullable=False),
-    Column("owner_id", String(36), nullable=False),
-    Column("status", String(32), nullable=False),
-    Column("contract", JSON, nullable=False),
-)
-runs = tenant_table(
-    "runs",
-    Column("goal_id", String(36), ForeignKey("goals.id"), nullable=False),
-    Column("agent_version_id", String(36), nullable=False),
-    Column("status", String(32), nullable=False),
-    Column("temporal_workflow_id", String(200), nullable=True),
-)
-plans = tenant_table(
-    "plans",
-    Column("run_id", String(36), ForeignKey("runs.id"), nullable=False),
-    Column("version", Integer, nullable=False),
-    Column("definition", JSON, nullable=False),
-)
-tasks = tenant_table(
-    "tasks",
-    Column("run_id", String(36), ForeignKey("runs.id"), nullable=False),
-    Column("plan_id", String(36), ForeignKey("plans.id"), nullable=False),
-    Column("status", String(32), nullable=False),
-    Column("definition", JSON, nullable=False),
-)
-actions = tenant_table(
-    "actions",
-    Column("run_id", String(36), ForeignKey("runs.id"), nullable=False),
-    Column("task_id", String(36), ForeignKey("tasks.id"), nullable=False),
-    Column("status", String(32), nullable=False),
-    Column("idempotency_key", String(300), nullable=False),
-    Column("definition", JSON, nullable=False),
-)
-approvals = tenant_table(
-    "approvals",
-    Column("action_id", String(36), ForeignKey("actions.id"), nullable=False),
-    Column("status", String(32), nullable=False),
-    Column("action_digest", String(64), nullable=False),
-    Column("decision", JSON, nullable=True),
-)
-context_snapshots = tenant_table(
-    "context_snapshots",
-    Column("goal_id", String(36), ForeignKey("goals.id"), nullable=False),
-    Column("run_id", String(36), ForeignKey("runs.id"), nullable=False),
-    Column("payload", JSON, nullable=False),
-    Column("content_digest", String(64), nullable=False),
-)
-evidence = tenant_table(
-    "evidence",
-    Column("run_id", String(36), ForeignKey("runs.id"), nullable=False),
-    Column("source", String(300), nullable=False),
-    Column("artifact_uri", String(1000), nullable=False),
-    Column("content_digest", String(64), nullable=False),
-)
-outcomes = tenant_table(
-    "outcomes",
-    Column("goal_id", String(36), ForeignKey("goals.id"), nullable=False),
-    Column("run_id", String(36), ForeignKey("runs.id"), nullable=False),
-    Column("status", String(32), nullable=False),
-    Column("result", JSON, nullable=False),
-)
-budget_ledger = tenant_table(
-    "budget_ledger",
-    Column("run_id", String(36), ForeignKey("runs.id"), nullable=False),
-    Column("category", String(64), nullable=False),
-    Column("units", BigInteger, nullable=False),
-    Column("reference", String(300), nullable=False),
-)
-evaluation_trials = tenant_table(
-    "evaluation_trials",
-    Column("suite_id", String(200), nullable=False),
-    Column("subject_version_id", String(36), nullable=False),
-    Column("status", String(32), nullable=False),
-    Column("result", JSON, nullable=True),
-)
-improvement_proposals = tenant_table(
-    "improvement_proposals",
-    Column("target_type", String(64), nullable=False),
-    Column("target_version_id", String(36), nullable=False),
-    Column("proposal", JSON, nullable=False),
-)
-candidates = tenant_table(
-    "candidates",
-    Column("proposal_id", String(36), ForeignKey("improvement_proposals.id"), nullable=False),
-    Column("status", String(32), nullable=False),
-    Column("artifact_uri", String(1000), nullable=False),
-)
-releases = tenant_table(
-    "releases",
-    Column("candidate_id", String(36), ForeignKey("candidates.id"), nullable=False),
-    Column("stable_version_id", String(36), nullable=False),
-    Column("previous_stable_version_id", String(36), nullable=False),
-    Column("status", String(32), nullable=False),
-)
-audit_events = tenant_table(
-    "audit_events",
-    Column("actor_id", String(36), nullable=False),
-    Column("principal_id", String(36), nullable=False),
-    Column("event_type", String(200), nullable=False),
-    Column("object_type", String(100), nullable=False),
-    Column("object_id", String(200), nullable=False),
-    Column("correlation_id", String(36), nullable=False),
-    Column("details", JSON, nullable=False),
-)
-kill_switches = tenant_table(
-    "kill_switches",
-    Column("dimension", String(32), nullable=False),
-    Column("target", String(300), nullable=False),
-    Column("reason", String(1000), nullable=False),
-    Column("activated_by", String(300), nullable=False),
-    Column("deactivated_at", DateTime(timezone=True), nullable=True),
-)
-outbox = tenant_table(
-    "outbox",
-    Column("schema", String(200), nullable=False),
-    Column("payload", JSON, nullable=False),
-    Column("published_at", DateTime(timezone=True), nullable=True),
-)
-inbox = tenant_table(
-    "inbox",
-    Column("message_id", String(36), nullable=False, unique=True),
-    Column("processed_at", DateTime(timezone=True), nullable=False),
-)
-idempotency_records = tenant_table(
-    "idempotency_records",
-    Column("idempotency_key", String(300), nullable=False),
-    Column("request_digest", String(64), nullable=False),
-    Column("external_id", String(300), nullable=True),
-    Column("status", String(32), nullable=False),
-    Column("response", JSON, nullable=True),
-)
-UniqueConstraint(
-    actions.c.tenant_id,
-    actions.c.idempotency_key,
-    name="uq_actions_tenant_idempotency_key",
-)
-UniqueConstraint(
-    idempotency_records.c.tenant_id,
-    idempotency_records.c.idempotency_key,
-    name="uq_idempotency_records_tenant_key",
-)
+from autonoesis_adapters.persistence_schema import inbox as inbox
+from autonoesis_adapters.persistence_schema import kill_switches as kill_switches
+from autonoesis_adapters.persistence_schema import metadata as metadata
+from autonoesis_adapters.persistence_schema import outbox as outbox
 
 
 class SqlAlchemyPlatformRepository:
@@ -253,9 +105,163 @@ class SqlAlchemyPlatformRepository:
         bind = sessions.kw.get("bind")
         self._uses_postgresql = bind is not None and bind.dialect.name == "postgresql"
 
+    @property
+    def sessions(self) -> async_sessionmaker[AsyncSession]:
+        return self._sessions
+
     async def _scope_tenant(self, session: AsyncSession, tenant_id: UUID) -> None:
         if self._uses_postgresql:
             await session.execute(select(func.set_config("app.tenant_id", str(tenant_id), True)))
+
+    async def add_capability_pack(self, tenant_id: UUID, manifest: CapabilityPackManifest) -> None:
+        now = datetime.now(UTC)
+        record_id = uuid4()
+        async with self._sessions.begin() as session:
+            await self._scope_tenant(session, tenant_id)
+            existing = await session.scalar(
+                select(capability_packs.c.id).where(
+                    capability_packs.c.tenant_id == str(tenant_id),
+                    capability_packs.c.pack_id == manifest.pack_id,
+                    capability_packs.c.version == manifest.version,
+                )
+            )
+            if existing is None:
+                await session.execute(
+                    insert(capability_packs).values(
+                        id=str(record_id),
+                        tenant_id=str(tenant_id),
+                        pack_id=manifest.pack_id,
+                        version=manifest.version,
+                        manifest=self._manifest_payload(manifest),
+                        enabled=True,
+                        optimistic_version=1,
+                        created_at=now,
+                    )
+                )
+                await self._record_fact(
+                    session,
+                    tenant_id,
+                    "capability_pack.installed",
+                    "capability_pack",
+                    record_id,
+                    1,
+                    now,
+                )
+
+    async def list_capability_packs(self, tenant_id: UUID) -> tuple[CapabilityPackManifest, ...]:
+        async with self._sessions() as session:
+            await self._scope_tenant(session, tenant_id)
+            rows = (
+                await session.execute(
+                    select(capability_packs).where(
+                        capability_packs.c.tenant_id == str(tenant_id),
+                        capability_packs.c.enabled.is_(True),
+                    )
+                )
+            ).mappings()
+            return tuple(parse_manifest(dict(row)["manifest"]) for row in rows)
+
+    async def get_goal_type(self, tenant_id: UUID, goal_type: str) -> GoalTypeManifest:
+        for manifest in await self.list_capability_packs(tenant_id):
+            for item in manifest.goal_types:
+                if item.goal_type == goal_type:
+                    return item
+        raise RecordNotFound(f"goal type {goal_type} was not found")
+
+    async def add_agent(self, name: str, version: AgentVersion) -> None:
+        now = datetime.now(UTC)
+        async with self._sessions.begin() as session:
+            await self._scope_tenant(session, version.tenant_id)
+            await session.execute(
+                insert(agent_versions).values(
+                    id=str(version.agent_version_id),
+                    tenant_id=str(version.tenant_id),
+                    agent_id=str(version.agent_id),
+                    name=name,
+                    version=version.version,
+                    stage=version.stage.value,
+                    definition=self._agent_payload(version),
+                    optimistic_version=1,
+                    created_at=now,
+                )
+            )
+            await self._record_fact(
+                session,
+                version.tenant_id,
+                "agent_version.created",
+                "agent_version",
+                version.agent_version_id,
+                1,
+                now,
+            )
+
+    async def list_agents(self, tenant_id: UUID) -> tuple[tuple[str, AgentVersion], ...]:
+        async with self._sessions() as session:
+            await self._scope_tenant(session, tenant_id)
+            rows = (
+                await session.execute(
+                    select(agent_versions).where(agent_versions.c.tenant_id == str(tenant_id))
+                )
+            ).mappings()
+            return tuple((row["name"], self._agent_from_row(dict(row))) for row in rows)
+
+    async def get_stable_agent(self, tenant_id: UUID, agent_name: str) -> AgentVersion:
+        async with self._sessions() as session:
+            await self._scope_tenant(session, tenant_id)
+            row = (
+                (
+                    await session.execute(
+                        select(agent_versions).where(
+                            agent_versions.c.tenant_id == str(tenant_id),
+                            agent_versions.c.name == agent_name,
+                            agent_versions.c.stage == AssetStage.STABLE.value,
+                        )
+                    )
+                )
+                .mappings()
+                .one_or_none()
+            )
+        if row is None:
+            raise RecordNotFound(f"stable agent {agent_name} was not found")
+        return self._agent_from_row(dict(row))
+
+    async def add_skill(
+        self, tenant_id: UUID, asset_id: str, definition: dict[str, Any]
+    ) -> dict[str, object]:
+        return await self._add_config_asset(
+            skill_versions, "skill_id", tenant_id, asset_id, definition
+        )
+
+    async def list_skills(self, tenant_id: UUID) -> tuple[dict[str, object], ...]:
+        return await self._list_config_assets(skill_versions, "skill_id", tenant_id)
+
+    async def add_tool(
+        self, tenant_id: UUID, asset_id: str, definition: dict[str, Any]
+    ) -> dict[str, object]:
+        return await self._add_config_asset(
+            tool_versions, "tool_id", tenant_id, asset_id, definition
+        )
+
+    async def list_tools(self, tenant_id: UUID) -> tuple[dict[str, object], ...]:
+        return await self._list_config_assets(tool_versions, "tool_id", tenant_id)
+
+    async def add_policy(
+        self, tenant_id: UUID, asset_id: str, definition: dict[str, Any]
+    ) -> dict[str, object]:
+        return await self._add_config_asset(
+            policy_versions, "policy_id", tenant_id, asset_id, definition
+        )
+
+    async def list_policies(self, tenant_id: UUID) -> tuple[dict[str, object], ...]:
+        return await self._list_config_assets(policy_versions, "policy_id", tenant_id)
+
+    async def add_budget(
+        self, tenant_id: UUID, asset_id: str, definition: dict[str, Any]
+    ) -> dict[str, object]:
+        return await self._add_config_asset(budgets, "budget_id", tenant_id, asset_id, definition)
+
+    async def list_budgets(self, tenant_id: UUID) -> tuple[dict[str, object], ...]:
+        return await self._list_config_assets(budgets, "budget_id", tenant_id)
 
     async def add_goal(self, goal: GoalContract, audit: AuditEvent) -> None:
         async with self._sessions.begin() as session:
@@ -273,6 +279,7 @@ class SqlAlchemyPlatformRepository:
                 )
             )
             await self._add_audit(session, audit, goal.created_at)
+            await self._add_outbox(session, audit, goal.created_at)
 
     async def get_goal(self, tenant_id: UUID, goal_id: UUID) -> GoalContract:
         async with self._sessions() as session:
@@ -311,11 +318,13 @@ class SqlAlchemyPlatformRepository:
                     agent_version_id=str(run.agent_version_id),
                     status=run.status.value,
                     temporal_workflow_id=f"goal-run-{run.run_id}",
+                    definition=run_payload(run),
                     optimistic_version=run.optimistic_version,
                     created_at=run.created_at,
                 )
             )
             await self._add_audit(session, audit, run.created_at)
+            await self._add_outbox(session, audit, run.created_at)
 
     async def get_run(self, tenant_id: UUID, run_id: UUID) -> Run:
         async with self._sessions() as session:
@@ -333,15 +342,7 @@ class SqlAlchemyPlatformRepository:
             )
         if row is None:
             raise RecordNotFound(f"run {run_id} was not found")
-        return Run(
-            tenant_id=UUID(row["tenant_id"]),
-            goal_id=UUID(row["goal_id"]),
-            agent_version_id=UUID(row["agent_version_id"]),
-            run_id=UUID(row["id"]),
-            status=RunStatus(row["status"]),
-            optimistic_version=row["optimistic_version"],
-            created_at=row["created_at"],
-        )
+        return run_from_row(dict(row))
 
     async def save_run(self, run: Run, expected_version: int) -> None:
         async with self._sessions.begin() as session:
@@ -355,11 +356,25 @@ class SqlAlchemyPlatformRepository:
                         runs.c.tenant_id == str(run.tenant_id),
                         runs.c.optimistic_version == expected_version,
                     )
-                    .values(status=run.status.value, optimistic_version=run.optimistic_version)
+                    .values(
+                        status=run.status.value,
+                        definition=run_payload(run),
+                        optimistic_version=run.optimistic_version,
+                        updated_at=datetime.now(UTC),
+                    )
                 ),
             )
             if result.rowcount != 1:
                 raise ConcurrencyConflict("run optimistic version changed")
+            await self._record_fact(
+                session,
+                run.tenant_id,
+                "run.updated",
+                "run",
+                run.run_id,
+                run.optimistic_version,
+                datetime.now(UTC),
+            )
 
     async def list_runs(self, tenant_id: UUID, goal_id: UUID | None = None) -> tuple[Run, ...]:
         async with self._sessions() as session:
@@ -368,18 +383,764 @@ class SqlAlchemyPlatformRepository:
             if goal_id is not None:
                 query = query.where(runs.c.goal_id == str(goal_id))
             rows = (await session.execute(query)).mappings()
-            return tuple(
-                Run(
-                    tenant_id=UUID(row["tenant_id"]),
-                    goal_id=UUID(row["goal_id"]),
-                    agent_version_id=UUID(row["agent_version_id"]),
-                    run_id=UUID(row["id"]),
-                    status=RunStatus(row["status"]),
-                    optimistic_version=row["optimistic_version"],
-                    created_at=row["created_at"],
+            return tuple(run_from_row(dict(row)) for row in rows)
+
+    async def add_plan(self, plan: Plan) -> None:
+        now = datetime.now(UTC)
+        async with self._sessions.begin() as session:
+            await self._scope_tenant(session, plan.tenant_id)
+            await session.execute(
+                insert(plans).values(
+                    id=str(plan.plan_id),
+                    tenant_id=str(plan.tenant_id),
+                    goal_id=str(plan.goal_id),
+                    run_id=str(plan.run_id),
+                    version=plan.version,
+                    definition={"task_ids": [str(item.task_id) for item in plan.tasks]},
+                    optimistic_version=1,
+                    created_at=now,
                 )
-                for row in rows
             )
+            for task in plan.tasks:
+                await session.execute(
+                    insert(tasks).values(
+                        id=str(task.task_id),
+                        tenant_id=str(task.tenant_id),
+                        run_id=str(task.run_id),
+                        plan_id=str(plan.plan_id),
+                        status=task.status.value,
+                        definition=task_payload(task),
+                        optimistic_version=task.optimistic_version,
+                        created_at=now,
+                    )
+                )
+            await self._record_fact(
+                session, plan.tenant_id, "plan.created", "plan", plan.plan_id, plan.version, now
+            )
+
+    async def get_plan(self, tenant_id: UUID, plan_id: UUID) -> Plan:
+        async with self._sessions() as session:
+            await self._scope_tenant(session, tenant_id)
+            plan_row = (
+                (
+                    await session.execute(
+                        select(plans).where(
+                            plans.c.id == str(plan_id), plans.c.tenant_id == str(tenant_id)
+                        )
+                    )
+                )
+                .mappings()
+                .one_or_none()
+            )
+            if plan_row is None:
+                raise RecordNotFound(f"plan {plan_id} was not found")
+            task_rows = list(
+                (
+                    await session.execute(
+                        select(tasks).where(
+                            tasks.c.plan_id == str(plan_id),
+                            tasks.c.tenant_id == str(tenant_id),
+                        )
+                    )
+                ).mappings()
+            )
+        return plan_from_rows(dict(plan_row), [dict(row) for row in task_rows])
+
+    async def save_task(self, task: Task, expected_version: int) -> None:
+        async with self._sessions.begin() as session:
+            await self._scope_tenant(session, task.tenant_id)
+            result = cast(
+                CursorResult[Any],
+                await session.execute(
+                    update(tasks)
+                    .where(
+                        tasks.c.id == str(task.task_id),
+                        tasks.c.tenant_id == str(task.tenant_id),
+                        tasks.c.optimistic_version == expected_version,
+                    )
+                    .values(
+                        status=task.status.value,
+                        definition=task_payload(task),
+                        optimistic_version=task.optimistic_version,
+                        updated_at=datetime.now(UTC),
+                    )
+                ),
+            )
+            if result.rowcount != 1:
+                raise ConcurrencyConflict("task optimistic version changed")
+            await self._record_fact(
+                session,
+                task.tenant_id,
+                "task.updated",
+                "task",
+                task.task_id,
+                task.optimistic_version,
+                datetime.now(UTC),
+            )
+
+    async def add_action(self, action: Action) -> None:
+        now = datetime.now(UTC)
+        async with self._sessions.begin() as session:
+            await self._scope_tenant(session, action.tenant_id)
+            await session.execute(
+                insert(actions).values(
+                    id=str(action.action_id),
+                    tenant_id=str(action.tenant_id),
+                    run_id=str(action.run_id),
+                    task_id=str(action.task_id),
+                    status=action.status.value,
+                    idempotency_key=action.idempotency_key,
+                    action_digest=action.canonical_digest,
+                    definition=action_payload(action),
+                    optimistic_version=action.optimistic_version,
+                    created_at=now,
+                )
+            )
+            await self._record_fact(
+                session,
+                action.tenant_id,
+                "action.proposed",
+                "action",
+                action.action_id,
+                action.optimistic_version,
+                now,
+            )
+
+    async def get_action(self, tenant_id: UUID, action_id: UUID) -> Action:
+        row = await self._get_row(actions, tenant_id, action_id)
+        return action_from_row(row)
+
+    async def save_action(self, action: Action, expected_version: int) -> None:
+        await self._save_versioned(
+            actions,
+            action.tenant_id,
+            action.action_id,
+            expected_version,
+            action.optimistic_version,
+            {
+                "status": action.status.value,
+                "action_digest": action.canonical_digest,
+                "definition": action_payload(action),
+            },
+            "action",
+        )
+
+    async def add_approval(self, approval: ApprovalRequest) -> None:
+        now = datetime.now(UTC)
+        async with self._sessions.begin() as session:
+            await self._scope_tenant(session, approval.tenant_id)
+            authoritative_action = action_from_row(
+                await self._get_row_in_session(
+                    session, actions, approval.tenant_id, approval.action_id
+                )
+            )
+            if (
+                authoritative_action.run_id != approval.run_id
+                or authoritative_action.canonical_digest != approval.action_digest
+                or authoritative_action.tool_version != approval.tool_version
+                or authoritative_action.operation != approval.operation
+                or authoritative_action.resource_scope != approval.resource_scope
+                or authoritative_action.parameter_digest != approval.argument_digest
+            ):
+                raise ValueError("approval must exactly bind the authoritative persisted Action")
+            await session.execute(
+                insert(approvals).values(
+                    id=str(approval.approval_id),
+                    tenant_id=str(approval.tenant_id),
+                    run_id=str(approval.run_id),
+                    action_id=str(approval.action_id),
+                    status=approval.status.value,
+                    action_digest=approval.action_digest,
+                    expires_at=approval.expires_at,
+                    definition=approval_payload(approval),
+                    optimistic_version=approval.optimistic_version,
+                    created_at=approval.created_at,
+                )
+            )
+            await self._record_fact(
+                session,
+                approval.tenant_id,
+                "approval.requested",
+                "approval",
+                approval.approval_id,
+                approval.optimistic_version,
+                now,
+            )
+
+    async def get_approval(self, tenant_id: UUID, approval_id: UUID) -> ApprovalRequest:
+        return approval_from_row(await self._get_row(approvals, tenant_id, approval_id))
+
+    async def list_approvals(self, tenant_id: UUID) -> tuple[ApprovalRequest, ...]:
+        return tuple(approval_from_row(row) for row in await self._list_rows(approvals, tenant_id))
+
+    async def save_approval(self, approval: ApprovalRequest, expected_version: int) -> None:
+        await self._save_versioned(
+            approvals,
+            approval.tenant_id,
+            approval.approval_id,
+            expected_version,
+            approval.optimistic_version,
+            {
+                "status": approval.status.value,
+                "definition": approval_payload(approval),
+                "expires_at": approval.expires_at,
+            },
+            "approval",
+        )
+
+    async def add_evidence(self, item: Evidence) -> None:
+        now = datetime.now(UTC)
+        async with self._sessions.begin() as session:
+            await self._scope_tenant(session, item.tenant_id)
+            await session.execute(
+                insert(evidence).values(
+                    id=str(item.evidence_id),
+                    tenant_id=str(item.tenant_id),
+                    run_id=str(item.run_id),
+                    action_id=str(item.action_id),
+                    source=item.source,
+                    source_identity=item.source_identity,
+                    capture_method=item.capture_method.value,
+                    artifact_uri=item.reference,
+                    content_digest=item.content_digest,
+                    classification=item.classification.value,
+                    valid_from=item.valid_from,
+                    valid_until=item.valid_until,
+                    integrity=item.integrity.value,
+                    definition=evidence_payload(item),
+                    optimistic_version=1,
+                    created_at=item.captured_at,
+                )
+            )
+            await self._record_fact(
+                session,
+                item.tenant_id,
+                "evidence.captured",
+                "evidence",
+                item.evidence_id,
+                1,
+                now,
+            )
+
+    async def get_evidence(self, tenant_id: UUID, evidence_id: UUID) -> Evidence:
+        return evidence_from_row(await self._get_row(evidence, tenant_id, evidence_id))
+
+    async def list_evidence(self, tenant_id: UUID) -> tuple[Evidence, ...]:
+        return tuple(evidence_from_row(row) for row in await self._list_rows(evidence, tenant_id))
+
+    async def add_outcome(self, item: Outcome) -> None:
+        now = datetime.now(UTC)
+        evidence_ids = {str(value) for value in item.evidence_ids}
+        async with self._sessions.begin() as session:
+            await self._scope_tenant(session, item.tenant_id)
+            persisted_rows = (
+                await session.execute(
+                    select(evidence.c.id).where(
+                        evidence.c.tenant_id == str(item.tenant_id),
+                        evidence.c.run_id == str(item.run_id),
+                        evidence.c.id.in_(evidence_ids),
+                    )
+                )
+            ).mappings()
+            persisted_ids = {row["id"] for row in persisted_rows}
+            if persisted_ids != evidence_ids:
+                raise ValueError(
+                    "outcome evidence must be complete, integrity-verified, and persisted"
+                )
+            for evidence_item in item.evidence:
+                persisted = evidence_from_row(
+                    await self._get_row_in_session(
+                        session, evidence, item.tenant_id, evidence_item.evidence_id
+                    )
+                )
+                if persisted != evidence_item:
+                    raise ValueError(
+                        "outcome evidence must exactly match the authoritative persisted record"
+                    )
+            await session.execute(
+                insert(outcomes).values(
+                    id=str(item.outcome_id),
+                    tenant_id=str(item.tenant_id),
+                    goal_id=str(item.goal_id),
+                    run_id=str(item.run_id),
+                    criterion_id=item.criterion_id,
+                    verifier_version=item.verifier_version,
+                    status=item.status.value,
+                    result=outcome_payload(item),
+                    optimistic_version=1,
+                    created_at=now,
+                )
+            )
+            await self._record_fact(
+                session,
+                item.tenant_id,
+                "outcome.recorded",
+                "outcome",
+                item.outcome_id,
+                1,
+                now,
+            )
+
+    async def get_outcome(self, tenant_id: UUID, outcome_id: UUID) -> Outcome:
+        row = await self._get_row(outcomes, tenant_id, outcome_id)
+        evidence_ids = [UUID(item) for item in row["result"].get("evidence_ids", ())]
+        items = tuple([await self.get_evidence(tenant_id, item) for item in evidence_ids])
+        return outcome_from_row(row, items)
+
+    async def record_budget_entry(
+        self,
+        tenant_id: UUID,
+        run_id: UUID,
+        category: str,
+        amount: BudgetAmount,
+        reference: str,
+    ) -> UUID:
+        entry_id = uuid4()
+        now = datetime.now(UTC)
+        async with self._sessions.begin() as session:
+            await self._scope_tenant(session, tenant_id)
+            await session.execute(
+                insert(budget_ledger).values(
+                    id=str(entry_id),
+                    tenant_id=str(tenant_id),
+                    run_id=str(run_id),
+                    category=category,
+                    amount=amount.amount,
+                    unit=amount.unit.value,
+                    reference=reference,
+                    optimistic_version=1,
+                    created_at=now,
+                )
+            )
+            await self._record_fact(
+                session, tenant_id, "budget.recorded", "budget_entry", entry_id, 1, now
+            )
+        return entry_id
+
+    async def add_trial(self, trial: Trial) -> None:
+        now = datetime.now(UTC)
+        async with self._sessions.begin() as session:
+            await self._scope_tenant(session, trial.tenant_id)
+            await session.execute(
+                insert(evaluation_trials).values(
+                    id=str(trial.trial_id),
+                    tenant_id=str(trial.tenant_id),
+                    suite_id=trial.suite_id,
+                    suite_version=trial.suite_version,
+                    subject_version_id=str(trial.subject_version_id),
+                    harness_version=trial.harness_version,
+                    status=trial.status.value,
+                    result=trial_payload(trial),
+                    optimistic_version=1,
+                    created_at=now,
+                )
+            )
+            await self._record_fact(
+                session, trial.tenant_id, "trial.created", "trial", trial.trial_id, 1, now
+            )
+
+    async def list_trials(self, tenant_id: UUID) -> tuple[Trial, ...]:
+        return tuple(
+            trial_from_row(row) for row in await self._list_rows(evaluation_trials, tenant_id)
+        )
+
+    async def add_proposal(self, proposal: ImprovementProposal) -> None:
+        now = datetime.now(UTC)
+        async with self._sessions.begin() as session:
+            await self._scope_tenant(session, proposal.tenant_id)
+            await session.execute(
+                insert(improvement_proposals).values(
+                    id=str(proposal.proposal_id),
+                    tenant_id=str(proposal.tenant_id),
+                    target_type=proposal.target.value,
+                    target_version_id=str(proposal.target_version_id),
+                    proposal=proposal_payload(proposal),
+                    optimistic_version=1,
+                    created_at=now,
+                )
+            )
+            await self._record_fact(
+                session,
+                proposal.tenant_id,
+                "improvement.proposed",
+                "improvement_proposal",
+                proposal.proposal_id,
+                1,
+                now,
+            )
+
+    async def get_proposal(self, tenant_id: UUID, proposal_id: UUID) -> ImprovementProposal:
+        return proposal_from_row(await self._get_row(improvement_proposals, tenant_id, proposal_id))
+
+    async def list_proposals(self, tenant_id: UUID) -> tuple[ImprovementProposal, ...]:
+        return tuple(
+            proposal_from_row(row)
+            for row in await self._list_rows(improvement_proposals, tenant_id)
+        )
+
+    async def add_candidate(self, candidate: CandidateVersion) -> None:
+        now = datetime.now(UTC)
+        async with self._sessions.begin() as session:
+            await self._scope_tenant(session, candidate.tenant_id)
+            await session.execute(
+                insert(candidates).values(
+                    id=str(candidate.candidate_id),
+                    tenant_id=str(candidate.tenant_id),
+                    proposal_id=str(candidate.proposal_id),
+                    baseline_version_id=str(candidate.baseline_version_id),
+                    status=candidate.status.value,
+                    artifact_uri=candidate.artifact_ref,
+                    generator_id=candidate.generator_id,
+                    definition=candidate_payload(candidate),
+                    optimistic_version=candidate.optimistic_version,
+                    created_at=now,
+                )
+            )
+            await self._record_fact(
+                session,
+                candidate.tenant_id,
+                "candidate.created",
+                "candidate",
+                candidate.candidate_id,
+                candidate.optimistic_version,
+                now,
+            )
+
+    async def get_candidate(self, tenant_id: UUID, candidate_id: UUID) -> CandidateVersion:
+        return candidate_from_row(await self._get_row(candidates, tenant_id, candidate_id))
+
+    async def save_candidate(self, candidate: CandidateVersion) -> None:
+        await self._save_versioned(
+            candidates,
+            candidate.tenant_id,
+            candidate.candidate_id,
+            candidate.optimistic_version - 1,
+            candidate.optimistic_version,
+            {"status": candidate.status.value, "definition": candidate_payload(candidate)},
+            "candidate",
+        )
+
+    async def add_deployment(self, deployment: Deployment) -> None:
+        now = datetime.now(UTC)
+        async with self._sessions.begin() as session:
+            await self._scope_tenant(session, deployment.tenant_id)
+            await session.execute(
+                insert(deployments).values(
+                    id=str(deployment.deployment_id),
+                    tenant_id=str(deployment.tenant_id),
+                    candidate_id=str(deployment.candidate_id),
+                    status=deployment.status.value,
+                    definition=deployment_payload(deployment),
+                    optimistic_version=deployment.optimistic_version,
+                    created_at=now,
+                )
+            )
+            await self._record_fact(
+                session,
+                deployment.tenant_id,
+                "deployment.started",
+                "deployment",
+                deployment.deployment_id,
+                deployment.optimistic_version,
+                now,
+            )
+
+    async def get_deployment(self, tenant_id: UUID, deployment_id: UUID) -> Deployment:
+        return deployment_from_row(await self._get_row(deployments, tenant_id, deployment_id))
+
+    async def save_deployment(self, deployment: Deployment) -> None:
+        await self._save_versioned(
+            deployments,
+            deployment.tenant_id,
+            deployment.deployment_id,
+            deployment.optimistic_version - 1,
+            deployment.optimistic_version,
+            {
+                "status": deployment.status.value,
+                "definition": deployment_payload(deployment),
+            },
+            "deployment",
+        )
+
+    async def add_release(self, release: Release) -> None:
+        now = datetime.now(UTC)
+        async with self._sessions.begin() as session:
+            await self._scope_tenant(session, release.tenant_id)
+            candidate_row = (
+                await session.execute(
+                    select(candidates.c.baseline_version_id).where(
+                        candidates.c.id == str(release.candidate_id),
+                        candidates.c.tenant_id == str(release.tenant_id),
+                    )
+                )
+            ).one_or_none()
+            if candidate_row is None:
+                raise RecordNotFound("release candidate was not found")
+            stable_slot = candidate_row[0]
+            await session.execute(
+                update(releases)
+                .where(
+                    releases.c.tenant_id == str(release.tenant_id),
+                    releases.c.stable_slot == stable_slot,
+                    releases.c.active.is_(True),
+                )
+                .values(active=False, updated_at=now)
+            )
+            await session.execute(
+                insert(releases).values(
+                    id=str(release.release_id),
+                    tenant_id=str(release.tenant_id),
+                    candidate_id=str(release.candidate_id),
+                    deployment_id=str(release.deployment_id),
+                    stable_slot=stable_slot,
+                    stable_version_id=str(release.stable_version_id),
+                    previous_stable_version_id=str(release.previous_stable_version_id),
+                    approved_by=str(release.approved_by),
+                    active=True,
+                    definition=release_payload(release),
+                    optimistic_version=1,
+                    created_at=now,
+                )
+            )
+            await self._record_fact(
+                session,
+                release.tenant_id,
+                "release.activated",
+                "release",
+                release.release_id,
+                1,
+                now,
+            )
+
+    async def get_active_release(self, tenant_id: UUID, release_id: UUID) -> Release:
+        async with self._sessions() as session:
+            await self._scope_tenant(session, tenant_id)
+            row = (
+                (
+                    await session.execute(
+                        select(releases).where(
+                            releases.c.id == str(release_id),
+                            releases.c.tenant_id == str(tenant_id),
+                            releases.c.active.is_(True),
+                        )
+                    )
+                )
+                .mappings()
+                .one_or_none()
+            )
+        if row is None:
+            raise RecordNotFound(f"active release {release_id} was not found")
+        return release_from_row(dict(row))
+
+    async def list_releases(self, tenant_id: UUID) -> tuple[Release, ...]:
+        return tuple(release_from_row(row) for row in await self._list_rows(releases, tenant_id))
+
+    async def list_audit_events(self, tenant_id: UUID) -> tuple[AuditEvent, ...]:
+        return tuple(
+            AuditEvent(
+                tenant_id=UUID(row["tenant_id"]),
+                actor_id=UUID(row["actor_id"]),
+                principal_id=UUID(row["principal_id"]),
+                event_type=row["event_type"],
+                object_type=row["object_type"],
+                object_id=row["object_id"],
+                correlation_id=UUID(row["correlation_id"]),
+                details=row["details"],
+            )
+            for row in await self._list_rows(audit_events, tenant_id)
+        )
+
+    async def get_idempotency(self, tenant_id: UUID, key: str) -> UUID | None:
+        async with self._sessions() as session:
+            await self._scope_tenant(session, tenant_id)
+            value = await session.scalar(
+                select(idempotency_records.c.external_id).where(
+                    idempotency_records.c.tenant_id == str(tenant_id),
+                    idempotency_records.c.idempotency_key == key,
+                    idempotency_records.c.status == "completed",
+                )
+            )
+        return UUID(value) if value else None
+
+    async def put_idempotency(self, tenant_id: UUID, key: str, external_id: UUID) -> None:
+        now = datetime.now(UTC)
+        async with self._sessions.begin() as session:
+            await self._scope_tenant(session, tenant_id)
+            await session.execute(
+                insert(idempotency_records).values(
+                    id=str(uuid4()),
+                    tenant_id=str(tenant_id),
+                    idempotency_key=key,
+                    request_digest="0" * 64,
+                    external_id=str(external_id),
+                    status="completed",
+                    response=None,
+                    optimistic_version=1,
+                    created_at=now,
+                )
+            )
+
+    async def _get_row(self, table: Any, tenant_id: UUID, object_id: UUID) -> dict[str, Any]:
+        async with self._sessions() as session:
+            await self._scope_tenant(session, tenant_id)
+            row = (
+                (
+                    await session.execute(
+                        select(table).where(
+                            table.c.id == str(object_id), table.c.tenant_id == str(tenant_id)
+                        )
+                    )
+                )
+                .mappings()
+                .one_or_none()
+            )
+        if row is None:
+            raise RecordNotFound(f"{table.name} {object_id} was not found")
+        return dict(row)
+
+    async def _get_row_in_session(
+        self,
+        session: AsyncSession,
+        table: Any,
+        tenant_id: UUID,
+        object_id: UUID,
+    ) -> dict[str, Any]:
+        row = (
+            (
+                await session.execute(
+                    select(table).where(
+                        table.c.id == str(object_id), table.c.tenant_id == str(tenant_id)
+                    )
+                )
+            )
+            .mappings()
+            .one_or_none()
+        )
+        if row is None:
+            raise RecordNotFound(f"{table.name} {object_id} was not found")
+        return dict(row)
+
+    async def _list_rows(self, table: Any, tenant_id: UUID) -> tuple[dict[str, Any], ...]:
+        async with self._sessions() as session:
+            await self._scope_tenant(session, tenant_id)
+            rows = (
+                await session.execute(select(table).where(table.c.tenant_id == str(tenant_id)))
+            ).mappings()
+            return tuple(dict(row) for row in rows)
+
+    async def _save_versioned(
+        self,
+        table: Any,
+        tenant_id: UUID,
+        object_id: UUID,
+        expected_version: int,
+        new_version: int,
+        values: dict[str, Any],
+        object_type: str,
+    ) -> None:
+        now = datetime.now(UTC)
+        async with self._sessions.begin() as session:
+            await self._scope_tenant(session, tenant_id)
+            result = cast(
+                CursorResult[Any],
+                await session.execute(
+                    update(table)
+                    .where(
+                        table.c.id == str(object_id),
+                        table.c.tenant_id == str(tenant_id),
+                        table.c.optimistic_version == expected_version,
+                    )
+                    .values(**values, optimistic_version=new_version, updated_at=now)
+                ),
+            )
+            if result.rowcount != 1:
+                raise ConcurrencyConflict(f"{object_type} optimistic version changed")
+            await self._record_fact(
+                session,
+                tenant_id,
+                f"{object_type}.updated",
+                object_type,
+                object_id,
+                new_version,
+                now,
+            )
+
+    async def _add_config_asset(
+        self,
+        table: Any,
+        id_column: str,
+        tenant_id: UUID,
+        asset_id: str,
+        definition: dict[str, Any],
+    ) -> dict[str, object]:
+        version = str(definition.get("version", "1"))
+        value: dict[str, object] = {
+            "asset_id": asset_id,
+            "tenant_id": str(tenant_id),
+            "version": version,
+            "definition": definition,
+        }
+        record_id = uuid4()
+        now = datetime.now(UTC)
+        async with self._sessions.begin() as session:
+            await self._scope_tenant(session, tenant_id)
+            await session.execute(
+                insert(table).values(
+                    id=str(record_id),
+                    tenant_id=str(tenant_id),
+                    **{id_column: asset_id},
+                    version=version,
+                    definition=definition,
+                    optimistic_version=1,
+                    created_at=now,
+                )
+            )
+            await self._record_fact(
+                session,
+                tenant_id,
+                f"{table.name}.created",
+                table.name,
+                record_id,
+                1,
+                now,
+            )
+        return value
+
+    async def _list_config_assets(
+        self, table: Any, id_column: str, tenant_id: UUID
+    ) -> tuple[dict[str, object], ...]:
+        return tuple(
+            {
+                "asset_id": row[id_column],
+                "tenant_id": row["tenant_id"],
+                "version": row["version"],
+                "definition": row["definition"],
+            }
+            for row in await self._list_rows(table, tenant_id)
+        )
+
+    async def _record_fact(
+        self,
+        session: AsyncSession,
+        tenant_id: UUID,
+        event_type: str,
+        object_type: str,
+        object_id: UUID,
+        version: int,
+        created_at: datetime,
+    ) -> None:
+        audit = AuditEvent(
+            tenant_id=tenant_id,
+            actor_id=UUID(int=0),
+            principal_id=UUID(int=0),
+            event_type=event_type,
+            object_type=object_type,
+            object_id=str(object_id),
+            correlation_id=uuid4(),
+            details={"version": version},
+        )
+        await self._add_audit(session, audit, created_at)
+        await self._add_outbox(session, audit, created_at)
 
     @staticmethod
     async def _add_audit(session: AsyncSession, audit: AuditEvent, created_at: datetime) -> None:
@@ -397,6 +1158,81 @@ class SqlAlchemyPlatformRepository:
                 optimistic_version=1,
                 created_at=created_at,
             )
+        )
+
+    @staticmethod
+    async def _add_outbox(session: AsyncSession, audit: AuditEvent, created_at: datetime) -> None:
+        await session.execute(
+            insert(outbox).values(
+                id=str(uuid4()),
+                tenant_id=str(audit.tenant_id),
+                schema=f"autonoesis.{audit.event_type}.v1",
+                payload={
+                    "event_type": audit.event_type,
+                    "object_type": audit.object_type,
+                    "object_id": audit.object_id,
+                    "correlation_id": str(audit.correlation_id),
+                    "details": audit.details,
+                },
+                optimistic_version=1,
+                created_at=created_at,
+            )
+        )
+
+    @staticmethod
+    def _manifest_payload(manifest: CapabilityPackManifest) -> dict[str, Any]:
+        return {
+            "api_version": manifest.api_version,
+            "pack_id": manifest.pack_id,
+            "version": manifest.version,
+            "python_entry_point": manifest.python_entry_point,
+            "goal_types": [
+                {
+                    "goal_type": item.goal_type,
+                    "input_schema": item.input_schema,
+                    "agent": item.agent,
+                    "evaluation_suite": item.evaluation_suite,
+                    "default_policy": item.default_policy,
+                    "default_budget": item.default_budget,
+                }
+                for item in manifest.goal_types
+            ],
+            "skills": list(manifest.skills),
+            "tools": list(manifest.tools),
+            "policies": list(manifest.policies),
+            "evaluation_suites": list(manifest.evaluation_suites),
+        }
+
+    @staticmethod
+    def _agent_payload(version: AgentVersion) -> dict[str, Any]:
+        return {
+            "instruction": version.instruction,
+            "model_route": version.model_route,
+            "skill_ids": version.skill_ids,
+            "tool_ids": version.tool_ids,
+            "loop_policy": {
+                "max_rounds": version.loop_policy.max_rounds,
+                "max_tokens": version.loop_policy.max_tokens,
+                "max_cost_units": version.loop_policy.max_cost_units,
+                "timeout_seconds": version.loop_policy.timeout_seconds,
+            },
+        }
+
+    @staticmethod
+    def _agent_from_row(row: dict[str, Any]) -> AgentVersion:
+        definition = row["definition"]
+        loop = definition["loop_policy"]
+        return AgentVersion(
+            tenant_id=UUID(row["tenant_id"]),
+            agent_id=UUID(row["agent_id"]),
+            version=row["version"],
+            instruction=definition["instruction"],
+            model_route=definition["model_route"],
+            skill_ids=tuple(definition["skill_ids"]),
+            tool_ids=tuple(definition["tool_ids"]),
+            loop_policy=LoopPolicy(**loop),
+            stage=AssetStage(row["stage"]),
+            agent_version_id=UUID(row["id"]),
         )
 
     @staticmethod
@@ -437,6 +1273,7 @@ class SqlAlchemyPlatformRepository:
             },
             "execution_mode": goal.execution_mode.value,
             "max_concurrent_runs": goal.max_concurrent_runs,
+            "transitions": [transition_payload(item) for item in goal.transitions],
         }
 
     @staticmethod
@@ -480,6 +1317,7 @@ class SqlAlchemyPlatformRepository:
             version=row["optimistic_version"],
             status=GoalStatus(row["status"]),
             created_at=row["created_at"],
+            transitions=transitions_from(payload.get("transitions")),
         )
 
 
