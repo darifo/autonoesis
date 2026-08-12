@@ -35,6 +35,11 @@ jobs:
           POSTGRES_SEEDS: postgres
         ports:
           - 7233:7233
+        options: >-
+          --health-cmd "tctl --address temporal:7233 namespace describe default > /dev/null 2>&1"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 60
     defaults:
       run:
         shell: bash -el {0}
@@ -51,10 +56,15 @@ jobs:
         run: mkdir -p .artifacts
       - name: Wait for Temporal component
         run: |
-          for attempt in {1..30}; do
-            python -c "import asyncio; from temporalio.client import Client; asyncio.run(Client.connect('localhost:7233'))" && exit 0
+          for attempt in {1..90}; do
+            if python -c "import asyncio; from temporalio.client import Client; asyncio.run(Client.connect('localhost:7233'))" 2>/dev/null; then
+              echo "Temporal component ready after ${attempt}s"
+              exit 0
+            fi
             sleep 1
           done
+          echo "Temporal component did not become ready within 90s"
+          docker logs "${{ job.services.temporal.id }}" 2>&1 | tail -40 || true
           exit 1
       - name: Initialize PostgreSQL authority roles
         env:
