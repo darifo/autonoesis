@@ -56,20 +56,28 @@ jobs:
         run: mkdir -p .artifacts
       - name: Wait for Temporal component
         run: |
+          temporal_ready=false
           for attempt in {1..90}; do
             if python -c "import asyncio; from temporalio.client import Client; asyncio.run(Client.connect('localhost:7233'))" 2>/dev/null; then
               echo "Temporal component ready after ${attempt}s"
-              exit 0
+              temporal_ready=true
+              break
             fi
             sleep 1
           done
-          echo "Temporal component did not become ready within 90s"
-          docker logs "${{ job.services.temporal.id }}" 2>&1 | tail -40 || true
-          exit 1
+          if [[ "$temporal_ready" != true ]]; then
+            echo "Temporal component did not become ready within 90s"
+            docker logs "${{ job.services.temporal.id }}" 2>&1 | tail -40 || true
+            exit 1
+          fi
       - name: Initialize PostgreSQL authority roles
         env:
           PGPASSWORD: autonoesis
-        run: psql -h localhost -U autonoesis -d autonoesis -v ON_ERROR_STOP=1 -f infra/postgres/ci-users.sql
+        run: |
+          # GitHub-hosted runners do not ship postgresql-client by default
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends postgresql-client
+          psql -h localhost -U autonoesis -d autonoesis -v ON_ERROR_STOP=1 -f infra/postgres/ci-users.sql
       - name: Migrate PostgreSQL authority schema
         env:
           AUTONOESIS_MIGRATION_DATABASE_URL: postgresql+psycopg://autonoesis_migrator:autonoesis-ci-only@localhost:5432/autonoesis
