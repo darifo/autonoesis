@@ -12,6 +12,7 @@ from autonoesis_domain import (
     ContextSnapshot,
     Evidence,
     GoalContract,
+    MemoryRecord,
     Outcome,
     Plan,
     Run,
@@ -64,6 +65,8 @@ class ExecutionRepository(Protocol):
     async def add_context_snapshot(self, snapshot: ContextSnapshot) -> None: ...
 
     async def get_context_snapshot(self, tenant_id: UUID, run_id: UUID) -> ContextSnapshot: ...
+
+    async def get_memory(self, tenant_id: UUID, memory_id: UUID) -> MemoryRecord: ...
 
     async def add_plan(self, plan: Plan) -> None: ...
 

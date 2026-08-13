@@ -8,7 +8,7 @@ from enum import StrEnum
 from typing import Protocol
 from uuid import UUID, uuid4
 
-from autonoesis_domain import MemoryRecord
+from autonoesis_domain import DataClassification, MemoryRecord, MemoryStatus, TrustLevel
 
 # ── Write Gate ──────────────────────────────────────────────────────────────
 
@@ -42,12 +42,33 @@ class MemoryWriteGate:
         self,
         candidate: MemoryRecord,
         existing: tuple[MemoryRecord, ...],
+        approver_roles: frozenset[str] = frozenset(),
     ) -> WriteGateResult:
+        if candidate.status is not MemoryStatus.PROPOSED:
+            return WriteGateResult(WriteDecision.REJECT, "only observations may enter the gate")
         if candidate.confidence < self._min_confidence:
             return WriteGateResult(WriteDecision.REJECT, "confidence below threshold")
-        if set(candidate.provenance) & {"untrusted", "unknown"}:
+        if candidate.source_trust is TrustLevel.UNTRUSTED or set(candidate.provenance) & {
+            "untrusted",
+            "unknown",
+        }:
             return WriteGateResult(WriteDecision.REJECT, "untrusted provenance")
+        if candidate.expires_at <= datetime.now(UTC):
+            return WriteGateResult(WriteDecision.REJECT, "memory TTL has expired")
+        if (
+            candidate.contains_pii or candidate.classification is DataClassification.RESTRICTED
+        ) and not approver_roles.intersection({"privacy_reviewer", "data_steward"}):
+            return WriteGateResult(WriteDecision.REJECT, "PII requires privacy approval")
         for ex in existing:
+            if (
+                set(ex.conflict_keys).intersection(candidate.conflict_keys)
+                and ex.content != candidate.content
+            ):
+                return WriteGateResult(
+                    WriteDecision.REJECT,
+                    "candidate conflicts with stable memory",
+                    ex.memory_id,
+                )
             if ex.provenance == candidate.provenance and ex.memory_id != candidate.memory_id:
                 return WriteGateResult(
                     WriteDecision.MERGE,
@@ -104,6 +125,51 @@ class MemoryStorePort(Protocol):
     ) -> tuple[MemoryRecord, ...]: ...
 
 
+class LedgerPort(Protocol):
+    async def record(self, entry: LedgerEntry) -> None: ...
+
+
+class MemoryWriteService:
+    """The only supported path from a Run observation to stable Memory."""
+
+    def __init__(
+        self, store: MemoryStorePort, ledger: LedgerPort, gate: MemoryWriteGate | None = None
+    ) -> None:
+        self._store = store
+        self._ledger = ledger
+        self._gate = gate or MemoryWriteGate()
+
+    async def write(
+        self,
+        candidate: MemoryRecord,
+        actor_id: UUID,
+        existing: tuple[MemoryRecord, ...],
+        approver_roles: frozenset[str] = frozenset(),
+    ) -> MemoryRecord:
+        decision = await self._gate.evaluate(candidate, existing, approver_roles)
+        if decision.decision is WriteDecision.REJECT:
+            raise PermissionError(decision.reason)
+        stable = candidate.stabilize()
+        await self._store.store(stable)
+        await self._ledger.record(
+            LedgerEntry(
+                memory_id=stable.memory_id,
+                kind=(
+                    LedgerEntryKind.MERGE
+                    if decision.decision is WriteDecision.MERGE
+                    else LedgerEntryKind.WRITE
+                ),
+                tenant_id=stable.tenant_id,
+                actor_id=actor_id,
+                metadata={
+                    "source_memory_id": str(decision.existing_record_id or ""),
+                    "classification": stable.classification.value,
+                },
+            )
+        )
+        return stable
+
+
 class InMemoryMemoryStore:
     """Thread-unsafe in-memory implementation of MemoryStorePort."""
 
@@ -111,6 +177,8 @@ class InMemoryMemoryStore:
         self._records: dict[UUID, MemoryRecord] = {}
 
     async def store(self, record: MemoryRecord) -> None:
+        if record.status is not MemoryStatus.STABLE:
+            raise PermissionError("only Write Gate output can enter stable memory")
         self._records[record.memory_id] = record
 
     async def get(self, memory_id: UUID) -> MemoryRecord | None:
@@ -162,6 +230,38 @@ class DeletionPropagator:
         return 1
 
 
+@dataclass(frozen=True, slots=True)
+class VectorProjection:
+    """Disposable index entry; the stable Memory ledger remains authoritative."""
+
+    tenant_id: UUID
+    memory_id: UUID
+    content_digest: str
+    index_version: str
+
+
+class RebuildableVectorIndex:
+    def __init__(self) -> None:
+        self._entries: dict[UUID, VectorProjection] = {}
+
+    async def rebuild(self, records: tuple[MemoryRecord, ...], index_version: str) -> None:
+        import hashlib
+
+        self._entries = {
+            item.memory_id: VectorProjection(
+                item.tenant_id,
+                item.memory_id,
+                hashlib.sha256(item.content.encode()).hexdigest(),
+                index_version,
+            )
+            for item in records
+            if item.status is MemoryStatus.STABLE
+        }
+
+    async def delete(self, memory_id: UUID) -> None:
+        self._entries.pop(memory_id, None)
+
+
 __all__ = [
     "DeletionPropagator",
     "InMemoryMemoryStore",
@@ -170,6 +270,9 @@ __all__ = [
     "MemoryLedger",
     "MemoryStorePort",
     "MemoryWriteGate",
+    "MemoryWriteService",
+    "RebuildableVectorIndex",
+    "VectorProjection",
     "WriteDecision",
     "WriteGateResult",
 ]

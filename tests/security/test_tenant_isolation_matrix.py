@@ -277,7 +277,7 @@ async def test_two_tenant_real_infrastructure_attack_matrix() -> None:
                     1.0,
                     datetime.now(UTC) + timedelta(days=1),
                     uuid4(),
-                )
+                ).stabilize()
             )
             await store.add_telemetry(
                 TenantTelemetryRecord(tenant_id, "trace", "same-trace", {"marker": marker})

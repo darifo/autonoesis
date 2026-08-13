@@ -236,6 +236,7 @@ version = "0.1.0"
 source = { editable = "packages/application" }
 dependencies = [
     { name = "autonoesis-capability" },
+    { name = "autonoesis-context" },
     { name = "autonoesis-contracts" },
     { name = "autonoesis-domain" },
     { name = "autonoesis-runtime-kernel" },
@@ -244,6 +245,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "autonoesis-capability", editable = "packages/capability" },
+    { name = "autonoesis-context", editable = "packages/context" },
     { name = "autonoesis-contracts", editable = "packages/contracts" },
     { name = "autonoesis-domain", editable = "packages/domain" },
     { name = "autonoesis-runtime-kernel", editable = "packages/runtime-kernel" },

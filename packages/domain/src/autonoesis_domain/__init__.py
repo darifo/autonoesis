@@ -12,8 +12,10 @@ from autonoesis_domain.assets import (
 from autonoesis_domain.context import (
     ContextSnapshot,
     EnvironmentFact,
+    FreshnessPolicy,
     KnowledgeRef,
     MemoryRecord,
+    MemoryStatus,
     TrustLevel,
 )
 from autonoesis_domain.evaluation import (
@@ -115,6 +117,7 @@ __all__ = [
     "EvidenceCaptureMethod",
     "EvidenceIntegrity",
     "ExecutionMode",
+    "FreshnessPolicy",
     "GoalContract",
     "GoalStatus",
     "GraderResult",
@@ -126,6 +129,7 @@ __all__ = [
     "KnowledgeRef",
     "LoopPolicy",
     "MemoryRecord",
+    "MemoryStatus",
     "Outcome",
     "OutcomeStatus",
     "Plan",

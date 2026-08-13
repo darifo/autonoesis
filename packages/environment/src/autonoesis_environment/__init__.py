@@ -76,13 +76,20 @@ class EnvironmentProjector:
                 else fact.observed_at
             )
             projected = EnvironmentFact(
+                tenant_id=fact.tenant_id,
                 fact_id=fact.fact_id,
                 source=fact.source,
+                source_authority=fact.source_authority,
                 subject=fact.subject,
                 value=fact.value,
                 observed_at=datetime.now(UTC),
                 valid_until=projected_valid_until,
                 trust=fact.trust,
+                classification=fact.classification,
+                freshness_policy=fact.freshness_policy,
+                allowed_roles=fact.allowed_roles,
+                allowed_purposes=fact.allowed_purposes,
+                visible_fields=fact.visible_fields,
             )
             projections.append(
                 FactProjection(

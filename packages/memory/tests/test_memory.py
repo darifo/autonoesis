@@ -5,13 +5,14 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
-from autonoesis_domain import MemoryRecord
+from autonoesis_domain import DataClassification, MemoryRecord, MemoryStatus, TrustLevel
 from autonoesis_memory import (
     InMemoryMemoryStore,
     LedgerEntry,
     LedgerEntryKind,
     MemoryLedger,
     MemoryWriteGate,
+    MemoryWriteService,
     WriteDecision,
 )
 
@@ -57,6 +58,28 @@ class TestMemoryWriteGate:
         result = await gate.evaluate(candidate, (existing,))
         assert result.decision == WriteDecision.MERGE
 
+    @pytest.mark.asyncio
+    async def test_rejects_pii_without_privacy_approval_and_conflicts(self) -> None:
+        gate = MemoryWriteGate()
+        pii = _record(contains_pii=True, classification=DataClassification.RESTRICTED)
+        assert (await gate.evaluate(pii, ())).decision is WriteDecision.REJECT
+        existing = _record(conflict_keys=("customer:42:email",)).stabilize()
+        candidate = _record(
+            conflict_keys=("customer:42:email",),
+            content="contradictory value",
+        )
+        assert (await gate.evaluate(candidate, (existing,))).decision is WriteDecision.REJECT
+
+    @pytest.mark.asyncio
+    async def test_write_service_is_only_path_to_stable_memory(self) -> None:
+        store, ledger = InMemoryMemoryStore(), MemoryLedger()
+        observation = _record(source_trust=TrustLevel.AUTHORITATIVE)
+        with pytest.raises(PermissionError, match="Write Gate"):
+            await store.store(observation)
+        stable = await MemoryWriteService(store, ledger).write(observation, uuid4(), ())
+        assert stable.status is MemoryStatus.STABLE
+        assert (await ledger.history(stable.memory_id))[0].kind is LedgerEntryKind.WRITE
+
 
 class TestMemoryLedger:
     @pytest.mark.asyncio
@@ -77,7 +100,7 @@ class TestInMemoryMemoryStore:
     async def test_store_and_retrieve(self) -> None:
         store = InMemoryMemoryStore()
         record = _record()
-        await store.store(record)
+        await store.store(record.stabilize())
         retrieved = await store.get(record.memory_id)
         assert retrieved is not None
         assert retrieved.content == "test memory"
@@ -86,6 +109,6 @@ class TestInMemoryMemoryStore:
     async def test_delete(self) -> None:
         store = InMemoryMemoryStore()
         record = _record()
-        await store.store(record)
+        await store.store(record.stabilize())
         await store.delete(record.memory_id)
         assert await store.get(record.memory_id) is None

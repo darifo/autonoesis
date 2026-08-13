@@ -29,6 +29,8 @@ from autonoesis_domain import (
     Evidence,
     GoalContract,
     ImprovementProposal,
+    MemoryRecord,
+    MemoryStatus,
     Outcome,
     Plan,
     Release,
@@ -44,6 +46,7 @@ class InMemoryPlatformStore:
         self.goals: dict[UUID, GoalContract] = {}
         self.runs: dict[UUID, Run] = {}
         self.context_snapshots: dict[UUID, ContextSnapshot] = {}
+        self.memories: dict[UUID, MemoryRecord] = {}
         self.plans: dict[UUID, Plan] = {}
         self.tasks: dict[UUID, Task] = {}
         self.actions: dict[UUID, Action] = {}
@@ -216,6 +219,19 @@ class InMemoryPlatformStore:
             if item.tenant_id == tenant_id and item.run_id == run_id:
                 return item
         raise RecordNotFound(f"context for run {run_id} was not found")
+
+    async def get_memory(self, tenant_id: UUID, memory_id: UUID) -> MemoryRecord:
+        try:
+            item = self.memories[memory_id]
+        except KeyError as exc:
+            raise RecordNotFound(f"memory {memory_id} was not found") from exc
+        self._assert_tenant(tenant_id, item.tenant_id)
+        return item
+
+    async def add_memory(self, item: MemoryRecord) -> None:
+        if item.status is not MemoryStatus.STABLE:
+            raise PermissionError("memory must pass the Write Gate before persistence")
+        self.memories[item.memory_id] = item
 
     async def add_plan(self, plan: Plan) -> None:
         self.plans[plan.plan_id] = plan

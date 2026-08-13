@@ -38,6 +38,7 @@ from autonoesis_domain import (
     JsonObject,
     LoopPolicy,
     MemoryRecord,
+    MemoryStatus,
     Outcome,
     Plan,
     Release,
@@ -49,7 +50,7 @@ from autonoesis_domain import (
     Trial,
 )
 from autonoesis_runtime import TenantNamespaces, TenantTelemetryRecord
-from sqlalchemy import func, insert, select, text, update
+from sqlalchemy import delete, func, insert, select, text, update
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import CursorResult
@@ -75,6 +76,8 @@ from autonoesis_adapters.persistence_codec import (
     deployment_payload,
     evidence_from_row,
     evidence_payload,
+    memory_from_row,
+    memory_payload,
     outcome_from_row,
     outcome_payload,
     plan_from_rows,
@@ -109,6 +112,7 @@ from autonoesis_adapters.persistence_schema import (
     goals,
     idempotency_records,
     improvement_proposals,
+    memory_ledger,
     memory_records,
     outcomes,
     plans,
@@ -120,6 +124,7 @@ from autonoesis_adapters.persistence_schema import (
     telemetry_records,
     tenant_resource_namespaces,
     tool_versions,
+    vector_index_projections,
 )
 from autonoesis_adapters.persistence_schema import inbox as inbox
 from autonoesis_adapters.persistence_schema import kill_switches as kill_switches
@@ -507,7 +512,7 @@ class SqlAlchemyPlatformRepository:
                     goal_id=str(snapshot.goal_id),
                     run_id=str(snapshot.run_id),
                     payload=payload,
-                    content_digest=JsonObject.from_value(payload).digest,
+                    content_digest=snapshot.content_digest,
                     optimistic_version=1,
                     created_at=snapshot.created_at,
                 )
@@ -542,6 +547,8 @@ class SqlAlchemyPlatformRepository:
         return context_snapshot_from_row(dict(row))
 
     async def add_memory(self, item: MemoryRecord) -> None:
+        if item.status is not MemoryStatus.STABLE:
+            raise PermissionError("memory must pass the Write Gate before persistence")
         now = datetime.now(UTC)
         async with self._sessions.begin() as session:
             await self._scope_tenant(session, item.tenant_id)
@@ -555,6 +562,9 @@ class SqlAlchemyPlatformRepository:
                     confidence=item.confidence,
                     expires_at=item.expires_at,
                     approved_by=str(item.approved_by),
+                    status=item.status.value,
+                    definition=memory_payload(item),
+                    deleted_at=None,
                     optimistic_version=1,
                     created_at=now,
                 )
@@ -562,22 +572,90 @@ class SqlAlchemyPlatformRepository:
             await self._record_fact(
                 session, item.tenant_id, "memory.recorded", "memory", item.memory_id, 1, now
             )
+            await session.execute(
+                insert(memory_ledger).values(
+                    id=str(uuid4()),
+                    tenant_id=str(item.tenant_id),
+                    memory_id=str(item.memory_id),
+                    kind="write",
+                    actor_id=str(item.approved_by),
+                    metadata={"classification": item.classification.value},
+                    optimistic_version=1,
+                    created_at=now,
+                )
+            )
+
+    async def get_memory(self, tenant_id: UUID, memory_id: UUID) -> MemoryRecord:
+        row = await self._get_row(memory_records, tenant_id, memory_id)
+        return memory_from_row(row)
 
     async def list_memory(self, tenant_id: UUID) -> tuple[MemoryRecord, ...]:
         rows = await self._list_rows(memory_records, tenant_id)
-        return tuple(
-            MemoryRecord(
-                tenant_id=UUID(row["tenant_id"]),
-                scope=row["scope"],
-                content=row["content"],
-                provenance=tuple(row["provenance"]),
-                confidence=float(row["confidence"]),
-                expires_at=row["expires_at"],
-                approved_by=UUID(row["approved_by"]),
-                memory_id=UUID(row["id"]),
+        return tuple(memory_from_row(row) for row in rows if row["deleted_at"] is None)
+
+    async def delete_memory(self, tenant_id: UUID, memory_id: UUID, actor_id: UUID) -> int:
+        now = datetime.now(UTC)
+        async with self._sessions.begin() as session:
+            await self._scope_tenant(session, tenant_id)
+            rows = (
+                (
+                    await session.execute(
+                        text(
+                            "WITH RECURSIVE affected(id) AS "
+                            "(SELECT CAST(:memory_id AS varchar(36)) UNION "
+                            "SELECT edge.child_memory_id FROM memory_deletion_edges edge "
+                            "JOIN affected ON edge.parent_memory_id = affected.id "
+                            "WHERE edge.tenant_id = :tenant_id) SELECT id FROM affected"
+                        ),
+                        {"tenant_id": str(tenant_id), "memory_id": str(memory_id)},
+                    )
+                )
+                .scalars()
+                .all()
             )
-            for row in rows
-        )
+            existing = (
+                (
+                    await session.execute(
+                        select(memory_records.c.id).where(
+                            memory_records.c.tenant_id == str(tenant_id),
+                            memory_records.c.id.in_(rows),
+                            memory_records.c.deleted_at.is_(None),
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            if not existing:
+                return 0
+            await session.execute(
+                update(memory_records)
+                .where(
+                    memory_records.c.tenant_id == str(tenant_id),
+                    memory_records.c.id.in_(existing),
+                )
+                .values(status="deleted", deleted_at=now)
+            )
+            await session.execute(
+                delete(vector_index_projections).where(
+                    vector_index_projections.c.tenant_id == str(tenant_id),
+                    vector_index_projections.c.memory_id.in_(existing),
+                )
+            )
+            for deleted_id in existing:
+                await session.execute(
+                    insert(memory_ledger).values(
+                        id=str(uuid4()),
+                        tenant_id=str(tenant_id),
+                        memory_id=deleted_id,
+                        kind="delete",
+                        actor_id=str(actor_id),
+                        metadata={"root_memory_id": str(memory_id)},
+                        optimistic_version=1,
+                        created_at=now,
+                    )
+                )
+            return len(existing)
 
     async def add_telemetry(self, item: TenantTelemetryRecord) -> None:
         now = datetime.now(UTC)

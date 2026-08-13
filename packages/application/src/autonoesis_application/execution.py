@@ -8,6 +8,7 @@ from typing import Any
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from autonoesis_capability import validate_payload
+from autonoesis_context import ContextAssembler
 from autonoesis_domain import (
     Action,
     ActionAttempt,
@@ -106,6 +107,10 @@ class PrepareRunContext:
     history_digest: str
     tool_versions: tuple[str, ...]
     conflicts: tuple[str, ...] = ()
+    purpose: str = "run_context"
+    policy_version: str = "context-policy@1"
+    maximum_classification: DataClassification = DataClassification.INTERNAL
+    allowed_subjects: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True, slots=True)
@@ -297,6 +302,7 @@ class GoalExecutionApplication:
         evidence_artifacts: EvidenceArtifactStore | None = None,
         authoritative_readback: AuthoritativeReadback | None = None,
         evidence_policy: EvidenceAdmissionPolicy | None = None,
+        context_assembler: ContextAssembler | None = None,
     ) -> None:
         self._repository = repository
         self._catalog = catalog
@@ -305,6 +311,7 @@ class GoalExecutionApplication:
         self._evidence_artifacts = evidence_artifacts
         self._authoritative_readback = authoritative_readback
         self._evidence_policy = evidence_policy or EvidenceAdmissionPolicy()
+        self._context_assembler = context_assembler or ContextAssembler()
         self._outcome_verifier = (
             TrustedOutcomeVerifier(authoritative_readback, evidence_artifacts)
             if authoritative_readback is not None and evidence_artifacts is not None
@@ -401,17 +408,32 @@ class GoalExecutionApplication:
                     context.identity.tenant_id, command.run_id
                 )
             run = await self._repository.get_run(context.identity.tenant_id, command.run_id)
-            snapshot = ContextSnapshot(
-                tenant_id=context.identity.tenant_id,
+            memories = tuple(
+                [
+                    await self._repository.get_memory(context.identity.tenant_id, memory_id)
+                    for memory_id in command.memory_ids
+                ]
+            )
+            snapshot = await self._context_assembler.assemble(
                 goal_id=run.goal_id,
                 run_id=run.run_id,
+                tenant_id=context.identity.tenant_id,
+                roles=context.identity.roles,
                 environment_facts=command.environment_facts,
                 knowledge_refs=command.knowledge_refs,
-                memory_ids=command.memory_ids,
+                memory_records=memories,
                 history_digest=command.history_digest,
                 tool_versions=command.tool_versions,
-                conflicts=command.conflicts,
+                purpose=command.purpose,
+                policy_version=command.policy_version,
+                maximum_classification=command.maximum_classification,
+                allowed_subjects=command.allowed_subjects,
             )
+            if command.conflicts:
+                snapshot = replace(
+                    snapshot,
+                    conflicts=tuple(sorted({*snapshot.conflicts, *command.conflicts})),
+                )
             await self._repository.add_context_snapshot(snapshot)
             await self._repository.record_audit(
                 self._audit(context, "run.context_prepared", snapshot)

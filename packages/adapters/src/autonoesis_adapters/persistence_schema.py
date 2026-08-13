@@ -403,6 +403,19 @@ evaluation_trials = tenant_table(
     ),
     status_check("pending", "running", "passed", "failed", "invalid"),
 )
+environment_facts = tenant_table(
+    "environment_facts",
+    Column("fact_key", String(300), nullable=False),
+    Column("subject", String(500), nullable=False),
+    Column("source", String(500), nullable=False),
+    Column("source_authority", String(500), nullable=False),
+    Column("classification", String(32), nullable=False),
+    Column("freshness_policy", String(32), nullable=False),
+    Column("observed_at", DateTime(timezone=True), nullable=False),
+    Column("valid_until", DateTime(timezone=True), nullable=False),
+    Column("value", JSON, nullable=False),
+    Column("acl", JSON, nullable=False),
+)
 memory_records = tenant_table(
     "memory_records",
     Column("scope", String(300), nullable=False),
@@ -411,7 +424,34 @@ memory_records = tenant_table(
     Column("confidence", Float, nullable=False),
     Column("expires_at", DateTime(timezone=True), nullable=False),
     Column("approved_by", String(36), nullable=False),
+    Column("status", String(32), nullable=False),
+    Column("definition", JSON, nullable=False),
+    Column("deleted_at", DateTime(timezone=True), nullable=True),
     CheckConstraint("confidence >= 0 AND confidence <= 1", name="confidence_range"),
+    status_check("proposed", "stable", "deleted"),
+)
+memory_ledger = tenant_table(
+    "memory_ledger",
+    Column("memory_id", String(36), nullable=False),
+    Column("kind", String(32), nullable=False),
+    Column("actor_id", String(36), nullable=False),
+    Column("metadata", JSON, nullable=False),
+    CheckConstraint("kind IN ('write', 'merge', 'delete')", name="memory_ledger_kind"),
+)
+memory_deletion_edges = tenant_table(
+    "memory_deletion_edges",
+    Column("parent_memory_id", String(36), nullable=False),
+    Column("child_memory_id", String(36), nullable=False),
+    UniqueConstraint(
+        "tenant_id", "parent_memory_id", "child_memory_id", name="uq_memory_deletion_edge"
+    ),
+)
+vector_index_projections = tenant_table(
+    "vector_index_projections",
+    Column("memory_id", String(36), nullable=False),
+    Column("content_digest", String(64), nullable=False),
+    Column("index_version", String(200), nullable=False),
+    UniqueConstraint("tenant_id", "memory_id", name="uq_vector_projection_memory"),
 )
 telemetry_records = tenant_table(
     "telemetry_records",
@@ -551,10 +591,14 @@ AUTHORITATIVE_TABLES = (
     action_attempts,
     approvals,
     context_snapshots,
+    environment_facts,
     evidence,
     evidence_capture_sagas,
     evidence_deletions,
     outcomes,
+    memory_records,
+    memory_ledger,
+    memory_deletion_edges,
     budget_ledger,
     audit_events,
     candidates,

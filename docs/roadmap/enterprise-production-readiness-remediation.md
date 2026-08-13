@@ -484,15 +484,15 @@ Tenant Authority 的初始化使用独立管理连接，不参与任何隔离断
 
 #### 实施任务
 
-- [ ] Environment Fact 增加 Tenant、Subject、Source Authority、Classification 和 Freshness Policy；
-- [ ] Context ACL 执行租户、角色、用途、分类和行列权限判断；
-- [ ] Snapshot 摘要覆盖内容、版本、策略、信任、新鲜度和 Tool Version；
-- [ ] 建立 Conflict Detector 和冲突显式信号；
-- [ ] Context Compressor 保留来源、引用和安全指令边界；
-- [ ] Memory 只通过独立 Write Gate 写入；
-- [ ] Memory Gate 增加 PII、来源、冲突、置信度、TTL 和审批；
-- [ ] Memory Ledger 持久化并支持删除传播；
-- [ ] Vector Index 只作为可重建投影，不作为权威状态。
+- [x] Environment Fact 增加 Tenant、Subject、Source Authority、Classification 和 Freshness Policy；
+- [x] Context ACL 执行租户、角色、用途、分类和行列权限判断；
+- [x] Snapshot 摘要覆盖内容、版本、策略、信任、新鲜度和 Tool Version；
+- [x] 建立 Conflict Detector 和冲突显式信号；
+- [x] Context Compressor 保留来源、引用和安全指令边界；
+- [x] Memory 只通过独立 Write Gate 写入；
+- [x] Memory Gate 增加 PII、来源、冲突、置信度、TTL 和审批；
+- [x] Memory Ledger 持久化并支持删除传播；
+- [x] Vector Index 只作为可重建投影，不作为权威状态。
 
 #### 验收
 

@@ -2,22 +2,32 @@
 """Tests for environment package."""
 
 from datetime import UTC, datetime, timedelta
+from uuid import uuid4
 
 import pytest
-from autonoesis_domain import EnvironmentFact, TrustLevel
+from autonoesis_domain import (
+    DataClassification,
+    EnvironmentFact,
+    FreshnessPolicy,
+    TrustLevel,
+)
 from autonoesis_environment import EnvironmentProjector, EnvironmentRefresher, ProjectionStatus
 
 
 def _fact(**overrides: object) -> EnvironmentFact:
     now = datetime.now(UTC)
     defaults: dict[str, object] = {
+        "tenant_id": uuid4(),
         "fact_id": "f1",
         "source": "test",
+        "source_authority": "test-authority",
         "subject": "test",
         "value": {"v": 1},
         "observed_at": now,
         "valid_until": now + timedelta(hours=1),
         "trust": TrustLevel.ADVISORY,
+        "classification": DataClassification.INTERNAL,
+        "freshness_policy": FreshnessPolicy.STRICT,
     }
     defaults.update({k: v for k, v in overrides.items() if v is not None})
     return EnvironmentFact(**defaults)
