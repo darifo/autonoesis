@@ -5,10 +5,10 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any, Protocol
-from uuid import uuid4
+from typing import Any, Protocol, cast
+from uuid import UUID, uuid4
 
-from autonoesis_domain import Action
+from autonoesis_domain import Action, DelegationGrant
 from autonoesis_runtime import (
     AuthorizationContext,
     CredentialLease,
@@ -58,25 +58,117 @@ class InMemoryDelegationStore:
     """Live delegation decisions; revoke takes effect on the next gateway call."""
 
     def __init__(self) -> None:
-        self._grants: set[tuple[str, str, str]] = set()
+        self._grants: dict[str, DelegationGrant | tuple[str, str]] = {}
 
     def grant(self, delegation_id: str, tool_name: str, resource_prefix: str) -> None:
-        self._grants.add((delegation_id, tool_name, resource_prefix))
+        """Compatibility helper for unit fixtures without an authenticated principal."""
+        self._grants[delegation_id] = (tool_name, resource_prefix)
+
+    def grant_scoped(self, grant: DelegationGrant) -> None:
+        self._grants[str(grant.delegation_id)] = grant
 
     def revoke(self, delegation_id: str) -> None:
-        self._grants = {grant for grant in self._grants if grant[0] != delegation_id}
+        grant = self._grants.get(delegation_id)
+        if isinstance(grant, DelegationGrant):
+            self._grants[delegation_id] = grant.revoke()
+        else:
+            self._grants.pop(delegation_id, None)
 
     async def authorize(
         self, context: AuthorizationContext, action: Action, tool: ResolvedToolVersion
     ) -> bool:
         if context.delegation_id is None:
             return "platform_admin" in context.roles
-        return any(
-            delegation_id == context.delegation_id
-            and tool_name == tool.tool_name
-            and action.resource_scope.startswith(prefix)
-            for delegation_id, tool_name, prefix in self._grants
+        grant = self._grants.get(context.delegation_id)
+        if isinstance(grant, DelegationGrant):
+            return grant.authorizes(
+                tenant_id=UUID(context.tenant_id),
+                principal_id=UUID(context.principal_id),
+                tool_name=tool.tool_name,
+                resource=action.resource_scope,
+                purpose=context.purpose,
+            )
+        return bool(
+            grant and grant[0] == tool.tool_name and action.resource_scope.startswith(grant[1])
         )
+
+
+class PostgreSQLDelegationStore:
+    """Authoritative, execution-time lookup; decisions are never cached."""
+
+    def __init__(self, sessions: async_sessionmaker[AsyncSession]) -> None:
+        self._sessions = sessions
+
+    async def grant(self, grant: DelegationGrant) -> None:
+        async with self._sessions.begin() as session:
+            await session.execute(
+                text("SELECT set_config('app.tenant_id', :tenant_id, true)"),
+                {"tenant_id": str(grant.tenant_id)},
+            )
+            await session.execute(
+                text(
+                    "INSERT INTO delegations "
+                    "(id, tenant_id, grantor_principal_id, delegate_principal_id, tool_name, "
+                    "resource_prefix, purpose, expires_at, created_at) VALUES "
+                    "(:id, :tenant_id, :grantor, :delegate, :tool, :resource, :purpose, "
+                    ":expires_at, :created_at)"
+                ),
+                {
+                    "id": str(grant.delegation_id),
+                    "tenant_id": str(grant.tenant_id),
+                    "grantor": str(grant.grantor_principal_id),
+                    "delegate": str(grant.delegate_principal_id),
+                    "tool": grant.tool_name,
+                    "resource": grant.resource_prefix,
+                    "purpose": grant.purpose,
+                    "expires_at": grant.expires_at,
+                    "created_at": grant.created_at,
+                },
+            )
+
+    async def revoke(self, tenant_id: UUID, delegation_id: UUID) -> None:
+        async with self._sessions.begin() as session:
+            await session.execute(
+                text("SELECT set_config('app.tenant_id', :tenant_id, true)"),
+                {"tenant_id": str(tenant_id)},
+            )
+            result = await session.execute(
+                text(
+                    "UPDATE delegations SET revoked_at = now() "
+                    "WHERE tenant_id = :tenant_id AND id = :id AND revoked_at IS NULL"
+                ),
+                {"tenant_id": str(tenant_id), "id": str(delegation_id)},
+            )
+            if cast(CursorResult[Any], result).rowcount != 1:
+                raise LookupError("active delegation was not found")
+
+    async def authorize(
+        self, context: AuthorizationContext, action: Action, tool: ResolvedToolVersion
+    ) -> bool:
+        if context.delegation_id is None:
+            return "platform_admin" in context.roles
+        async with self._sessions.begin() as session:
+            await session.execute(
+                text("SELECT set_config('app.tenant_id', :tenant_id, true)"),
+                {"tenant_id": context.tenant_id},
+            )
+            result = await session.execute(
+                text(
+                    "SELECT EXISTS (SELECT 1 FROM delegations WHERE tenant_id = :tenant_id "
+                    "AND id = :id AND delegate_principal_id = :principal_id "
+                    "AND tool_name = :tool AND :resource LIKE resource_prefix || '%' "
+                    "AND purpose = :purpose AND revoked_at IS NULL AND expires_at > now())"
+                ),
+                {
+                    "tenant_id": context.tenant_id,
+                    "id": context.delegation_id,
+                    "principal_id": context.principal_id,
+                    "tool": tool.tool_name,
+                    "resource": action.resource_scope,
+                    "purpose": context.purpose,
+                },
+            )
+            return bool(result.scalar_one())
 
 
 class EphemeralCredentialBroker:

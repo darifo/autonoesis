@@ -15,7 +15,11 @@ from sqlalchemy import and_, func, insert, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from autonoesis_adapters.persistence import kill_switches
-from autonoesis_adapters.persistence_schema import platform_audit_events, platform_kill_switches
+from autonoesis_adapters.persistence_schema import (
+    breakglass_alerts,
+    platform_audit_events,
+    platform_kill_switches,
+)
 
 
 class SqlKillSwitchStore:
@@ -319,5 +323,18 @@ class SqlPlatformKillSwitchStore:
                 correlation_id=str(correlation_id),
                 reason=reason,
                 created_at=created_at,
+            )
+        )
+        ticket = reason.partition("ticket=")[2].partition(";")[0].strip() or "unavailable"
+        await session.execute(
+            insert(breakglass_alerts).values(
+                id=str(uuid4()),
+                authorization_id=str(object_id),
+                principal_id=str(principal_id),
+                ticket=ticket,
+                event_type=f"security.alert.{event_type}",
+                created_at=created_at,
+                acknowledged_by=None,
+                acknowledged_at=None,
             )
         )

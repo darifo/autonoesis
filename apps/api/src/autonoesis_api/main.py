@@ -4,7 +4,7 @@ import json
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from pathlib import Path
 from typing import Annotated, Any
@@ -12,11 +12,13 @@ from uuid import UUID, uuid4
 
 from autonoesis_adapters import (
     InMemoryPlatformStore,
+    InMemoryTemporaryAuthorizationStore,
     OIDCSettings,
-    OIDCValidator,
     PostgreSQLPlatformStore,
+    PostgreSQLTemporaryAuthorizationStore,
     SqlKillSwitchStore,
     SqlPlatformKillSwitchStore,
+    cached_oidc_validator,
 )
 from autonoesis_application import (
     ActivateGoal,
@@ -51,6 +53,7 @@ from autonoesis_domain import (
     RiskTier,
     SubjectRef,
     SuccessCriterion,
+    TemporaryAuthorization,
     Trial,
 )
 from autonoesis_governance import InMemoryKillSwitchStore, KillSwitchDimension
@@ -144,20 +147,17 @@ class ImprovementProposalRequest(StrictRequest):
     proposed_change: str
     validation_suite_id: str
     rollback_plan: str
-    proposer_id: str
 
 
 class CandidateRequest(StrictRequest):
     proposal_id: UUID
     baseline_version_id: UUID
     artifact_ref: str
-    generator_id: str
 
 
 class EvaluationRequest(StrictRequest):
     passed: bool
     score: float = Field(ge=0, le=1)
-    grader_id: str
     threshold: float = Field(ge=0, le=1)
 
 
@@ -173,6 +173,12 @@ class ApprovalDecisionRequest(StrictRequest):
 
 class PromotionRequest(StrictRequest):
     stable_version_id: UUID
+
+
+class TemporaryAuthorizationRequest(StrictRequest):
+    principal_id: UUID
+    reason: str = Field(min_length=8, max_length=1000)
+    ttl_minutes: int = Field(default=15, ge=1, le=60)
 
 
 def error_response(
@@ -254,6 +260,11 @@ def build_app(
         else platform_kill_switch or InMemoryKillSwitchStore()
     )
     app.state.platform_kill_switch = platform_kill_switch
+    app.state.temporary_authorizations = (
+        PostgreSQLTemporaryAuthorizationStore(platform_store.repository.sessions)
+        if isinstance(platform_store, PostgreSQLPlatformStore)
+        else InMemoryTemporaryAuthorizationStore()
+    )
 
     def kill_switch_for(context: IdentityContext) -> Any:
         if isinstance(app.state.kill_switch, SqlKillSwitchStore):
@@ -352,7 +363,7 @@ def build_app(
         authorization = request.headers.get("Authorization", "")
         if not authorization.startswith("Bearer "):
             raise HTTPException(401, "bearer token is required")
-        validator = OIDCValidator(
+        validator = cached_oidc_validator(
             OIDCSettings(
                 issuer=os.environ["AUTONOESIS_OIDC_ISSUER"],
                 audience=os.environ["AUTONOESIS_OIDC_AUDIENCE"],
@@ -588,16 +599,95 @@ def build_app(
             for r in await kill_switch_for(context).list_active()
         ]
 
+    @app.post(
+        "/v1/platform/break-glass/authorizations",
+        status_code=201,
+        tags=["platform-security"],
+    )
+    async def issue_temporary_authorization(
+        body: TemporaryAuthorizationRequest, context: Identity, _: WriteKey
+    ) -> dict[str, Any]:
+        require_role(context, {"security_admin"})
+        if body.principal_id == context.principal_id:
+            raise PermissionError("Break-glass authorization must be granted to another principal")
+        authorization = TemporaryAuthorization(
+            tenant_id=context.tenant_id,
+            principal_id=body.principal_id,
+            scope="platform.kill_switch",
+            reason=body.reason,
+            expires_at=datetime.now(UTC) + timedelta(minutes=body.ttl_minutes),
+        )
+        await app.state.temporary_authorizations.issue(authorization)
+        await platform_store.repository.record_audit(
+            AuditEvent(
+                context.tenant_id,
+                context.actor_id,
+                context.principal_id,
+                "breakglass.authorization.issued",
+                "temporary_authorization",
+                str(authorization.authorization_id),
+                uuid4(),
+                {
+                    "grantee_principal_id": str(body.principal_id),
+                    "scope": authorization.scope,
+                    "expires_at": authorization.expires_at.isoformat(),
+                    "review_required": True,
+                },
+            )
+        )
+        return {
+            "authorization_id": str(authorization.authorization_id),
+            "scope": authorization.scope,
+            "expires_at": authorization.expires_at.isoformat(),
+            "review_required": True,
+        }
+
+    @app.post(
+        "/v1/platform/break-glass/authorizations/{authorization_id}/review",
+        tags=["platform-security"],
+    )
+    async def review_temporary_authorization(
+        authorization_id: UUID, context: Identity, _: WriteKey
+    ) -> dict[str, Any]:
+        require_role(context, {"security_auditor"})
+        reviewed = await app.state.temporary_authorizations.review(
+            context.tenant_id, authorization_id, context.principal_id
+        )
+        await platform_store.repository.record_audit(
+            AuditEvent(
+                context.tenant_id,
+                context.actor_id,
+                context.principal_id,
+                "breakglass.authorization.reviewed",
+                "temporary_authorization",
+                str(authorization_id),
+                uuid4(),
+                {"grantee_principal_id": str(reviewed.principal_id)},
+            )
+        )
+        return {
+            "authorization_id": str(authorization_id),
+            "reviewed_by": str(reviewed.reviewed_by),
+            "reviewed_at": reviewed.reviewed_at.isoformat() if reviewed.reviewed_at else None,
+        }
+
     @app.post("/v1/platform/break-glass/kill-switch", status_code=201, tags=["platform-security"])
     async def activate_platform_kill_switch(
         body: BreakGlassKillSwitchRequest,
         context: Identity,
         _: WriteKey,
         ticket: Annotated[str, Header(alias="X-Break-Glass-Ticket")],
+        authorization_id: Annotated[UUID, Header(alias="X-Break-Glass-Authorization")],
     ) -> dict[str, Any]:
         require_role(context, {"break_glass"})
         if len(ticket.strip()) < 8 or app.state.platform_kill_switch is None:
             raise PermissionError("a configured break-glass identity and ticket are required")
+        await app.state.temporary_authorizations.require_active(
+            context.tenant_id,
+            authorization_id,
+            context.principal_id,
+            "platform.kill_switch",
+        )
         correlation_id = uuid4()
         reason = f"ticket={ticket.strip()}; {body.reason}"
         if isinstance(app.state.platform_kill_switch, SqlPlatformKillSwitchStore):
@@ -620,6 +710,18 @@ def build_app(
                     {"ticket": ticket.strip()},
                 )
             )
+        await platform_store.repository.record_audit(
+            AuditEvent(
+                context.tenant_id,
+                context.actor_id,
+                context.principal_id,
+                "security.alert.breakglass_activated",
+                "platform",
+                str(record.kill_switch_id),
+                correlation_id,
+                {"ticket": ticket.strip(), "review_required": True},
+            )
+        )
         return {
             "kill_switch_id": str(record.kill_switch_id),
             "dimension": "platform",
@@ -633,10 +735,17 @@ def build_app(
         context: Identity,
         _: WriteKey,
         ticket: Annotated[str, Header(alias="X-Break-Glass-Ticket")],
+        authorization_id: Annotated[UUID, Header(alias="X-Break-Glass-Authorization")],
     ) -> dict[str, Any]:
         require_role(context, {"break_glass"})
         if len(ticket.strip()) < 8 or app.state.platform_kill_switch is None:
             raise PermissionError("a configured break-glass identity and ticket are required")
+        await app.state.temporary_authorizations.require_active(
+            context.tenant_id,
+            authorization_id,
+            context.principal_id,
+            "platform.kill_switch",
+        )
         correlation_id = uuid4()
         reason = f"ticket={ticket.strip()}; {body.reason}"
         if isinstance(app.state.platform_kill_switch, SqlPlatformKillSwitchStore):
@@ -841,7 +950,7 @@ def build_app(
             proposed_change=body.proposed_change,
             validation_suite_id=body.validation_suite_id,
             rollback_plan=body.rollback_plan,
-            proposer_id=body.proposer_id,
+            proposer_id=str(context.principal_id),
         )
         await platform_store.add_proposal(proposal)
         return {"proposal_id": proposal.proposal_id, "target": proposal.target}
@@ -857,13 +966,14 @@ def build_app(
     async def create_candidate(
         body: CandidateRequest, context: Identity, _: WriteKey
     ) -> dict[str, Any]:
+        require_role(context, {"candidate_generator"})
         await platform_store.get_proposal(context.tenant_id, body.proposal_id)
         candidate = CandidateVersion(
             tenant_id=context.tenant_id,
             proposal_id=body.proposal_id,
             baseline_version_id=body.baseline_version_id,
             artifact_ref=body.artifact_ref,
-            generator_id=body.generator_id,
+            generator_id=str(context.principal_id),
         )
         await platform_store.add_candidate(candidate)
         return candidate_view(candidate)
@@ -872,11 +982,12 @@ def build_app(
     async def evaluate_candidate(
         candidate_id: UUID, body: EvaluationRequest, context: Identity, _: WriteKey
     ) -> dict[str, Any]:
+        require_role(context, {"grader"})
         await evolution.submit_for_evaluation(context.tenant_id, candidate_id)
         candidate = await evolution.record_evaluation(
-            context.tenant_id,
+            context,
             candidate_id,
-            EvaluationDecision(body.passed, body.score, body.grader_id, body.threshold),
+            EvaluationDecision(body.passed, body.score, body.threshold),
         )
         return candidate_view(candidate)
 
@@ -884,14 +995,14 @@ def build_app(
     async def decide_candidate(
         candidate_id: UUID, body: CandidateDecisionRequest, context: Identity, _: WriteKey
     ) -> dict[str, Any]:
-        require_role(context, {"platform_admin", "tenant_admin", "approver"})
+        require_role(context, {"approver"})
         return candidate_view(await evolution.decide(context, candidate_id, body.approved))
 
     @app.post("/v1/candidates/{candidate_id}/promote", tags=["improvement"])
     async def promote_candidate(
         candidate_id: UUID, context: Identity, _: WriteKey
     ) -> dict[str, Any]:
-        require_role(context, {"platform_admin", "tenant_admin", "approver"})
+        require_role(context, {"release_executor"})
         deployment = await evolution.begin_shadow(context, candidate_id)
         return {
             "deployment_id": deployment.deployment_id,
@@ -903,7 +1014,7 @@ def build_app(
     async def promote_deployment_to_canary(
         deployment_id: UUID, context: Identity, _: WriteKey
     ) -> dict[str, Any]:
-        require_role(context, {"platform_admin", "tenant_admin", "approver"})
+        require_role(context, {"release_executor"})
         deployment = await evolution.promote_to_canary(context, deployment_id)
         return {"deployment_id": deployment.deployment_id, "status": deployment.status}
 
@@ -911,7 +1022,7 @@ def build_app(
     async def promote_deployment_to_stable(
         deployment_id: UUID, body: PromotionRequest, context: Identity, _: WriteKey
     ) -> dict[str, Any]:
-        require_role(context, {"platform_admin", "tenant_admin", "approver"})
+        require_role(context, {"release_executor"})
         release = await evolution.release_stable(context, deployment_id, body.stable_version_id)
         return {
             "release_id": release.release_id,
@@ -922,7 +1033,7 @@ def build_app(
 
     @app.post("/v1/releases/{release_id}/rollback", tags=["improvement"])
     async def rollback_release(release_id: UUID, context: Identity, _: WriteKey) -> dict[str, Any]:
-        require_role(context, {"platform_admin", "tenant_admin", "approver"})
+        require_role(context, {"release_executor"})
         release = await evolution.rollback(context, release_id)
         return {
             "release_id": release.release_id,
@@ -1021,6 +1132,8 @@ def approval_view(item: ApprovalRequest | dict[str, object]) -> dict[str, object
         "expires_at": item.expires_at.isoformat(),
         "decided_by": str(item.decided_by) if item.decided_by else None,
         "reason": item.reason,
+        "required_reviews": item.required_reviews,
+        "completed_reviews": len(item.reviews),
     }
 
 

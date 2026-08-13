@@ -345,6 +345,19 @@ class ActionAttempt:
 
 
 @dataclass(frozen=True, slots=True)
+class ApprovalReview:
+    actor_id: UUID
+    principal_id: UUID
+    approved: bool
+    reason: str
+    reviewed_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+
+    def __post_init__(self) -> None:
+        if not self.reason.strip() or self.reviewed_at.tzinfo is None:
+            raise ValueError("approval review requires a reason and timezone-aware timestamp")
+
+
+@dataclass(frozen=True, slots=True)
 class ApprovalRequest:
     tenant_id: UUID
     run_id: UUID
@@ -366,6 +379,8 @@ class ApprovalRequest:
     decided_at: datetime | None = None
     optimistic_version: int = 1
     transitions: tuple[StateTransition, ...] = ()
+    required_reviews: int = 1
+    reviews: tuple[ApprovalReview, ...] = ()
 
     def __post_init__(self) -> None:
         if any(
@@ -391,12 +406,26 @@ class ApprovalRequest:
                 raise ValueError("approval digests must be lowercase SHA-256 values")
         if self.optimistic_version < 1:
             raise ValueError("approval optimistic version must be positive")
+        if self.required_reviews not in {1, 2}:
+            raise ValueError("approval review count must be one or two")
+        if len({review.principal_id for review in self.reviews}) != len(self.reviews):
+            raise ValueError("approval reviews must come from distinct principals")
 
-    def decide(self, approver_id: UUID, approved: bool, reason: str) -> "ApprovalRequest":
+    def decide(
+        self,
+        approver_id: UUID,
+        approved: bool,
+        reason: str,
+        *,
+        principal_id: UUID | None = None,
+    ) -> "ApprovalRequest":
         if self.status is not ApprovalStatus.PENDING:
             raise ValueError("approval has already been decided")
         if not reason.strip():
             raise ValueError("approval decision requires a reason")
+        reviewer_principal = principal_id or approver_id
+        if reviewer_principal in {review.principal_id for review in self.reviews}:
+            raise PermissionError("the same principal cannot submit two approval reviews")
         now = datetime.now(UTC)
         if now >= self.expires_at:
             transition = transition_record(
@@ -412,6 +441,14 @@ class ApprovalRequest:
                 decided_at=now,
                 optimistic_version=self.optimistic_version + 1,
                 transitions=(*self.transitions, transition),
+            )
+        review = ApprovalReview(approver_id, reviewer_principal, approved, reason, now)
+        reviews = (*self.reviews, review)
+        if approved and len(reviews) < self.required_reviews:
+            return replace(
+                self,
+                reviews=reviews,
+                optimistic_version=self.optimistic_version + 1,
             )
         target = ApprovalStatus.APPROVED if approved else ApprovalStatus.REJECTED
         transition = transition_record(
@@ -429,6 +466,7 @@ class ApprovalRequest:
             decided_at=now,
             optimistic_version=self.optimistic_version + 1,
             transitions=(*self.transitions, transition),
+            reviews=reviews,
         )
 
     def authorizes(

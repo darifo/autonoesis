@@ -97,6 +97,8 @@ class CandidateVersion:
     status: CandidateStatus = CandidateStatus.DRAFT
     optimistic_version: int = 1
     transitions: tuple[StateTransition, ...] = ()
+    grader_principal_id: str | None = None
+    approver_principal_id: str | None = None
 
     def __post_init__(self) -> None:
         if not self.artifact_ref.strip() or not self.generator_id.strip():
@@ -143,6 +145,26 @@ class CandidateVersion:
                     actor_id=actor_id,
                 ),
             ),
+        )
+
+    def record_evaluation(
+        self, target: CandidateStatus, *, grader_principal_id: UUID
+    ) -> "CandidateVersion":
+        if str(grader_principal_id) == self.generator_id:
+            raise PermissionError("candidate generator cannot grade its own candidate")
+        return replace(
+            self.transition_to(target, actor_id=grader_principal_id, reason="evaluation recorded"),
+            grader_principal_id=str(grader_principal_id),
+        )
+
+    def record_approval(
+        self, target: CandidateStatus, *, approver_principal_id: UUID
+    ) -> "CandidateVersion":
+        if str(approver_principal_id) in {self.generator_id, self.grader_principal_id}:
+            raise PermissionError("candidate approval requires an independent principal")
+        return replace(
+            self.transition_to(target, actor_id=approver_principal_id, reason="approval recorded"),
+            approver_principal_id=str(approver_principal_id),
         )
 
 

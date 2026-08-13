@@ -1,5 +1,9 @@
 """Replaceable provider and infrastructure adapters."""
 
+from autonoesis_adapters.emergency_authorization import (
+    InMemoryTemporaryAuthorizationStore,
+    PostgreSQLTemporaryAuthorizationStore,
+)
 from autonoesis_adapters.evidence_store import (
     Boto3ObjectStore,
     InMemoryObjectStore,
@@ -13,6 +17,7 @@ from autonoesis_adapters.execution_gateway import (
     InMemoryGatewayAudit,
     JsonSchemaValidator,
     PostgreSQLAtomicExecutionReservations,
+    PostgreSQLDelegationStore,
     RegistryControlledEgress,
     StaticToolCatalog,
 )
@@ -21,6 +26,7 @@ from autonoesis_adapters.governance import (
     OIDCSettings,
     OIDCValidator,
     OPAPolicyAdapter,
+    cached_oidc_validator,
 )
 from autonoesis_adapters.kill_switch_store import SqlKillSwitchStore, SqlPlatformKillSwitchStore
 from autonoesis_adapters.mcp import MCPServerAdapter, MCPToolDefinition
@@ -58,6 +64,7 @@ __all__ = [
     "InMemoryIdempotencyStore",
     "InMemoryObjectStore",
     "InMemoryPlatformStore",
+    "InMemoryTemporaryAuthorizationStore",
     "InboxConsumer",
     "JsonSchemaValidator",
     "MCPServerAdapter",
@@ -72,13 +79,16 @@ __all__ = [
     "OutboxRelay",
     "OutboxWriter",
     "PostgreSQLAtomicExecutionReservations",
+    "PostgreSQLDelegationStore",
     "PostgreSQLPlatformStore",
+    "PostgreSQLTemporaryAuthorizationStore",
     "ReadbackEndpoint",
     "RegistryControlledEgress",
     "SqlAlchemyPlatformRepository",
     "SqlKillSwitchStore",
     "SqlPlatformKillSwitchStore",
     "StaticToolCatalog",
+    "cached_oidc_validator",
     "create_repository",
     "metadata",
 ]

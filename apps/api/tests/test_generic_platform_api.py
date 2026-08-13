@@ -13,7 +13,9 @@ def headers(tenant_id: UUID, actor_id: UUID, key: str | None = None) -> dict[str
     result = {
         "X-Tenant-ID": str(tenant_id),
         "X-Actor-ID": str(actor_id),
-        "X-Roles": "tenant_admin,operator,approver,developer",
+        "X-Roles": (
+            "tenant_admin,operator,approver,developer,candidate_generator,grader,release_executor"
+        ),
     }
     if key:
         result["Idempotency-Key"] = key
@@ -129,7 +131,6 @@ def test_generic_goal_run_and_evolution_api() -> None:
             "proposed_change": "Add recovery condition",
             "validation_suite_id": "delivery-suite",
             "rollback_plan": "Restore previous stable version",
-            "proposer_id": "postrun-analyzer",
         },
         headers={**identity, "Idempotency-Key": "proposal-1"},
     )
@@ -139,30 +140,28 @@ def test_generic_goal_run_and_evolution_api() -> None:
             "proposal_id": proposal.json()["proposal_id"],
             "baseline_version_id": agent.json()["agent_version_id"],
             "artifact_ref": "artifact://agent/v2",
-            "generator_id": "candidate-builder",
         },
-        headers={**identity, "Idempotency-Key": "candidate-1"},
+        headers={**headers(tenant_id, uuid4()), "Idempotency-Key": "candidate-1"},
     )
     evaluated = client.post(
         f"/v1/candidates/{candidate.json()['candidate_id']}/evaluate",
         json={
             "passed": True,
             "score": 0.92,
-            "grader_id": "independent-grader",
             "threshold": 0.8,
         },
-        headers={**identity, "Idempotency-Key": "evaluation-1"},
+        headers={**headers(tenant_id, uuid4()), "Idempotency-Key": "evaluation-1"},
     )
     assert evaluated.json()["status"] == "awaiting_approval"
     approved = client.post(
         f"/v1/candidates/{candidate.json()['candidate_id']}/decision",
         json={"approved": True},
-        headers={**identity, "Idempotency-Key": "approval-1"},
+        headers={**headers(tenant_id, uuid4()), "Idempotency-Key": "approval-1"},
     )
     assert approved.json()["status"] == "approved"
     shadow = client.post(
         f"/v1/candidates/{candidate.json()['candidate_id']}/promote",
-        headers={**identity, "Idempotency-Key": "promotion-1"},
+        headers={**headers(tenant_id, uuid4()), "Idempotency-Key": "promotion-1"},
     )
     assert shadow.json()["status"] == "shadow"
     canary = client.post(
@@ -225,6 +224,22 @@ def test_platform_kill_switch_requires_separate_audited_break_glass_path() -> No
     )
     assert ordinary.status_code == 403
 
+    security_admin = uuid4()
+    issued = client.post(
+        "/v1/platform/break-glass/authorizations",
+        json={
+            "principal_id": str(actor_id),
+            "reason": "temporary incident response authorization",
+            "ttl_minutes": 15,
+        },
+        headers={
+            **headers(tenant_id, security_admin, "issue-break-glass"),
+            "X-Roles": "security_admin",
+        },
+    )
+    assert issued.status_code == 201
+    authorization_id = issued.json()["authorization_id"]
+
     break_glass = client.post(
         "/v1/platform/break-glass/kill-switch",
         json={"reason": "verified platform-wide incident response"},
@@ -233,11 +248,25 @@ def test_platform_kill_switch_requires_separate_audited_break_glass_path() -> No
             "X-Roles": "break_glass",
             "Idempotency-Key": "break-glass-platform-switch",
             "X-Break-Glass-Ticket": "SEC-12345",
+            "X-Break-Glass-Authorization": authorization_id,
         },
     )
     assert break_glass.status_code == 201
     assert break_glass.json()["dimension"] == "platform"
-    assert store.audits[-1].event_type == "platform.kill_switch.activated"
+    assert store.audits[-2].event_type == "platform.kill_switch.activated"
+    assert store.audits[-1].event_type == "security.alert.breakglass_activated"
+    assert store.audits[-1].details["review_required"] is True
+
+    reviewer = uuid4()
+    reviewed = client.post(
+        f"/v1/platform/break-glass/authorizations/{authorization_id}/review",
+        headers={
+            **headers(tenant_id, reviewer, "review-break-glass"),
+            "X-Roles": "security_auditor",
+        },
+    )
+    assert reviewed.status_code == 200
+    assert reviewed.json()["reviewed_by"] == str(reviewer)
     assert asyncio.run(app.state.kill_switch.is_blocked(KillSwitchQuery(tenant_id=str(tenant_id))))
 
 

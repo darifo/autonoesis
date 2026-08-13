@@ -37,7 +37,6 @@ class EvolutionRepository(Protocol):
 class EvaluationDecision:
     passed: bool
     score: float
-    grader_id: str
     threshold: float
 
 
@@ -53,16 +52,14 @@ class CandidateLifecycleService:
 
     async def record_evaluation(
         self,
-        tenant_id: UUID,
+        identity: IdentityContext,
         candidate_id: UUID,
         decision: EvaluationDecision,
     ) -> CandidateVersion:
-        candidate = await self._repository.get_candidate(tenant_id, candidate_id)
-        if decision.grader_id == candidate.generator_id:
-            raise PermissionError("candidate generator cannot grade its own candidate")
+        candidate = await self._repository.get_candidate(identity.tenant_id, candidate_id)
         passed = decision.passed and decision.score >= decision.threshold
         target = CandidateStatus.AWAITING_APPROVAL if passed else CandidateStatus.REJECTED
-        candidate = candidate.transition_to(target)
+        candidate = candidate.record_evaluation(target, grader_principal_id=identity.principal_id)
         await self._repository.save_candidate(candidate)
         return candidate
 
@@ -73,10 +70,8 @@ class CandidateLifecycleService:
         approved: bool,
     ) -> CandidateVersion:
         candidate = await self._repository.get_candidate(identity.tenant_id, candidate_id)
-        if str(identity.actor_id) == candidate.generator_id:
-            raise PermissionError("candidate generator cannot approve its own candidate")
         target = CandidateStatus.APPROVED if approved else CandidateStatus.REJECTED
-        candidate = candidate.transition_to(target)
+        candidate = candidate.record_approval(target, approver_principal_id=identity.principal_id)
         await self._repository.save_candidate(candidate)
         return candidate
 
@@ -86,6 +81,12 @@ class CandidateLifecycleService:
         candidate_id: UUID,
     ) -> Deployment:
         candidate = await self._repository.get_candidate(identity.tenant_id, candidate_id)
+        if str(identity.principal_id) in {
+            candidate.generator_id,
+            candidate.grader_principal_id,
+            candidate.approver_principal_id,
+        }:
+            raise PermissionError("release execution requires an independent principal")
         deployment = candidate.begin_deployment(
             actor_id=identity.actor_id,
             reason="approved candidate entered shadow",

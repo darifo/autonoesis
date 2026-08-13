@@ -298,12 +298,11 @@ async def evaluate_candidate(
         await evolution.submit_for_evaluation(tenant_id, candidate_id)
         from autonoesis_application import EvaluationDecision
 
+        grader = _context(input.tenant_id, input.candidate_id, "evaluate-candidate").identity
         candidate = await evolution.record_evaluation(
-            tenant_id,
+            grader,
             candidate_id,
-            EvaluationDecision(
-                passed=True, score=1.0, grader_id="temporal-evaluator", threshold=0.8
-            ),
+            EvaluationDecision(passed=True, score=1.0, threshold=0.8),
         )
         from autonoesis_domain import CandidateStatus
 

@@ -152,20 +152,21 @@ async def test_tool_gateway_requires_exact_approval_and_deduplicates_write() -> 
 @pytest.mark.asyncio
 async def test_candidate_generator_cannot_grade_its_own_candidate() -> None:
     store = InMemoryPlatformStore()
-    candidate = CandidateVersion(uuid4(), uuid4(), uuid4(), "artifact://candidate", "generator")
+    generator = uuid4()
+    candidate = CandidateVersion(uuid4(), uuid4(), uuid4(), "artifact://candidate", str(generator))
     await store.add_candidate(candidate)
     service = CandidateLifecycleService(store)
     await service.submit_for_evaluation(candidate.tenant_id, candidate.candidate_id)
     with pytest.raises(PermissionError, match="grade"):
         await service.record_evaluation(
-            candidate.tenant_id,
+            IdentityContext(candidate.tenant_id, uuid4(), generator, frozenset({"grader"})),
             candidate.candidate_id,
-            EvaluationDecision(True, 1, "generator", 0.8),
+            EvaluationDecision(True, 1, 0.8),
         )
     evaluated = await service.record_evaluation(
-        candidate.tenant_id,
+        IdentityContext(candidate.tenant_id, uuid4(), uuid4(), frozenset({"grader"})),
         candidate.candidate_id,
-        EvaluationDecision(True, 0.9, "independent-grader", 0.8),
+        EvaluationDecision(True, 0.9, 0.8),
     )
     assert evaluated.status is CandidateStatus.AWAITING_APPROVAL
     identity = IdentityContext(candidate.tenant_id, uuid4(), uuid4(), frozenset({"approver"}))

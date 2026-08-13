@@ -158,10 +158,6 @@
             "title": "Baseline Version Id",
             "type": "string"
           },
-          "generator_id": {
-            "title": "Generator Id",
-            "type": "string"
-          },
           "proposal_id": {
             "format": "uuid",
             "title": "Proposal Id",
@@ -171,8 +167,7 @@
         "required": [
           "proposal_id",
           "baseline_version_id",
-          "artifact_ref",
-          "generator_id"
+          "artifact_ref"
         ],
         "title": "CandidateRequest",
         "type": "object"
@@ -308,10 +303,6 @@
       "EvaluationRequest": {
         "additionalProperties": false,
         "properties": {
-          "grader_id": {
-            "title": "Grader Id",
-            "type": "string"
-          },
           "passed": {
             "title": "Passed",
             "type": "boolean"
@@ -332,7 +323,6 @@
         "required": [
           "passed",
           "score",
-          "grader_id",
           "threshold"
         ],
         "title": "EvaluationRequest",
@@ -495,10 +485,6 @@
             "title": "Proposed Change",
             "type": "string"
           },
-          "proposer_id": {
-            "title": "Proposer Id",
-            "type": "string"
-          },
           "rollback_plan": {
             "title": "Rollback Plan",
             "type": "string"
@@ -523,8 +509,7 @@
           "diagnosis",
           "proposed_change",
           "validation_suite_id",
-          "rollback_plan",
-          "proposer_id"
+          "rollback_plan"
         ],
         "title": "ImprovementProposalRequest",
         "type": "object"
@@ -650,6 +635,35 @@
           "subject_id"
         ],
         "title": "SubjectRequest",
+        "type": "object"
+      },
+      "TemporaryAuthorizationRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "principal_id": {
+            "format": "uuid",
+            "title": "Principal Id",
+            "type": "string"
+          },
+          "reason": {
+            "maxLength": 1000,
+            "minLength": 8,
+            "title": "Reason",
+            "type": "string"
+          },
+          "ttl_minutes": {
+            "default": 15,
+            "maximum": 60.0,
+            "minimum": 1.0,
+            "title": "Ttl Minutes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "principal_id",
+          "reason"
+        ],
+        "title": "TemporaryAuthorizationRequest",
         "type": "object"
       }
     }
@@ -3765,6 +3779,234 @@
         ]
       }
     },
+    "/v1/platform/break-glass/authorizations": {
+      "post": {
+        "operationId": "issue_temporary_authorization_v1_platform_break_glass_authorizations_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TemporaryAuthorizationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Issue Temporary Authorization V1 Platform Break Glass Authorizations Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Common tenant-safe error envelope"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Common tenant-safe error envelope"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Common tenant-safe error envelope"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Common tenant-safe error envelope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Common tenant-safe error envelope"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Common tenant-safe error envelope"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Common tenant-safe error envelope"
+          }
+        },
+        "summary": "Issue Temporary Authorization",
+        "tags": [
+          "platform-security"
+        ]
+      }
+    },
+    "/v1/platform/break-glass/authorizations/{authorization_id}/review": {
+      "post": {
+        "operationId": "review_temporary_authorization_v1_platform_break_glass_authorizations__authorization_id__review_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "authorization_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Authorization Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Review Temporary Authorization V1 Platform Break Glass Authorizations  Authorization Id  Review Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Common tenant-safe error envelope"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Common tenant-safe error envelope"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Common tenant-safe error envelope"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Common tenant-safe error envelope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Common tenant-safe error envelope"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Common tenant-safe error envelope"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Common tenant-safe error envelope"
+          }
+        },
+        "summary": "Review Temporary Authorization",
+        "tags": [
+          "platform-security"
+        ]
+      }
+    },
     "/v1/platform/break-glass/kill-switch": {
       "delete": {
         "operationId": "deactivate_platform_kill_switch_v1_platform_break_glass_kill_switch_delete",
@@ -3775,6 +4017,16 @@
             "required": true,
             "schema": {
               "title": "X-Break-Glass-Ticket",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Break-Glass-Authorization",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "X-Break-Glass-Authorization",
               "type": "string"
             }
           },
@@ -3896,6 +4148,16 @@
             "required": true,
             "schema": {
               "title": "X-Break-Glass-Ticket",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Break-Glass-Authorization",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "X-Break-Glass-Authorization",
               "type": "string"
             }
           },

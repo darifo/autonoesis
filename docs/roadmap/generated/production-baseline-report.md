@@ -27,18 +27,18 @@ Configured Compose images (configuration inventory only; not integration evidenc
 
 ## Database Schema Baseline
 
-- Alembic head: `0006_tenant_isolation`
-- SQLAlchemy metadata digest: `sha256:8d8fcb8638b0f0bbd13750007e7787f30e0a04879d319b43ef4ce34346a7eb2e`
-- Declared tables (35): `action_attempts`, `actions`, `agent_versions`, `approvals`, `audit_events`, `budget_ledger`, `budgets`, `candidates`, `capability_packs`, `context_snapshots`, `deployments`, `evaluation_trials`, `evidence`, `evidence_capture_sagas`, `evidence_deletions`, `goals`, `idempotency_records`, `improvement_proposals`, `inbox`, `kill_switches`, `memory_records`, `outbox`, `outcomes`, `plans`, `platform_audit_events`, `platform_kill_switches`, `policy_versions`, `releases`, `runs`, `skill_versions`, `tasks`, `telemetry_records`, `tenant_resource_namespaces`, `tenants`, `tool_versions`
+- Alembic head: `0007_enterprise_identity`
+- SQLAlchemy metadata digest: `sha256:487053e4cbf1bc234c164358be24289efbc78fc6ea3b2bf610b5ed1fb839fe25`
+- Declared tables (36): `action_attempts`, `actions`, `agent_versions`, `approvals`, `audit_events`, `breakglass_alerts`, `budget_ledger`, `budgets`, `candidates`, `capability_packs`, `context_snapshots`, `deployments`, `evaluation_trials`, `evidence`, `evidence_capture_sagas`, `evidence_deletions`, `goals`, `idempotency_records`, `improvement_proposals`, `inbox`, `kill_switches`, `memory_records`, `outbox`, `outcomes`, `plans`, `platform_audit_events`, `platform_kill_switches`, `policy_versions`, `releases`, `runs`, `skill_versions`, `tasks`, `telemetry_records`, `tenant_resource_namespaces`, `tenants`, `tool_versions`
 - Evidence level: `integrated`; CI migrates PostgreSQL 17 and runs authority/Application transaction component tests.
 
 ## HTTP API Contract Baseline
 
 - Application contract version: `0.1.0`
 - OpenAPI dialect: `3.1.x`; frozen consumer contract: `openapi-v1`
-- Frozen OpenAPI digest: `sha256:9da48866a2071f4a6d79286d037849aad189b3168dca12e7244dc1f163320eec`
-- Route source digest: `sha256:cae62d4a761060a76a6a0e84da2f61ace3b1dddad4decbccf670c40d61d11e9b`
-- Declared operations (42):
+- Frozen OpenAPI digest: `sha256:9e59b89bc97f526994cb43bdfc0ba2d38e91bde8b44a50d3078073166ac6907a`
+- Route source digest: `sha256:00eec5c21bedbb6eb4fe8859042650aafd0abec5a3c86388ea0c5eb7c745c350`
+- Declared operations (44):
 
   - `DELETE /v1/kill-switches`
   - `DELETE /v1/platform/break-glass/kill-switch`
@@ -77,6 +77,8 @@ Configured Compose images (configuration inventory only; not integration evidenc
   - `POST /v1/goals/{goal_id}/runs`
   - `POST /v1/improvement-proposals`
   - `POST /v1/kill-switches`
+  - `POST /v1/platform/break-glass/authorizations`
+  - `POST /v1/platform/break-glass/authorizations/{authorization_id}/review`
   - `POST /v1/platform/break-glass/kill-switch`
   - `POST /v1/policies`
   - `POST /v1/releases/{release_id}/rollback`

@@ -40,6 +40,8 @@ class IdentityContext:
     principal_id: UUID
     roles: frozenset[str]
     agent_id: str | None = None
+    subject: str | None = None
+    token_type: str = "access"
 
 
 @dataclass(frozen=True, slots=True)

@@ -1,6 +1,7 @@
 """Development identity, OIDC validation, and OPA policy adapters."""
 
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Any
 from uuid import UUID
 
@@ -16,14 +17,22 @@ class OIDCSettings:
     issuer: str
     audience: str
     jwks_url: str
+    allowed_token_types: tuple[str, ...] = ("access", "at+jwt")
+    jwks_cache_seconds: int = 300
 
 
 class OIDCValidator:
     def __init__(self, settings: OIDCSettings) -> None:
         self._settings = settings
-        self._keys = jwt.PyJWKClient(settings.jwks_url)
+        self._keys = jwt.PyJWKClient(
+            settings.jwks_url,
+            cache_keys=True,
+            cache_jwk_set=True,
+            lifespan=settings.jwks_cache_seconds,
+        )
 
     def validate(self, token: str) -> IdentityContext:
+        header = jwt.get_unverified_header(token)
         key = self._keys.get_signing_key_from_jwt(token)
         claims: dict[str, Any] = jwt.decode(
             token,
@@ -31,13 +40,30 @@ class OIDCValidator:
             algorithms=["RS256", "ES256"],
             audience=self._settings.audience,
             issuer=self._settings.issuer,
+            options={"require": ["iss", "aud", "sub", "tenant_id", "exp", "iat"]},
         )
+        token_type = str(claims.get("token_use", header.get("typ", ""))).lower()
+        if token_type not in self._settings.allowed_token_types:
+            raise jwt.InvalidTokenError("token type is not accepted")
+        subject = str(claims["sub"])
+        if not subject.strip():
+            raise jwt.InvalidTokenError("token subject is required")
         return IdentityContext(
             tenant_id=UUID(claims["tenant_id"]),
-            actor_id=UUID(claims["sub"]),
-            principal_id=UUID(claims.get("principal_id", claims["sub"])),
+            actor_id=UUID(subject),
+            principal_id=UUID(claims.get("principal_id", subject)),
             roles=frozenset(claims.get("roles", ())),
+            agent_id=claims.get("agent_id"),
+            subject=subject,
+            token_type=token_type,
         )
+
+
+@lru_cache(maxsize=8)
+def cached_oidc_validator(settings: OIDCSettings) -> OIDCValidator:
+    """Reuse the PyJWKClient and its bounded JWKS cache for the process lifetime."""
+
+    return OIDCValidator(settings)
 
 
 class DevelopmentPolicy:

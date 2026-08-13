@@ -582,6 +582,12 @@ class GoalExecutionApplication:
                 impact_summary=command.impact_summary,
                 required_role=command.required_role,
                 expires_at=command.expires_at,
+                required_reviews=(
+                    2
+                    if action.risk_level
+                    in {RiskLevel.L3_HIGH_IMPACT_WRITE, RiskLevel.L4_PRIVILEGED}
+                    else 1
+                ),
             )
             awaiting = action.transition_to(
                 ActionStatus.AWAITING_APPROVAL,
@@ -613,7 +619,12 @@ class GoalExecutionApplication:
             )
             if approval.action_digest != command.action_digest:
                 raise PermissionError("approval digest does not match the persisted request")
-            decided = approval.decide(context.identity.actor_id, command.approved, command.reason)
+            decided = approval.decide(
+                context.identity.actor_id,
+                command.approved,
+                command.reason,
+                principal_id=context.identity.principal_id,
+            )
             await self._repository.save_approval(decided, approval.optimistic_version)
             if decided.status in {ApprovalStatus.REJECTED, ApprovalStatus.EXPIRED}:
                 action = await self._repository.get_action(

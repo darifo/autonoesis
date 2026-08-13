@@ -10,6 +10,7 @@ from autonoesis_domain import (
     ActionAttemptStatus,
     ActionStatus,
     ApprovalRequest,
+    ApprovalReview,
     ApprovalStatus,
     BudgetAmount,
     BudgetUnit,
@@ -313,6 +314,17 @@ def approval_payload(approval: ApprovalRequest) -> dict[str, Any]:
         "decided_by": str(approval.decided_by) if approval.decided_by else None,
         "reason": approval.reason,
         "decided_at": approval.decided_at.isoformat() if approval.decided_at else None,
+        "required_reviews": approval.required_reviews,
+        "reviews": [
+            {
+                "actor_id": str(review.actor_id),
+                "principal_id": str(review.principal_id),
+                "approved": review.approved,
+                "reason": review.reason,
+                "reviewed_at": review.reviewed_at.isoformat(),
+            }
+            for review in approval.reviews
+        ],
         "transitions": [transition_payload(item) for item in approval.transitions],
     }
 
@@ -344,6 +356,17 @@ def approval_from_row(row: dict[str, Any]) -> ApprovalRequest:
         ),
         optimistic_version=row["optimistic_version"],
         transitions=transitions_from(definition.get("transitions")),
+        required_reviews=int(definition.get("required_reviews", 1)),
+        reviews=tuple(
+            ApprovalReview(
+                actor_id=UUID(item["actor_id"]),
+                principal_id=UUID(item["principal_id"]),
+                approved=bool(item["approved"]),
+                reason=item["reason"],
+                reviewed_at=datetime.fromisoformat(item["reviewed_at"]),
+            )
+            for item in definition.get("reviews", ())
+        ),
     )
 
 
@@ -452,10 +475,15 @@ def proposal_from_row(row: dict[str, Any]) -> ImprovementProposal:
 
 
 def candidate_payload(item: CandidateVersion) -> dict[str, Any]:
-    return {"transitions": [transition_payload(value) for value in item.transitions]}
+    return {
+        "transitions": [transition_payload(value) for value in item.transitions],
+        "grader_principal_id": item.grader_principal_id,
+        "approver_principal_id": item.approver_principal_id,
+    }
 
 
 def candidate_from_row(row: dict[str, Any]) -> CandidateVersion:
+    definition = row["definition"]
     return CandidateVersion(
         tenant_id=UUID(row["tenant_id"]),
         proposal_id=UUID(row["proposal_id"]),
@@ -465,7 +493,9 @@ def candidate_from_row(row: dict[str, Any]) -> CandidateVersion:
         candidate_id=UUID(row["id"]),
         status=CandidateStatus(row["status"]),
         optimistic_version=row["optimistic_version"],
-        transitions=transitions_from(row["definition"].get("transitions")),
+        transitions=transitions_from(definition.get("transitions")),
+        grader_principal_id=definition.get("grader_principal_id"),
+        approver_principal_id=definition.get("approver_principal_id"),
     )
 
 

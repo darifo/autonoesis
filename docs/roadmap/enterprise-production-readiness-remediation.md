@@ -464,14 +464,14 @@ Tenant Authority 的初始化使用独立管理连接，不参与任何隔离断
 
 #### 实施任务
 
-- [ ] OIDC Validator 进程级复用 JWKS Cache；
-- [ ] 校验 Issuer、Audience、Subject、Tenant、Token Type、时间和必要 Claims；
-- [ ] 建立 Actor、Principal、Service Identity、Agent Identity 和 Delegation Domain Model；
-- [ ] 实现短期委托、资源范围、用途和撤销；
-- [ ] Approval 身份来自认证上下文，不接收 Body 自报身份；
-- [ ] 高风险 Action 支持双人复核和职责冲突检查；
-- [ ] Candidate Generator、Grader、Approver、Release Executor 使用独立角色；
-- [ ] 建立 Break-glass、临时授权和事后复核流程。
+- [x] OIDC Validator 进程级复用 JWKS Cache；
+- [x] 校验 Issuer、Audience、Subject、Tenant、Token Type、时间和必要 Claims；
+- [x] 建立 Actor、Principal、Service Identity、Agent Identity 和 Delegation Domain Model；
+- [x] 实现短期委托、资源范围、用途和撤销；
+- [x] Approval 身份来自认证上下文，不接收 Body 自报身份；
+- [x] 高风险 Action 支持双人复核和职责冲突检查；
+- [x] Candidate Generator、Grader、Approver、Release Executor 使用独立角色；
+- [x] 建立 Break-glass、临时授权和事后复核流程。
 
 #### 验收
 

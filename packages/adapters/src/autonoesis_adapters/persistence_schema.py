@@ -116,6 +116,18 @@ platform_audit_events = Table(
     Column("reason", String(1000), nullable=False),
     Column("created_at", DateTime(timezone=True), nullable=False),
 )
+breakglass_alerts = Table(
+    "breakglass_alerts",
+    metadata,
+    Column("id", String(36), primary_key=True),
+    Column("authorization_id", String(36), nullable=False),
+    Column("principal_id", String(36), nullable=False),
+    Column("ticket", String(300), nullable=False),
+    Column("event_type", String(200), nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("acknowledged_by", String(36), nullable=True),
+    Column("acknowledged_at", DateTime(timezone=True), nullable=True),
+)
 
 capability_packs = tenant_table(
     "capability_packs",

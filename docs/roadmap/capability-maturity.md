@@ -25,10 +25,10 @@ Temporal 耐久编排和 Evidence/Outcome/Audit 可信链达到 `integrated`；�
 | Capability Pack Manifest | `integrated` | Field Service Pack 经真实 API 安装、Schema 验证、Agent 绑定并驱动参考 E2E | 签名、SBOM、隔离安装和真实供应链测试 |
 | Goal/Run Application 用例 | `integrated` | PostgreSQL 事务/恢复组件测试；真实 Temporal/Tool/OPA/Evidence 参考 E2E | 真实第三方系统、网络故障和多进程容量演练 |
 | HTTP API/SDK | `integrated` | 冻结 OpenAPI 3.1、Consumer Contract、统一错误 Envelope；参考 E2E 从真实 ASGI API 发起 | 生成 SDK、多副本 API、OIDC 与外部 Consumer 验证 |
-| PostgreSQL 权威存储 | `integrated` | CI PostgreSQL 17；Alembic `0001 → 0006`；全租户表强制 RLS 与双租户攻击矩阵 | 备份恢复、故障注入、容量/升级演练和长期运行证据 |
+| PostgreSQL 权威存储 | `integrated` | CI PostgreSQL 17；Alembic `0001 → 0007`；全租户表强制 RLS 与双租户攻击矩阵 | 备份恢复、故障注入、容量/升级演练和长期运行证据 |
 | Temporal 耐久编排 | `integrated` | CI 真实 Temporal：Outbox/Reconciler、重启/Replay，以及租户化 Workflow ID、Queue、Worker Pool 攻击测试 | Namespace 预配自动化、HA/备份、容量、网络分区和滚动升级演练 |
 | Governed Tool Gateway | `integrated` | PostgreSQL 原子预算/幂等 Reservation、真实 OPA、凭证租约、受控出口和故障语义组件测试 | 生产 Credential Broker、网络层出口策略和第三方系统故障演练 |
-| Identity/Policy/Approval | `unit-tested` | OIDC Validator、真实 OPA Worker 决策、参考 E2E 独立审批、数据库角色职责分离 | 进程级 JWKS、委托撤销和企业 IdP/职责分离集成 |
+| Identity/Policy/Approval | `integrated` | P1-02 进程级 JWKS、严格 OIDC Claims、PostgreSQL 即时委托撤销、双 Principal 高风险审批、进化职责分离和 Break-glass 临时授权/告警/复核；真实 OPA Worker 决策 | 生产企业 IdP/SCIM、密钥轮换与故障、工作负载身份联邦和 SOC 告警演练 |
 | Evidence/Outcome/Audit | `integrated` | CI PostgreSQL 17 + KMS MinIO：预写入准入、Version/Object Lock、Saga 恢复、权威回读 Outcome、并发摘要审计链、真实 Audit Ref 和删除墓碑/证明 | 生产 KMS/跨区复制、真实业务 Authority、WORM 导出、保留/删除长期演练 |
 | Context/Environment/Memory | `unit-tested` | Context 持久化；Memory 权威表强制 RLS 并通过真实双租户读取攻击测试 | 来源 ACL、Write Gate、冲突处理和删除传播集成 |
 | Evaluation | `unit-tested` | 试验与统计纯逻辑、Trial 持久化 | 固定 Subject 的真实 Harness、独立 Grader 和证据链集成 |

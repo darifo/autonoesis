@@ -78,6 +78,7 @@ class AuthorizationContext:
     policy_version: str
     delegation_id: str | None = None
     correlation_id: str = ""
+    purpose: str = "governed_action"
 
 
 @dataclass(frozen=True, slots=True)
