@@ -393,14 +393,6 @@ evaluation_trials = tenant_table(
     Column("harness_version", String(200), nullable=False),
     Column("status", String(32), nullable=False),
     Column("result", JSON, nullable=False),
-    UniqueConstraint(
-        "tenant_id",
-        "suite_id",
-        "suite_version",
-        "subject_version_id",
-        "harness_version",
-        name="uq_trial_fixed_conditions",
-    ),
     status_check("pending", "running", "passed", "failed", "invalid"),
 )
 environment_facts = tenant_table(

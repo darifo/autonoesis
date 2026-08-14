@@ -26,6 +26,7 @@ from autonoesis_domain import (
 from autonoesis_worker.activities import (
     build_activity_dependencies,
     cancel_run,
+    evaluate_candidate,
     evaluate_run,
     execute_run,
     load_approval,
@@ -36,12 +37,24 @@ from autonoesis_worker.activities import (
 from autonoesis_worker.contracts import (
     ApprovalLookupInput,
     CancelRunInput,
+    EvaluateCandidateInput,
     EvaluateRunInput,
     ExecuteRunInput,
     PrepareRunInput,
     RejectRunInput,
     TakeOverRunInput,
 )
+from temporalio.exceptions import ApplicationError
+
+
+@pytest.mark.asyncio
+async def test_candidate_evaluation_fails_closed_without_real_harness() -> None:
+    store, _, tenant_id = _setup_store()
+    with pytest.raises(ApplicationError, match="refusing synthetic pass"):
+        await evaluate_candidate(
+            EvaluateCandidateInput(tenant_id, str(uuid4())),
+            build_activity_dependencies(store),
+        )
 
 
 def _test_manifest() -> dict[str, object]:

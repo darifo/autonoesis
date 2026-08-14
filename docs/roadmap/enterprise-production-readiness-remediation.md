@@ -505,9 +505,9 @@ Tenant Authority 的初始化使用独立管理连接，不参与任何隔离断
 
 #### 实施任务
 
-- [ ] Evaluation Harness 真正执行固定 Subject Version；
-- [ ] Trial 保存输入、环境、模型、工具、随机种子、输出、成本和失败原因；
-- [ ] Grader Result 使用 `pass/fail/unknown/invalid` 四态语义；
+- [x] Evaluation Harness 真正执行固定 Subject Version；
+- [x] Trial 保存输入、环境、模型、工具、随机种子、输出、成本和失败原因；
+- [x] Grader Result 使用 `pass/fail/unknown/invalid` 四态语义；
 - [ ] 建立确定性规则、Outcome、Trajectory、LLM 和 Human Grader 流水线；
 - [ ] 隐藏用例和生产回放数据与 Candidate Generator 隔离；
 - [ ] 重复 Trial 使用统计方法，不以固定次数替代置信度；

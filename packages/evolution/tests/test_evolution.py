@@ -229,4 +229,9 @@ class TestTrialRunner:
         runner = TrialRunner()
         result = await runner.run_batch(config)
         assert result.total == 3
-        assert result.passed + result.failed + result.invalid == 3
+        assert result.passed == 0
+        assert result.failed == 0
+        assert result.invalid == 3
+        assert all(
+            trial.failure_reason == "trial harness is not configured" for trial in result.trials
+        )

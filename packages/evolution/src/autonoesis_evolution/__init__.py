@@ -38,6 +38,7 @@ from autonoesis_evolution.slo import (
 from autonoesis_evolution.trials import (
     TrialBatchConfig,
     TrialBatchResult,
+    TrialHarness,
     TrialRunner,
     TrialStrategy,
 )
@@ -72,6 +73,7 @@ __all__ = [
     "TrafficSplit",
     "TrialBatchConfig",
     "TrialBatchResult",
+    "TrialHarness",
     "TrialRunner",
     "TrialStrategy",
 ]

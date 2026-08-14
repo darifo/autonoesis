@@ -22,7 +22,9 @@ from autonoesis_domain.evaluation import (
     EvaluationCase,
     EvaluationSuite,
     GraderResult,
+    GraderStatus,
     Trial,
+    TrialCaseResult,
     TrialStatus,
 )
 from autonoesis_domain.execution import (
@@ -121,6 +123,7 @@ __all__ = [
     "GoalContract",
     "GoalStatus",
     "GraderResult",
+    "GraderStatus",
     "IdentityKind",
     "ImprovementProposal",
     "ImprovementTarget",
@@ -151,6 +154,7 @@ __all__ = [
     "TemporaryAuthorization",
     "ToolDefinition",
     "Trial",
+    "TrialCaseResult",
     "TrialStatus",
     "TrustLevel",
 ]

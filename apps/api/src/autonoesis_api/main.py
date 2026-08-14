@@ -1160,6 +1160,10 @@ def trial_view(item: Trial) -> dict[str, object]:
         "subject_version_id": str(item.subject_version_id),
         "harness_version": item.harness_version,
         "status": item.status.value,
+        "random_seed": item.random_seed,
+        "case_count": len(item.case_results),
+        "total_cost_microunits": item.total_cost_microunits,
+        "failure_reason": item.failure_reason,
     }
 
 

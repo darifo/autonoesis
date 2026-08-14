@@ -27,6 +27,8 @@ from autonoesis_domain import (
     EvidenceIntegrity,
     ExecutionMode,
     FreshnessPolicy,
+    GraderResult,
+    GraderStatus,
     ImprovementProposal,
     ImprovementTarget,
     JsonObject,
@@ -46,6 +48,7 @@ from autonoesis_domain import (
     Task,
     TaskStatus,
     Trial,
+    TrialCaseResult,
     TrialStatus,
     TrustLevel,
 )
@@ -607,10 +610,47 @@ def release_from_row(row: dict[str, Any]) -> Release:
 
 
 def trial_payload(item: Trial) -> dict[str, Any]:
-    return {}
+    return {
+        "random_seed": item.random_seed,
+        "total_cost_microunits": item.total_cost_microunits,
+        "failure_reason": item.failure_reason,
+        "started_at": item.started_at.isoformat() if item.started_at else None,
+        "completed_at": item.completed_at.isoformat() if item.completed_at else None,
+        "case_results": [
+            {
+                "case_id": result.case_id,
+                "input_payload": result.input_payload,
+                "output_payload": result.output_payload,
+                "subject_executed": result.subject_executed,
+                "evidence_refs": list(result.evidence_refs),
+                "executor_id": result.executor_id,
+                "environment_ref": result.environment_ref,
+                "model_ref": result.model_ref,
+                "tool_refs": list(result.tool_refs),
+                "random_seed": result.random_seed,
+                "cost_microunits": result.cost_microunits,
+                "failure_reason": result.failure_reason,
+                "grader_results": [
+                    {
+                        "trial_id": str(grade.trial_id),
+                        "grader_id": grade.grader_id,
+                        "grader_version": grade.grader_version,
+                        "score": grade.score,
+                        "passed": grade.passed,
+                        "rationale": grade.rationale,
+                        "evidence_refs": list(grade.evidence_refs),
+                        "status": grade.status.value if grade.status else None,
+                    }
+                    for grade in result.grader_results
+                ],
+            }
+            for result in item.case_results
+        ],
+    }
 
 
 def trial_from_row(row: dict[str, Any]) -> Trial:
+    payload = row.get("result") or {}
     return Trial(
         tenant_id=UUID(row["tenant_id"]),
         suite_id=row["suite_id"],
@@ -619,4 +659,47 @@ def trial_from_row(row: dict[str, Any]) -> Trial:
         harness_version=row["harness_version"],
         trial_id=UUID(row["id"]),
         status=TrialStatus(row["status"]),
+        random_seed=payload.get("random_seed"),
+        case_results=tuple(
+            TrialCaseResult(
+                case_id=result["case_id"],
+                input_payload=result["input_payload"],
+                output_payload=result.get("output_payload"),
+                subject_executed=result["subject_executed"],
+                grader_results=tuple(
+                    GraderResult(
+                        trial_id=UUID(grade["trial_id"]),
+                        grader_id=grade["grader_id"],
+                        grader_version=grade["grader_version"],
+                        score=grade.get("score"),
+                        passed=grade.get("passed"),
+                        rationale=grade["rationale"],
+                        evidence_refs=tuple(grade.get("evidence_refs", ())),
+                        status=(
+                            GraderStatus(grade["status"])
+                            if grade.get("status") is not None
+                            else None
+                        ),
+                    )
+                    for grade in result.get("grader_results", ())
+                ),
+                evidence_refs=tuple(result.get("evidence_refs", ())),
+                executor_id=result.get("executor_id"),
+                environment_ref=result.get("environment_ref"),
+                model_ref=result.get("model_ref"),
+                tool_refs=tuple(result.get("tool_refs", ())),
+                random_seed=result.get("random_seed"),
+                cost_microunits=result.get("cost_microunits", 0),
+                failure_reason=result.get("failure_reason"),
+            )
+            for result in payload.get("case_results", ())
+        ),
+        total_cost_microunits=payload.get("total_cost_microunits", 0),
+        failure_reason=payload.get("failure_reason"),
+        started_at=(
+            datetime.fromisoformat(payload["started_at"]) if payload.get("started_at") else None
+        ),
+        completed_at=(
+            datetime.fromisoformat(payload["completed_at"]) if payload.get("completed_at") else None
+        ),
     )

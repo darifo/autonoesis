@@ -29,8 +29,9 @@ from autonoesis_application import (
     StartTask,
     TaskDefinition,
 )
-from autonoesis_domain import Task
+from autonoesis_domain import Task, Trial, TrialStatus
 from temporalio import activity
+from temporalio.exceptions import ApplicationError
 
 from autonoesis_worker.contracts import (
     ApprovalLookupInput,
@@ -74,6 +75,10 @@ class RunExecutor(Protocol):
     ) -> None: ...
 
 
+class CandidateEvaluator(Protocol):
+    async def evaluate(self, tenant_id: UUID, candidate_id: UUID) -> Trial: ...
+
+
 @dataclass(frozen=True, slots=True)
 class ActivityDependencies:
     """Process-level dependencies injected into every Activity invocation."""
@@ -83,6 +88,7 @@ class ActivityDependencies:
     evolution: CandidateLifecycleService | None = None
     planner: RunPlanner | None = None
     executor: RunExecutor | None = None
+    candidate_evaluator: CandidateEvaluator | None = None
 
 
 def build_activity_dependencies(
@@ -92,6 +98,7 @@ def build_activity_dependencies(
     application: GoalExecutionApplication | None = None,
     planner: RunPlanner | None = None,
     executor: RunExecutor | None = None,
+    candidate_evaluator: CandidateEvaluator | None = None,
 ) -> ActivityDependencies:
     return ActivityDependencies(
         store=store,
@@ -99,6 +106,7 @@ def build_activity_dependencies(
         evolution=evolution,
         planner=planner,
         executor=executor,
+        candidate_evaluator=candidate_evaluator,
     )
 
 
@@ -293,23 +301,35 @@ async def evaluate_candidate(
     candidate_id = UUID(input.candidate_id)
 
     evolution = dependencies.evolution
-    if evolution is not None:
-        _heartbeat("evaluate_candidate")
-        await evolution.submit_for_evaluation(tenant_id, candidate_id)
-        from autonoesis_application import EvaluationDecision
-
-        grader = _context(input.tenant_id, input.candidate_id, "evaluate-candidate").identity
-        candidate = await evolution.record_evaluation(
-            grader,
-            candidate_id,
-            EvaluationDecision(passed=True, score=1.0, threshold=0.8),
+    evaluator = dependencies.candidate_evaluator
+    if evolution is None or evaluator is None:
+        raise ApplicationError(
+            "candidate evaluation is not configured; refusing synthetic pass",
+            non_retryable=True,
         )
-        from autonoesis_domain import CandidateStatus
 
-        return candidate.status is CandidateStatus.AWAITING_APPROVAL
+    _heartbeat("evaluate_candidate")
+    await evolution.submit_for_evaluation(tenant_id, candidate_id)
+    trial = await evaluator.evaluate(tenant_id, candidate_id)
+    await dependencies.store.add_trial(trial)
+    if trial.status is TrialStatus.INVALID:
+        raise ApplicationError(
+            f"candidate evaluation invalid: {trial.failure_reason}",
+            non_retryable=True,
+        )
 
-    # Fallback when evolution service is not wired in
-    return True
+    from autonoesis_application import EvaluationDecision
+
+    grader = _context(input.tenant_id, input.candidate_id, "evaluate-candidate").identity
+    passed = trial.status is TrialStatus.PASSED
+    candidate = await evolution.record_evaluation(
+        grader,
+        candidate_id,
+        EvaluationDecision(passed=passed, score=1.0 if passed else 0.0, threshold=1.0),
+    )
+    from autonoesis_domain import CandidateStatus
+
+    return candidate.status is CandidateStatus.AWAITING_APPROVAL
 
 
 @activity.defn

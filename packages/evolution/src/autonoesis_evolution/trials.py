@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
+from typing import Protocol
 from uuid import UUID, uuid4
 
 from autonoesis_domain import EvaluationSuite, Trial, TrialStatus
@@ -33,6 +34,7 @@ class TrialBatchConfig:
     repeat_count: int = 5
     min_confidence: float = 0.95
     max_trials: int = 50
+    random_seed: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,6 +64,17 @@ class TrialBatchResult:
         return self.total >= 5  # placeholder: real impl checks std dev
 
 
+class TrialHarness(Protocol):
+    async def run_suite(
+        self,
+        suite: EvaluationSuite,
+        subject_version_id: UUID,
+        tenant_id: UUID,
+        *,
+        random_seed: int = 0,
+    ) -> Trial: ...
+
+
 class TrialRunner:
     """Runs EvaluationSuites repeatedly against a subject version.
 
@@ -69,7 +82,7 @@ class TrialRunner:
     adversarial, and ablation.
     """
 
-    def __init__(self, harness: object | None = None) -> None:
+    def __init__(self, harness: TrialHarness | None = None) -> None:
         self._harness = harness
 
     async def run_batch(self, config: TrialBatchConfig) -> TrialBatchResult:
@@ -79,24 +92,25 @@ class TrialRunner:
         failed = 0
         invalid = 0
 
-        for _ in range(config.repeat_count):
-            trial = Trial(
-                tenant_id=config.tenant_id,
-                suite_id=config.suite.suite_id,
-                suite_version=config.suite.version,
-                subject_version_id=config.subject_version_id,
-                harness_version="1",
-                status=TrialStatus.RUNNING,
-            )
-            # Simulate trial outcome — real impl runs harness
-            trial = Trial(
-                tenant_id=trial.tenant_id,
-                suite_id=trial.suite_id,
-                suite_version=trial.suite_version,
-                subject_version_id=trial.subject_version_id,
-                harness_version=trial.harness_version,
-                status=TrialStatus.PASSED,
-            )
+        for index in range(config.repeat_count):
+            if self._harness is None:
+                trial = Trial(
+                    tenant_id=config.tenant_id,
+                    suite_id=config.suite.suite_id,
+                    suite_version=config.suite.version,
+                    subject_version_id=config.subject_version_id,
+                    harness_version="unconfigured",
+                    status=TrialStatus.INVALID,
+                    random_seed=config.random_seed + index,
+                    failure_reason="trial harness is not configured",
+                )
+            else:
+                trial = await self._harness.run_suite(
+                    config.suite,
+                    config.subject_version_id,
+                    config.tenant_id,
+                    random_seed=config.random_seed + index,
+                )
 
             trials.append(trial)
             if trial.status == TrialStatus.PASSED:
@@ -119,6 +133,7 @@ class TrialRunner:
 __all__ = [
     "TrialBatchConfig",
     "TrialBatchResult",
+    "TrialHarness",
     "TrialRunner",
     "TrialStrategy",
 ]
