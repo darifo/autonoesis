@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 from autonoesis_adapters.persistence_codec import trial_from_row, trial_payload
-from autonoesis_domain import GraderResult, Trial, TrialCaseResult, TrialStatus
+from autonoesis_domain import GraderKind, GraderResult, Trial, TrialCaseResult, TrialStatus
 
 
 def test_trial_result_round_trips_through_authoritative_json() -> None:
@@ -36,6 +36,7 @@ def test_trial_result_round_trips_through_authoritative_json() -> None:
                         passed=True,
                         rationale="exact match",
                         evidence_refs=("evidence://grade/1",),
+                        kind=GraderKind.OUTCOME,
                     ),
                 ),
                 evidence_refs=("evidence://subject/1",),

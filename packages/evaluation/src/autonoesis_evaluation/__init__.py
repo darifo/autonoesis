@@ -8,13 +8,32 @@ from typing import Any, Protocol
 from uuid import UUID, uuid4
 
 from autonoesis_domain import (
+    CaseVisibility,
     EvaluationCase,
     EvaluationSuite,
+    GraderKind,
     GraderResult,
     GraderStatus,
     Trial,
     TrialCaseResult,
     TrialStatus,
+)
+
+from autonoesis_evaluation.pipeline import (
+    Grader,
+    GraderAssessment,
+    GraderBackend,
+    GraderPipeline,
+    GraderStage,
+    IndependentGrader,
+)
+from autonoesis_evaluation.suite_access import (
+    EvaluationSuiteCatalog,
+    GeneratorSuiteView,
+    HarnessSuite,
+    PublicCaseDescriptor,
+    SuiteAccessContext,
+    SuiteAccessRole,
 )
 
 # ── Harness ─────────────────────────────────────────────────────────────────
@@ -60,15 +79,30 @@ class EvaluationHarness:
         subject_executor: SubjectExecutor | None = None,
         graders: dict[str, Grader] | None = None,
         *,
+        grader_pipeline: GraderPipeline | None = None,
         harness_version: str = "2",
     ) -> None:
         self._subject_executor = subject_executor
-        self._graders = graders or {}
+        self._grader_pipeline: GraderPipeline | None
+        if grader_pipeline is not None and graders:
+            raise ValueError("configure grader_pipeline or legacy graders, not both")
+        if grader_pipeline is not None:
+            self._grader_pipeline = grader_pipeline
+        elif graders:
+            known_kinds = {kind.value: kind for kind in GraderKind}
+            self._grader_pipeline = GraderPipeline(
+                tuple(
+                    GraderStage(known_kinds.get(name, GraderKind.DETERMINISTIC), grader)
+                    for name, grader in graders.items()
+                )
+            )
+        else:
+            self._grader_pipeline = None
         self._harness_version = harness_version
 
     async def run_suite(
         self,
-        suite: EvaluationSuite,
+        suite: EvaluationSuite | HarnessSuite,
         subject_version_id: UUID,
         tenant_id: UUID,
         *,
@@ -77,6 +111,20 @@ class EvaluationHarness:
         """Execute the exact subject version and grade only its recorded outputs."""
         started_at = datetime.now(UTC)
         trial_id = uuid4()
+        resolved_suite = suite.suite if isinstance(suite, HarnessSuite) else suite
+        if not isinstance(suite, HarnessSuite) and any(
+            case.visibility is not CaseVisibility.PUBLIC for case in resolved_suite.cases
+        ):
+            return self._invalid_trial(
+                resolved_suite,
+                subject_version_id,
+                tenant_id,
+                random_seed,
+                started_at,
+                "protected suite must be loaded through the evaluation catalog",
+                trial_id=trial_id,
+            )
+        suite = resolved_suite
         if self._subject_executor is None:
             return self._invalid_trial(
                 suite,
@@ -87,7 +135,7 @@ class EvaluationHarness:
                 "subject executor is not configured",
                 trial_id=trial_id,
             )
-        if not self._graders:
+        if self._grader_pipeline is None:
             return self._invalid_trial(
                 suite,
                 subject_version_id,
@@ -153,11 +201,10 @@ class EvaluationHarness:
                 )
 
             try:
-                grades: list[GraderResult] = []
-                for grader in self._graders.values():
-                    grade = await grader.grade(case, execution.output_payload)
-                    grades.append(replace(grade, trial_id=trial_id))
-                grader_results = tuple(grades)
+                grader_results = tuple(
+                    replace(grade, trial_id=trial_id)
+                    for grade in await self._grader_pipeline.grade(case, execution.output_payload)
+                )
             except Exception as exc:
                 reason = f"grader execution failed: {type(exc).__name__}: {exc}"
                 case_results.append(
@@ -246,15 +293,22 @@ class EvaluationHarness:
                 trial_id,
             )
 
-        passed_cases = sum(
-            1
-            for result in case_results
-            if result.grader_results
+        case_passes = tuple(
+            bool(result.grader_results)
             and all(grade.status is GraderStatus.PASS for grade in result.grader_results)
+            for result in case_results
+        )
+        gating_failed = any(
+            case.gating and not passed
+            for case, passed in zip(suite.cases, case_passes, strict=True)
+        )
+        total_weight = sum(case.weight for case in suite.cases)
+        passed_weight = sum(
+            case.weight for case, passed in zip(suite.cases, case_passes, strict=True) if passed
         )
         status = (
             TrialStatus.PASSED
-            if passed_cases / len(case_results) >= suite.pass_threshold
+            if not gating_failed and passed_weight / total_weight >= suite.pass_threshold
             else TrialStatus.FAILED
         )
         return Trial(
@@ -298,16 +352,6 @@ class EvaluationHarness:
             started_at=started_at,
             completed_at=datetime.now(UTC),
         )
-
-
-# ── Grader ──────────────────────────────────────────────────────────────────
-
-
-class Grader:
-    """Abstract grader that evaluates a single EvaluationCase."""
-
-    async def grade(self, case: EvaluationCase, actual_output: dict[str, Any]) -> GraderResult:
-        raise NotImplementedError
 
 
 class DeterministicGrader(Grader):
@@ -356,8 +400,19 @@ class ThresholdGrader(Grader):
 __all__ = [
     "DeterministicGrader",
     "EvaluationHarness",
+    "EvaluationSuiteCatalog",
+    "GeneratorSuiteView",
     "Grader",
+    "GraderAssessment",
+    "GraderBackend",
+    "GraderPipeline",
+    "GraderStage",
+    "HarnessSuite",
+    "IndependentGrader",
+    "PublicCaseDescriptor",
     "SubjectExecutionResult",
     "SubjectExecutor",
+    "SuiteAccessContext",
+    "SuiteAccessRole",
     "ThresholdGrader",
 ]

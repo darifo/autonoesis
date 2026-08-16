@@ -27,6 +27,7 @@ from autonoesis_domain import (
     EvidenceIntegrity,
     ExecutionMode,
     FreshnessPolicy,
+    GraderKind,
     GraderResult,
     GraderStatus,
     ImprovementProposal,
@@ -640,6 +641,7 @@ def trial_payload(item: Trial) -> dict[str, Any]:
                         "rationale": grade.rationale,
                         "evidence_refs": list(grade.evidence_refs),
                         "status": grade.status.value if grade.status else None,
+                        "kind": grade.kind.value,
                     }
                     for grade in result.grader_results
                 ],
@@ -680,6 +682,7 @@ def trial_from_row(row: dict[str, Any]) -> Trial:
                             if grade.get("status") is not None
                             else None
                         ),
+                        kind=GraderKind(grade.get("kind", "deterministic")),
                     )
                     for grade in result.get("grader_results", ())
                 ),

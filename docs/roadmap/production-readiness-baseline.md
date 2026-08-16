@@ -33,8 +33,9 @@ Gateway、Temporal 耐久编排、Evidence/Outcome/Audit 可信链和 P1-01 多�
   Memory、Evaluation 和 Release 的双租户隔离，并建立独立 Break-glass 路径；外部
   Search/Vector/Telemetry 后端、生产 Bucket Policy 与长期攻防演练仍未完成；
 - Evaluation Harness 已在单元层执行固定 Subject Version、记录完整 Trial 条件并对缺失执行、
-  基础设施错误和不确定评分失败关闭；Worker 不再允许硬编码绿色结果，但真实 Subject Runtime、
-  独立 Grader 流水线、隐藏数据隔离及 Candidate/Evidence 组件集成尚未完成；
+  基础设施错误和不确定评分失败关闭；五级 Grader 按治理顺序、独立身份和短路门禁执行，
+  隐藏/生产回放 Case 不向 Generator 暴露；Worker 不再允许硬编码绿色结果，但真实 Subject
+  Runtime、Grader 后端及 Candidate/Evidence 组件集成尚未完成；
 - Candidate/Shadow/Canary 已持久化 Deployment/Release，但没有真实流量双跑、分流、观察窗口和独立 Release Executor；
 - Cockpit 使用静态演示数据，不从公共 API 获取运营指标；
 - Compose 含本地默认凭证和公开测试 KMS key；MinIO 镜像已固定摘要，但配置不满足生产

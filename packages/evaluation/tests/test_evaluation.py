@@ -4,12 +4,21 @@ from typing import Any
 from uuid import UUID, uuid4
 
 import pytest
-from autonoesis_domain import EvaluationCase, EvaluationSuite, GraderResult, TrialStatus
+from autonoesis_domain import (
+    CaseVisibility,
+    EvaluationCase,
+    EvaluationSuite,
+    GraderResult,
+    TrialStatus,
+)
 from autonoesis_evaluation import (
     DeterministicGrader,
     EvaluationHarness,
+    EvaluationSuiteCatalog,
     Grader,
     SubjectExecutionResult,
+    SuiteAccessContext,
+    SuiteAccessRole,
     ThresholdGrader,
 )
 
@@ -208,3 +217,61 @@ class TestEvaluationHarness:
         ).run_suite(suite, uuid4(), uuid4())
         assert trial.status is TrialStatus.INVALID
         assert "share identity" in (trial.failure_reason or "")
+
+    @pytest.mark.asyncio
+    async def test_gating_case_failure_overrides_weighted_pass_rate(self) -> None:
+        suite = EvaluationSuite(
+            "s1",
+            "1",
+            (
+                EvaluationCase("normal", {}, {"answer": 42}, (), weight=100),
+                EvaluationCase(
+                    "security",
+                    {},
+                    {"access": "denied"},
+                    (),
+                    weight=1,
+                    gating=True,
+                ),
+            ),
+            0.8,
+        )
+        trial = await EvaluationHarness(
+            subject_executor=RecordingExecutor({"answer": 42, "access": "allowed"}),
+            graders={"deterministic": DeterministicGrader()},
+        ).run_suite(suite, uuid4(), uuid4())
+        assert trial.status is TrialStatus.FAILED
+
+    @pytest.mark.asyncio
+    async def test_protected_suite_requires_catalog_authorization(self) -> None:
+        suite = EvaluationSuite(
+            "hidden",
+            "1",
+            (
+                EvaluationCase(
+                    "secret",
+                    {"hidden": True},
+                    {"answer": 42},
+                    (),
+                    CaseVisibility.HIDDEN,
+                ),
+            ),
+            1.0,
+        )
+        executor = RecordingExecutor({"answer": 42})
+        harness = EvaluationHarness(
+            subject_executor=executor,
+            graders={"deterministic": DeterministicGrader()},
+        )
+
+        denied = await harness.run_suite(suite, uuid4(), uuid4())
+        assert denied.status is TrialStatus.INVALID
+        assert not executor.calls
+
+        authorized = EvaluationSuiteCatalog((suite,)).load_for_harness(
+            "hidden",
+            "1",
+            SuiteAccessContext(uuid4(), frozenset({SuiteAccessRole.EVALUATION_HARNESS})),
+        )
+        allowed = await harness.run_suite(authorized, uuid4(), uuid4())
+        assert allowed.status is TrialStatus.PASSED

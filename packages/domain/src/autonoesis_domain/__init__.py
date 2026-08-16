@@ -19,8 +19,10 @@ from autonoesis_domain.context import (
     TrustLevel,
 )
 from autonoesis_domain.evaluation import (
+    CaseVisibility,
     EvaluationCase,
     EvaluationSuite,
+    GraderKind,
     GraderResult,
     GraderStatus,
     Trial,
@@ -102,6 +104,7 @@ __all__ = [
     "BudgetUnit",
     "CandidateStatus",
     "CandidateVersion",
+    "CaseVisibility",
     "CompensationCapability",
     "ContextSnapshot",
     "DataClassification",
@@ -122,6 +125,7 @@ __all__ = [
     "FreshnessPolicy",
     "GoalContract",
     "GoalStatus",
+    "GraderKind",
     "GraderResult",
     "GraderStatus",
     "IdentityKind",

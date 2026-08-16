@@ -1,6 +1,6 @@
 # Evaluation Methodology
 
-> Status: proposed · Last reviewed: 2026-08-09
+> Status: partially unit-tested · Last reviewed: 2026-08-14
 
 ## Purpose
 
@@ -19,6 +19,9 @@ Evaluation is the gate for all capability improvement in Autonoesis. It answers:
 ## Grader Pipeline
 
 Graders execute in strict priority order. Lower-priority graders only run if higher-priority ones pass:
+
+当前 `GraderPipeline` 已在单元测试中强制顺序、阶段类型、独立身份和非 Pass 短路；
+`IndependentGrader` 提供各阶段的后端注入边界。真实 Outcome/Trajectory/LLM/Human 后端仍待集成。
 
 ### 1. Deterministic Rules
 
@@ -74,6 +77,9 @@ Graders execute in strict priority order. Lower-priority graders only run if hig
 4. **Versioning**: Suites are versioned. Changes to case composition require a new version.
 5. **Hidden cases**: A subset of cases may be hidden from generators to prevent overfitting.
 6. **Calibration**: LLM and human graders must be calibrated on known samples before evaluating Candidates.
+
+隐藏与生产回放 Case 必须通过 `EvaluationSuiteCatalog` 的 Harness 授权视图加载。Candidate
+Generator 只能读取公开 Case 描述，不能读取受保护 Case 的 ID、输入、期望结果或标签。
 
 ## Anti-Patterns
 

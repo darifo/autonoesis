@@ -24,12 +24,33 @@ class GraderStatus(StrEnum):
     INVALID = "invalid"
 
 
+class GraderKind(StrEnum):
+    DETERMINISTIC = "deterministic"
+    OUTCOME = "outcome"
+    TRAJECTORY = "trajectory"
+    LLM = "llm"
+    HUMAN = "human"
+
+
+class CaseVisibility(StrEnum):
+    PUBLIC = "public"
+    HIDDEN = "hidden"
+    PRODUCTION_REPLAY = "production_replay"
+
+
 @dataclass(frozen=True, slots=True)
 class EvaluationCase:
     case_id: str
     input_payload: dict[str, Any]
     expected_outcome: dict[str, Any]
     tags: tuple[str, ...]
+    visibility: CaseVisibility = CaseVisibility.PUBLIC
+    weight: float = 1.0
+    gating: bool = False
+
+    def __post_init__(self) -> None:
+        if not self.case_id or self.weight <= 0:
+            raise ValueError("evaluation case requires an id and positive weight")
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,6 +141,7 @@ class GraderResult:
     rationale: str
     evidence_refs: tuple[str, ...]
     status: GraderStatus | None = None
+    kind: GraderKind = GraderKind.DETERMINISTIC
 
     def __post_init__(self) -> None:
         if self.score is not None and not 0 <= self.score <= 1:

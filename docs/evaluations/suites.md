@@ -1,6 +1,6 @@
 # Evaluation Suites
 
-> Status: proposed · Last reviewed: 2026-08-09
+> Status: partially unit-tested · Last reviewed: 2026-08-14
 
 ## Suite Structure
 
@@ -41,6 +41,8 @@ cases:
     expected_outcome:
       status: "access_denied"
     tags: ["security", "cross-tenant", "l2_write"]
+    visibility: "hidden"
+    gating: true
 ```
 
 ## Coverage Categories

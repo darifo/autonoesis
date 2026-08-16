@@ -27,3 +27,4 @@ ADRs record decisions affecting authoritative ownership, process boundaries, pro
 - [ADR-0020: Enterprise Identity, Delegation, and Separation of Duties](0020-enterprise-identity-delegation-and-separation-of-duties.md)
 - [ADR-0021: Trusted Context Assembly and Memory Authority](0021-trusted-context-and-memory-authority.md)
 - [ADR-0022: Fixed-subject Evaluation Trials Fail Closed](0022-fixed-subject-evaluation-trials.md)
+- [ADR-0023: Independent Grader Pipeline and Protected Evaluation Suites](0023-independent-grader-pipeline-and-protected-suites.md)
