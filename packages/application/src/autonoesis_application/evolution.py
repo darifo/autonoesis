@@ -9,13 +9,20 @@ from autonoesis_domain import (
     CandidateVersion,
     Deployment,
     DeploymentStatus,
+    ImprovementProposal,
+    ImprovementTarget,
     Release,
+    require_improvement_target_allowed,
 )
 
 from autonoesis_application.platform import IdentityContext, RecordNotFound
 
 
 class EvolutionRepository(Protocol):
+    async def add_proposal(self, proposal: ImprovementProposal) -> None: ...
+
+    async def get_proposal(self, tenant_id: UUID, proposal_id: UUID) -> ImprovementProposal: ...
+
     async def add_candidate(self, candidate: CandidateVersion) -> None: ...
 
     async def get_candidate(self, tenant_id: UUID, candidate_id: UUID) -> CandidateVersion: ...
@@ -33,6 +40,35 @@ class EvolutionRepository(Protocol):
     async def get_active_release(self, tenant_id: UUID, candidate_id: UUID) -> Release: ...
 
 
+class ImprovementTargetPolicy(Protocol):
+    """External policy decision point consulted before any improvement proposal."""
+
+    async def assert_target_allowed(self, raw_target: str) -> None: ...
+
+
+@dataclass(frozen=True, slots=True)
+class ProposeImprovement:
+    """Raw proposal input; the use case owns validation before enum coercion."""
+
+    target: str
+    target_version_id: UUID
+    evidence_refs: tuple[str, ...]
+    diagnosis: str
+    proposed_change: str
+    validation_suite_id: str
+    rollback_plan: str
+
+
+@dataclass(frozen=True, slots=True)
+class RegisterCandidate:
+    proposal_id: UUID
+    baseline_version_id: UUID
+    artifact_ref: str
+    artifact_digest: str
+    suite_id: str
+    suite_version: str
+
+
 @dataclass(frozen=True, slots=True)
 class EvaluationDecision:
     passed: bool
@@ -41,8 +77,64 @@ class EvaluationDecision:
 
 
 class CandidateLifecycleService:
-    def __init__(self, repository: EvolutionRepository) -> None:
+    def __init__(
+        self,
+        repository: EvolutionRepository,
+        improvement_policy: ImprovementTargetPolicy | None = None,
+    ) -> None:
         self._repository = repository
+        self._improvement_policy = improvement_policy
+
+    async def _forbid_disallowed_target(self, raw_target: str) -> ImprovementTarget:
+        require_improvement_target_allowed(raw_target)
+        if self._improvement_policy is not None:
+            await self._improvement_policy.assert_target_allowed(raw_target)
+        return ImprovementTarget(raw_target)
+
+    async def propose_improvement(
+        self,
+        identity: IdentityContext,
+        command: ProposeImprovement,
+    ) -> ImprovementProposal:
+        target = await self._forbid_disallowed_target(command.target)
+        proposal = ImprovementProposal(
+            tenant_id=identity.tenant_id,
+            target=target,
+            target_version_id=command.target_version_id,
+            evidence_refs=command.evidence_refs,
+            diagnosis=command.diagnosis,
+            proposed_change=command.proposed_change,
+            validation_suite_id=command.validation_suite_id,
+            rollback_plan=command.rollback_plan,
+            proposer_id=str(identity.principal_id),
+        )
+        await self._repository.add_proposal(proposal)
+        return proposal
+
+    async def register_candidate(
+        self,
+        identity: IdentityContext,
+        command: RegisterCandidate,
+    ) -> CandidateVersion:
+        proposal = await self._repository.get_proposal(identity.tenant_id, command.proposal_id)
+        await self._forbid_disallowed_target(proposal.target.value)
+        if command.suite_id != proposal.validation_suite_id:
+            raise ValueError(
+                "candidate must be graded against the proposal's fixed validation suite: "
+                f"{command.suite_id} != {proposal.validation_suite_id}"
+            )
+        candidate = CandidateVersion(
+            tenant_id=identity.tenant_id,
+            proposal_id=command.proposal_id,
+            baseline_version_id=command.baseline_version_id,
+            artifact_ref=command.artifact_ref,
+            artifact_digest=command.artifact_digest,
+            suite_id=command.suite_id,
+            suite_version=command.suite_version,
+            generator_id=str(identity.principal_id),
+        )
+        await self._repository.add_candidate(candidate)
+        return candidate
 
     async def submit_for_evaluation(self, tenant_id: UUID, candidate_id: UUID) -> CandidateVersion:
         candidate = await self._repository.get_candidate(tenant_id, candidate_id)

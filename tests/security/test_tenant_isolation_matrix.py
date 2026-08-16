@@ -179,7 +179,14 @@ async def add_release(store: PostgreSQLPlatformStore, tenant_id: UUID) -> Releas
     )
     await store.add_proposal(proposal)
     candidate = CandidateVersion(
-        tenant_id, proposal.proposal_id, uuid4(), "artifact://same-name", "isolated-generator"
+        tenant_id,
+        proposal.proposal_id,
+        uuid4(),
+        "artifact://same-name",
+        "c" * 64,
+        "same-suite",
+        "1",
+        "isolated-generator",
     )
     await store.add_candidate(candidate)
     for status in (

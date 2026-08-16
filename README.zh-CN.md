@@ -163,13 +163,14 @@ autonoesis/
 
 旧 MVP 阶段记录的是实现广度，不代表生产就绪。现按实际证据重新校准如下：P0 已满足当前退出
 门槛；P1-01～03 已建立多租户、企业身份和可信 Context/Memory 的集成级基线。P1-04 的 9 个
-实施项已完成 6 个，达到 `unit-tested`：固定 Subject、完整 Trial、四态有序 Grader、隐藏/
-生产回放 Suite 隔离，以及重复 Trial Wilson 置信门禁。
+实施项已完成 8 个，达到 `unit-tested`：固定 Subject、完整 Trial、四态有序 Grader、隐藏/
+生产回放 Suite 隔离、重复 Trial Wilson 置信门禁、Candidate 固定引用，以及 Application+OPA
+双层禁止的改进目标。
 
 | 整改阶段 | 清单进度 | 当前边界 |
 |---|---:|---|
 | **P0** | 146 / 146 | 受控执行参考纵向切片达到集成级 |
-| **P1** | 33 / 68 | 企业治理基础已集成，Evaluation 与发布链尚未闭环 |
+| **P1** | 35 / 68 | 企业治理基础已集成，Evaluation 与发布链尚未闭环 |
 | **P2** | 0 / 38 | 生产运维与规模化尚未启动 |
 
 清单进度仅表示实施项完成度，不等于生产就绪百分比。
@@ -179,7 +180,7 @@ autonoesis/
 | **Phase 0** | 参考执行切片 `integrated` | 冻结契约和 Field Service 参考 Pack 通过真实 PostgreSQL、Temporal、OPA、MinIO 与受控 Authority 模拟器完成 Verified Goal。 |
 | **Phase 1** | PostgreSQL、Temporal、HTTP/Application、身份和租户治理切片 `integrated` | OpenAPI 已冻结并有 Consumer Contract；多副本 API、生产 IdP/SCIM 和容量证据仍缺失。 |
 | **Phase 2** | Tool Gateway 与 Evidence 可信链 `integrated`，其余为部分 `unit-tested` | 参考 E2E 证据进入 CI；真实第三方系统、生产 Credential/KMS 和网络故障演练仍未完成。 |
-| **Phase 3** | Evaluation 与 Deployment/Release 为 `unit-tested` | 仍缺真实 Subject/Grader 后端、Candidate Evidence 门禁、Shadow 流量、Canary 分流和 Release Executor。 |
+| **Phase 3** | Evaluation 与 Deployment/Release 为 `unit-tested` | 仍缺真实 Subject/Grader 后端、评估/审批 Evidence 持久化、Shadow 流量、Canary 分流和 Release Executor。 |
 | **Phase 4** | `specified` | 生产运维和加固仅处于计划状态。 |
 
 当前生产限制和可重复基线证据见[生产就绪基线](docs/roadmap/production-readiness-baseline.md)。

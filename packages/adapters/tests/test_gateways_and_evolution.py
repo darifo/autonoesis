@@ -153,7 +153,9 @@ async def test_tool_gateway_requires_exact_approval_and_deduplicates_write() -> 
 async def test_candidate_generator_cannot_grade_its_own_candidate() -> None:
     store = InMemoryPlatformStore()
     generator = uuid4()
-    candidate = CandidateVersion(uuid4(), uuid4(), uuid4(), "artifact://candidate", str(generator))
+    candidate = CandidateVersion(
+        uuid4(), uuid4(), uuid4(), "artifact://candidate", "a" * 64, "suite-1", "1", str(generator)
+    )
     await store.add_candidate(candidate)
     service = CandidateLifecycleService(store)
     await service.submit_for_evaluation(candidate.tenant_id, candidate.candidate_id)

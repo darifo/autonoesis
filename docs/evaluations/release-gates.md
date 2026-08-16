@@ -7,8 +7,9 @@
 - Gate 1 has fixed Subject execution, complete Trial records, ordered independent Grader stages,
   weighted/gating semantics, four-state failure closing, protected Suite access, and repeated-Trial
   Wilson confidence gating at unit level.
-- Gate 2 has generator/grader/approver separation and persisted Candidate decisions, but Candidate
-  promotion is not yet bound to complete Trial/Evidence records.
+- Gate 2 has generator/grader/approver separation and persisted Candidate decisions. Candidates
+  carry immutable artifact digests, fixed Suite references and generator identity (ADR-0025), but
+  Candidate promotion is not yet bound to complete persisted Trial/Grader/Evidence records.
 - Gates 3 and 4 have persisted Deployment/Release state and isolated algorithms only; real Shadow
   traffic, Canary routing, observation enforcement, automatic rollback and Release Executor are absent.
 - No gate is production-proven, and the full Draft → Stable chain is not integrated end to end.

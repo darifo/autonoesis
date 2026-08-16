@@ -252,7 +252,14 @@ async def test_two_store_instances_share_capability_approval_and_release() -> No
         )
         await first.add_proposal(proposal)
         candidate = CandidateVersion(
-            tenant_id, proposal_id, uuid4(), "artifact://candidate", "independent-generator"
+            tenant_id,
+            proposal_id,
+            uuid4(),
+            "artifact://candidate",
+            "b" * 64,
+            "suite-authority",
+            "1",
+            "independent-generator",
         )
         await first.add_candidate(candidate)
         for status in (

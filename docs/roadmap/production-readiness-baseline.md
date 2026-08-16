@@ -15,8 +15,8 @@ OPA、KMS MinIO、参考纵向 E2E、依赖/Secret 扫描，以及 Cockpit 单�
 这些证据支持 P0 参考纵向切片、PostgreSQL 权威存储、HTTP/Application 用例、Governed Tool
 Gateway、Temporal 耐久编排、Evidence/Outcome/Audit 可信链，以及 P1-01 多维租户隔离、
 P1-02 企业身份治理、P1-03 可信 Context/Memory 的 `integrated` 声明。P1-04 Evaluation
-完成固定 Subject、完整 Trial、五级 Grader、隐藏数据隔离和重复 Trial 统计置信门禁，仍为
-`unit-tested`；没有任何能力达到 `production-proven`。
+完成固定 Subject、完整 Trial、五级 Grader、隐藏数据隔离、重复 Trial 统计置信门禁、Candidate
+固定引用和禁止目标双层禁止，仍为 `unit-tested`；没有任何能力达到 `production-proven`。
 
 ## 生产限制
 
@@ -37,8 +37,10 @@ P1-02 企业身份治理、P1-03 可信 Context/Memory 的 `integrated` 声明�
 - Evaluation Harness 已在单元层执行固定 Subject Version、记录完整 Trial 条件并对缺失执行、
   基础设施错误和不确定评分失败关闭；五级 Grader 按治理顺序、独立身份和短路门禁执行，
   隐藏/生产回放 Case 不向 Generator 暴露；重复 Trial 以 Wilson 置信下界统计门禁，Invalid
-  Trial 不计入绿色率也不折抵最小样本；Worker 不再允许硬编码绿色结果，但真实 Subject
-  Runtime、Grader 后端及 Candidate/Evidence 组件集成尚未完成；
+  Trial 不计入绿色率也不折抵最小样本；Candidate 必须携带不可变 Artifact Digest、固定 Suite
+  与 Generator 身份，禁止改进目标在 Application 与 OPA 策略层双重拒绝；Worker 不再允许硬编码
+  绿色结果，但评估/审批结果持久化、Evidence 组件集成、真实 Subject Runtime 和 Grader 后端
+  尚未完成；
 - Candidate/Shadow/Canary 已持久化 Deployment/Release，但没有真实流量双跑、分流、观察窗口和独立 Release Executor；
 - Cockpit 使用静态演示数据，不从公共 API 获取运营指标；
 - Compose 含本地默认凭证和公开测试 KMS key；MinIO 镜像已固定摘要，但配置不满足生产

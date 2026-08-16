@@ -69,6 +69,7 @@ from autonoesis_domain.identity import (
     TemporaryAuthorization,
 )
 from autonoesis_domain.improvement import (
+    FORBIDDEN_IMPROVEMENT_TARGETS,
     CandidateStatus,
     CandidateVersion,
     Deployment,
@@ -76,6 +77,7 @@ from autonoesis_domain.improvement import (
     ImprovementProposal,
     ImprovementTarget,
     Release,
+    require_improvement_target_allowed,
 )
 from autonoesis_domain.transitions import InvalidStateTransition, StateTransition
 from autonoesis_domain.values import (
@@ -89,6 +91,7 @@ from autonoesis_domain.values import (
 )
 
 __all__ = [
+    "FORBIDDEN_IMPROVEMENT_TARGETS",
     "Action",
     "ActionAttempt",
     "ActionAttemptStatus",
@@ -161,4 +164,5 @@ __all__ = [
     "TrialCaseResult",
     "TrialStatus",
     "TrustLevel",
+    "require_improvement_target_allowed",
 ]

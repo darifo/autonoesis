@@ -27,8 +27,8 @@ Configured Compose images (configuration inventory only; not integration evidenc
 
 ## Database Schema Baseline
 
-- Alembic head: `0009_fixed_evaluation`
-- SQLAlchemy metadata digest: `sha256:06b8a0a4289bb02768face161a295a521012150980d161f3fbf98553ecf1509e`
+- Alembic head: `0010_fixed_candidate_references`
+- SQLAlchemy metadata digest: `sha256:2c801e23262d7a93f4a1c715fcf0d6d1f409a1251726ab92f16c6a483ee297c5`
 - Declared tables (40): `action_attempts`, `actions`, `agent_versions`, `approvals`, `audit_events`, `breakglass_alerts`, `budget_ledger`, `budgets`, `candidates`, `capability_packs`, `context_snapshots`, `deployments`, `environment_facts`, `evaluation_trials`, `evidence`, `evidence_capture_sagas`, `evidence_deletions`, `goals`, `idempotency_records`, `improvement_proposals`, `inbox`, `kill_switches`, `memory_deletion_edges`, `memory_ledger`, `memory_records`, `outbox`, `outcomes`, `plans`, `platform_audit_events`, `platform_kill_switches`, `policy_versions`, `releases`, `runs`, `skill_versions`, `tasks`, `telemetry_records`, `tenant_resource_namespaces`, `tenants`, `tool_versions`, `vector_index_projections`
 - Evidence level: `integrated`; CI migrates PostgreSQL 17 and runs authority/Application transaction component tests.
 
@@ -36,8 +36,8 @@ Configured Compose images (configuration inventory only; not integration evidenc
 
 - Application contract version: `0.1.0`
 - OpenAPI dialect: `3.1.x`; frozen consumer contract: `openapi-v1`
-- Frozen OpenAPI digest: `sha256:9e59b89bc97f526994cb43bdfc0ba2d38e91bde8b44a50d3078073166ac6907a`
-- Route source digest: `sha256:4d5c6515392f00c7f09f7768672108f22df1133f350b29cf54be61e158ac511e`
+- Frozen OpenAPI digest: `sha256:0a15affe5290d6cda4c614ffb1396b17f4027be4d085520b87282a973c4a9915`
+- Route source digest: `sha256:2212da98e44712482af4d4062949a142c9d1755fa28e3326d38aa322ad7a48ac`
 - Declared operations (44):
 
   - `DELETE /v1/kill-switches`

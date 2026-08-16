@@ -14,6 +14,7 @@ from autonoesis_adapters import (
     InMemoryPlatformStore,
     InMemoryTemporaryAuthorizationStore,
     OIDCSettings,
+    OPAImprovementTargetPolicy,
     PostgreSQLPlatformStore,
     PostgreSQLTemporaryAuthorizationStore,
     SqlKillSwitchStore,
@@ -31,7 +32,10 @@ from autonoesis_application import (
     EvaluationDecision,
     GoalExecutionApplication,
     IdentityContext,
+    ImprovementTargetPolicy,
+    ProposeImprovement,
     RecordNotFound,
+    RegisterCandidate,
     RequestRun,
     TenantBoundaryViolation,
 )
@@ -47,7 +51,6 @@ from autonoesis_domain import (
     Evidence,
     ExecutionMode,
     GoalContract,
-    ImprovementProposal,
     ImprovementTarget,
     LoopPolicy,
     RiskTier,
@@ -153,6 +156,9 @@ class CandidateRequest(StrictRequest):
     proposal_id: UUID
     baseline_version_id: UUID
     artifact_ref: str
+    artifact_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    suite_id: str = Field(min_length=1, max_length=200)
+    suite_version: str = Field(min_length=1, max_length=64)
 
 
 class EvaluationRequest(StrictRequest):
@@ -205,7 +211,9 @@ PlatformStore = InMemoryPlatformStore | PostgreSQLPlatformStore
 
 
 def build_app(
-    store: PlatformStore | None = None, platform_kill_switch: Any | None = None
+    store: PlatformStore | None = None,
+    platform_kill_switch: Any | None = None,
+    improvement_policy: ImprovementTargetPolicy | None = None,
 ) -> FastAPI:
     platform_store = store or InMemoryPlatformStore()
     breakglass_engine = None
@@ -272,7 +280,7 @@ def build_app(
         return app.state.kill_switch
 
     execution = GoalExecutionApplication(platform_store.repository, platform_store)
-    evolution = CandidateLifecycleService(platform_store)
+    evolution = CandidateLifecycleService(platform_store, improvement_policy)
 
     @app.exception_handler(RecordNotFound)
     @app.exception_handler(TenantBoundaryViolation)
@@ -941,18 +949,18 @@ def build_app(
     async def create_proposal(
         body: ImprovementProposalRequest, context: Identity, _: WriteKey
     ) -> dict[str, Any]:
-        proposal = ImprovementProposal(
-            tenant_id=context.tenant_id,
-            target=body.target,
-            target_version_id=body.target_version_id,
-            evidence_refs=body.evidence_refs,
-            diagnosis=body.diagnosis,
-            proposed_change=body.proposed_change,
-            validation_suite_id=body.validation_suite_id,
-            rollback_plan=body.rollback_plan,
-            proposer_id=str(context.principal_id),
+        proposal = await evolution.propose_improvement(
+            context,
+            ProposeImprovement(
+                target=body.target.value,
+                target_version_id=body.target_version_id,
+                evidence_refs=body.evidence_refs,
+                diagnosis=body.diagnosis,
+                proposed_change=body.proposed_change,
+                validation_suite_id=body.validation_suite_id,
+                rollback_plan=body.rollback_plan,
+            ),
         )
-        await platform_store.add_proposal(proposal)
         return {"proposal_id": proposal.proposal_id, "target": proposal.target}
 
     @app.get("/v1/improvement-proposals", tags=["improvement"])
@@ -967,15 +975,17 @@ def build_app(
         body: CandidateRequest, context: Identity, _: WriteKey
     ) -> dict[str, Any]:
         require_role(context, {"candidate_generator"})
-        await platform_store.get_proposal(context.tenant_id, body.proposal_id)
-        candidate = CandidateVersion(
-            tenant_id=context.tenant_id,
-            proposal_id=body.proposal_id,
-            baseline_version_id=body.baseline_version_id,
-            artifact_ref=body.artifact_ref,
-            generator_id=str(context.principal_id),
+        candidate = await evolution.register_candidate(
+            context,
+            RegisterCandidate(
+                proposal_id=body.proposal_id,
+                baseline_version_id=body.baseline_version_id,
+                artifact_ref=body.artifact_ref,
+                artifact_digest=body.artifact_digest,
+                suite_id=body.suite_id,
+                suite_version=body.suite_version,
+            ),
         )
-        await platform_store.add_candidate(candidate)
         return candidate_view(candidate)
 
     @app.post("/v1/candidates/{candidate_id}/evaluate", tags=["improvement"])
@@ -1115,6 +1125,10 @@ def candidate_view(candidate: CandidateVersion) -> dict[str, Any]:
         "proposal_id": candidate.proposal_id,
         "baseline_version_id": candidate.baseline_version_id,
         "artifact_ref": candidate.artifact_ref,
+        "artifact_digest": candidate.artifact_digest,
+        "suite_id": candidate.suite_id,
+        "suite_version": candidate.suite_version,
+        "generator_id": candidate.generator_id,
         "status": candidate.status,
     }
 
@@ -1177,4 +1191,15 @@ def configured_store() -> PlatformStore:
     return store
 
 
-app = build_app(configured_store())
+def configured_improvement_policy() -> ImprovementTargetPolicy | None:
+    """Second prohibition layer: OPA denies forbidden targets independently."""
+    opa_url = os.getenv("AUTONOESIS_OPA_URL")
+    if not opa_url:
+        return None
+    return OPAImprovementTargetPolicy(opa_url, "opa-improvement@1")
+
+
+app = build_app(
+    configured_store(),
+    improvement_policy=configured_improvement_policy(),
+)

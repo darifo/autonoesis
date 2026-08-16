@@ -25,6 +25,7 @@ from autonoesis_adapters.governance import (
     DevelopmentPolicy,
     OIDCSettings,
     OIDCValidator,
+    OPAImprovementTargetPolicy,
     OPAPolicyAdapter,
     cached_oidc_validator,
 )
@@ -72,6 +73,7 @@ __all__ = [
     "MinioEvidenceStore",
     "OIDCSettings",
     "OIDCValidator",
+    "OPAImprovementTargetPolicy",
     "OPAPolicyAdapter",
     "ObjectStorePort",
     "OpenAICompatibleAdapter",

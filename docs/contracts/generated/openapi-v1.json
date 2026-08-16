@@ -149,6 +149,11 @@
       "CandidateRequest": {
         "additionalProperties": false,
         "properties": {
+          "artifact_digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Artifact Digest",
+            "type": "string"
+          },
           "artifact_ref": {
             "title": "Artifact Ref",
             "type": "string"
@@ -162,12 +167,27 @@
             "format": "uuid",
             "title": "Proposal Id",
             "type": "string"
+          },
+          "suite_id": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Suite Id",
+            "type": "string"
+          },
+          "suite_version": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Suite Version",
+            "type": "string"
           }
         },
         "required": [
           "proposal_id",
           "baseline_version_id",
-          "artifact_ref"
+          "artifact_ref",
+          "artifact_digest",
+          "suite_id",
+          "suite_version"
         ],
         "title": "CandidateRequest",
         "type": "object"

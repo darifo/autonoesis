@@ -14,6 +14,7 @@ from autonoesis_adapters import (
     InMemoryDelegationStore,
     InMemoryGatewayAudit,
     JsonSchemaValidator,
+    OPAImprovementTargetPolicy,
     OPAPolicyAdapter,
     StaticToolCatalog,
 )
@@ -321,3 +322,18 @@ async def test_real_opa_denies_l4_by_default_and_requires_write_approval() -> No
     assert write_decision.requires_approval is True
     assert privileged_decision.allowed is False
     assert read_decision.policy_version == "opa-action@1"
+
+
+@pytest.mark.skipif(
+    not os.getenv("AUTONOESIS_TEST_OPA_URL"),
+    reason="requires an explicitly configured OPA component endpoint",
+)
+@pytest.mark.asyncio
+async def test_real_opa_denies_forbidden_improvement_targets() -> None:
+    policy = OPAImprovementTargetPolicy(os.environ["AUTONOESIS_TEST_OPA_URL"], "opa-improvement@1")
+
+    await policy.assert_target_allowed("agent_instruction")
+    await policy.assert_target_allowed("skill")
+    for forbidden in ("identity", "kill_switch", "policy_root"):
+        with pytest.raises(PermissionError, match="denied by policy"):
+            await policy.assert_target_allowed(forbidden)

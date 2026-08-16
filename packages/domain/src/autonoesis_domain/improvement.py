@@ -20,6 +20,29 @@ class ImprovementTarget(StrEnum):
     MODEL_ROUTE = "model_route"
 
 
+# ADR-0011: the evolution pipeline must never touch governance roots. These
+# targets stay outside Improvable state even if a future enum widens the
+# allowed set, so the prohibition survives schema and API drift.
+FORBIDDEN_IMPROVEMENT_TARGETS: frozenset[str] = frozenset(
+    {
+        "identity",
+        "delegation",
+        "tenant_isolation",
+        "policy_root",
+        "audit_retention",
+        "kill_switch",
+        "production_code",
+        "infrastructure",
+    }
+)
+
+
+def require_improvement_target_allowed(raw_target: str) -> None:
+    """Reject forbidden improvement targets before any enum coercion."""
+    if raw_target.strip().lower() in FORBIDDEN_IMPROVEMENT_TARGETS:
+        raise PermissionError(f"improvement target is forbidden: {raw_target.strip().lower()}")
+
+
 class CandidateStatus(StrEnum):
     DRAFT = "draft"
     EVALUATING = "evaluating"
@@ -92,6 +115,9 @@ class CandidateVersion:
     proposal_id: UUID
     baseline_version_id: UUID
     artifact_ref: str
+    artifact_digest: str
+    suite_id: str
+    suite_version: str
     generator_id: str
     candidate_id: UUID = field(default_factory=uuid4)
     status: CandidateStatus = CandidateStatus.DRAFT
@@ -103,6 +129,12 @@ class CandidateVersion:
     def __post_init__(self) -> None:
         if not self.artifact_ref.strip() or not self.generator_id.strip():
             raise ValueError("candidate artifact and generator are required")
+        if len(self.artifact_digest) != 64 or any(
+            char not in "0123456789abcdef" for char in self.artifact_digest
+        ):
+            raise ValueError("candidate artifact digest must be a lowercase sha256 hex digest")
+        if not self.suite_id.strip() or not self.suite_version.strip():
+            raise ValueError("candidate suite id and version are required")
         if self.optimistic_version < 1:
             raise ValueError("candidate optimistic version must be positive")
 

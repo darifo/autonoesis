@@ -4,6 +4,7 @@ from uuid import uuid4
 
 import pytest
 from autonoesis_domain import (
+    FORBIDDEN_IMPROVEMENT_TARGETS,
     Action,
     ActionExecutionEnvelope,
     ApprovalRequest,
@@ -91,7 +92,9 @@ def test_run_cannot_skip_pending_to_success() -> None:
 
 
 def test_candidate_requires_evaluation_and_approval_before_stable() -> None:
-    candidate = CandidateVersion(uuid4(), uuid4(), uuid4(), "s3://candidate", "generator")
+    candidate = CandidateVersion(
+        uuid4(), uuid4(), uuid4(), "s3://candidate", "a" * 64, "suite-1", "1", "generator"
+    )
     approved = (
         candidate.transition_to(CandidateStatus.EVALUATING)
         .transition_to(CandidateStatus.AWAITING_APPROVAL)
@@ -264,3 +267,25 @@ def test_execution_envelope_rejects_tampered_action_digest() -> None:
     assert envelope.action_digest == action.canonical_digest
     with pytest.raises(ValueError, match="does not match"):
         replace(envelope, action_digest="b" * 64)
+
+
+def test_candidate_requires_an_immutable_artifact_digest_and_fixed_suite() -> None:
+    base = (uuid4(), uuid4(), uuid4(), "s3://candidate", "a" * 64, "suite-1", "1", "generator")
+    with pytest.raises(ValueError, match="digest"):
+        CandidateVersion(*base[:4], "not-a-digest", *base[5:])
+    with pytest.raises(ValueError, match="digest"):
+        CandidateVersion(*base[:4], "A" * 64, *base[5:])
+    with pytest.raises(ValueError, match="suite"):
+        CandidateVersion(*base[:5], "  ", *base[6:])
+    assert CandidateVersion(*base).artifact_digest == "a" * 64
+
+
+@pytest.mark.parametrize(
+    "target", sorted(FORBIDDEN_IMPROVEMENT_TARGETS), ids=sorted(FORBIDDEN_IMPROVEMENT_TARGETS)
+)
+def test_forbidden_improvement_targets_are_rejected_before_enum_coercion(target: str) -> None:
+    from autonoesis_domain import require_improvement_target_allowed
+
+    with pytest.raises(PermissionError, match="forbidden"):
+        require_improvement_target_allowed(target)
+    require_improvement_target_allowed("agent_instruction")

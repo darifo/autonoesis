@@ -122,3 +122,32 @@ class OPAPolicyAdapter:
             reason=str(result.get("reason", "OPA policy decision")),
             policy_version=self._policy_version,
         )
+
+
+class OPAImprovementTargetPolicy:
+    """Consults the improvement policy before any proposal enters the pipeline.
+
+    Implements the Application `ImprovementTargetPolicy` port. A missing OPA
+    decision or transport failure denies the target: the policy layer fails
+    closed alongside the in-process Application guard.
+    """
+
+    def __init__(self, base_url: str, policy_version: str) -> None:
+        self._base_url = base_url.rstrip("/")
+        if not policy_version.strip():
+            raise ValueError("OPA policy version must be immutable and non-empty")
+        self._policy_version = policy_version
+
+    async def assert_target_allowed(self, raw_target: str) -> None:
+        payload = {"input": {"target": raw_target, "policy_version": self._policy_version}}
+        async with httpx.AsyncClient(timeout=5) as client:
+            response = await client.post(
+                f"{self._base_url}/v1/data/autonoesis/improvement/allow", json=payload
+            )
+            response.raise_for_status()
+        result = response.json().get("result")
+        if not isinstance(result, dict) or not result.get("allowed", False):
+            reason = (
+                result.get("reason") if isinstance(result, dict) else None
+            ) or "improvement policy decision is missing"
+            raise PermissionError(f"improvement target denied by policy: {reason}")

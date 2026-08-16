@@ -69,7 +69,10 @@ The evolution pipeline (ImprovementProposal → Candidate → Evaluation → App
 
 **Controls**:
 - `ImprovementTarget` enum limits allowed targets to: Agent Instruction, Skill, Prompt Asset, Model Route.
-- Application layer rejects proposals targeting forbidden categories.
+- Application layer rejects forbidden target strings before enum coercion, at proposal creation
+  and again at Candidate registration (ADR-0025).
+- An independent OPA policy (`infra/policies/improvement.rego`) denies the same targets and fails
+  closed when configured via `AUTONOESIS_OPA_URL`.
 - Architecture tests verify forbidden categories are not evolvable.
 - Infrastructure changes follow existing SDLC/IaC processes, not the evolution pipeline.
 

@@ -140,6 +140,9 @@ def test_generic_goal_run_and_evolution_api() -> None:
             "proposal_id": proposal.json()["proposal_id"],
             "baseline_version_id": agent.json()["agent_version_id"],
             "artifact_ref": "artifact://agent/v2",
+            "artifact_digest": "d" * 64,
+            "suite_id": "delivery-suite",
+            "suite_version": "1",
         },
         headers={**headers(tenant_id, uuid4()), "Idempotency-Key": "candidate-1"},
     )

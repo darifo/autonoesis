@@ -15,7 +15,7 @@
 
 当前 P0 参考纵向切片、PostgreSQL 权威存储、HTTP/Application 用例、Governed Tool Gateway、
 Temporal 耐久编排、Evidence/Outcome/Audit 可信链，以及 P1-01～03 的多租户、身份和可信
-Context/Memory 达到 `integrated`。P1-04 Evaluation 完成 6/9 个实施项，仍为 `unit-tested`；
+Context/Memory 达到 `integrated`。P1-04 Evaluation 完成 8/9 个实施项，仍为 `unit-tested`；
 没有任何能力达到 `production-proven`。
 
 ## 当前矩阵
@@ -32,7 +32,7 @@ Context/Memory 达到 `integrated`。P1-04 Evaluation 完成 6/9 个实施项，
 | Identity/Policy/Approval | `integrated` | P1-02 进程级 JWKS、严格 OIDC Claims、PostgreSQL 即时委托撤销、双 Principal 高风险审批、进化职责分离和 Break-glass 临时授权/告警/复核；真实 OPA Worker 决策 | 生产企业 IdP/SCIM、密钥轮换与故障、工作负载身份联邦和 SOC 告警演练 |
 | Evidence/Outcome/Audit | `integrated` | CI PostgreSQL 17 + KMS MinIO：预写入准入、Version/Object Lock、Saga 恢复、权威回读 Outcome、并发摘要审计链、真实 Audit Ref 和删除墓碑/证明 | 生产 KMS/跨区复制、真实业务 Authority、WORM 导出、保留/删除长期演练 |
 | Context/Environment/Memory | `integrated` | P1-03 多维 Context ACL、可复现 Snapshot 摘要、冲突/Injection 信号、Memory Write Gate；PostgreSQL Ledger、递归删除传播和向量投影清理 | 生产来源 Connector/DLP、规模化索引重建和数据主体删除演练 |
-| Evaluation | `unit-tested` | Harness 执行固定 Subject Version；Trial 完整保存固定条件与结果；五级 Grader 严格顺序/独立身份/短路门禁；隐藏与生产回放 Case Catalog 隔离；权威 JSON 无损持久化；重复 Trial 以 Wilson 置信下界统计门禁，Invalid 不计入绿色率与样本 | Grader 真实后端、Candidate/Evidence 真实组件集成和长期攻击测试 |
+| Evaluation | `unit-tested` | Harness 执行固定 Subject Version；Trial 完整保存固定条件与结果；五级 Grader 严格顺序/独立身份/短路门禁；隐藏与生产回放 Case Catalog 隔离；权威 JSON 无损持久化；重复 Trial 以 Wilson 置信下界统计门禁，Invalid 不计入绿色率与样本；Candidate 固定引用 Baseline/Digest/Suite/Generator；禁止目标 Application+OPA 双层拒绝 | Grader 真实后端、评估/审批结果持久化与 Evidence 组件集成和长期攻击测试 |
 | Shadow/Canary/Rollback | `unit-tested` | 持久化 Deployment/Release 与 Active Stable 唯一约束；晋升算法测试 | 真实双跑/分流、观察窗口和 Release Executor |
 | Cockpit | `unit-tested` | CI Vitest/typecheck/build/Playwright；静态样例和成熟度防误报测试 | 真实 API 数据、权限操作和生成 Client 接入 |
 | 可观测性/FinOps/SLO | `modeled` / 部分 `unit-tested` | 配置骨架和纯计算测试 | 真实 Trace/Metric/Ledger、告警和运行演练 |
