@@ -3,6 +3,7 @@
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from enum import StrEnum
+from typing import Any
 from uuid import UUID, uuid4
 
 from autonoesis_domain.transitions import (
@@ -57,6 +58,37 @@ class DeploymentStatus(StrEnum):
     STABLE = "stable"
     FAILED = "failed"
     ROLLED_BACK = "rolled_back"
+
+
+# Decisions a persisted evaluation record may carry. Mirrors the confidence
+# gate outcomes without coupling the domain package to the evaluation package.
+CANDIDATE_EVALUATION_DECISIONS: frozenset[str] = frozenset(
+    {"met", "not_met", "insufficient_sample"}
+)
+
+
+@dataclass(frozen=True, slots=True)
+class CandidateEvaluation:
+    """Immutable evidence record binding a Candidate to its complete evaluation."""
+
+    tenant_id: UUID
+    candidate_id: UUID
+    decision: str
+    trial_ids: tuple[UUID, ...]
+    assessment: dict[str, Any]
+    grader_principal_id: str
+    evaluation_id: UUID = field(default_factory=uuid4)
+    decided_at: datetime | None = None
+
+    def __post_init__(self) -> None:
+        if self.decision not in CANDIDATE_EVALUATION_DECISIONS:
+            raise ValueError("candidate evaluation decision is not a known gate outcome")
+        if not self.trial_ids:
+            raise ValueError("candidate evaluation must reference at least one Trial")
+        if not self.assessment:
+            raise ValueError("candidate evaluation requires the assessment payload")
+        if not self.grader_principal_id.strip():
+            raise ValueError("candidate evaluation requires the grading principal")
 
 
 _CANDIDATE_TRANSITIONS: dict[CandidateStatus, frozenset[CandidateStatus]] = {
@@ -125,6 +157,7 @@ class CandidateVersion:
     transitions: tuple[StateTransition, ...] = ()
     grader_principal_id: str | None = None
     approver_principal_id: str | None = None
+    approval_reason: str | None = None
 
     def __post_init__(self) -> None:
         if not self.artifact_ref.strip() or not self.generator_id.strip():
@@ -190,13 +223,24 @@ class CandidateVersion:
         )
 
     def record_approval(
-        self, target: CandidateStatus, *, approver_principal_id: UUID
+        self,
+        target: CandidateStatus,
+        *,
+        approver_principal_id: UUID,
+        reason: str,
     ) -> "CandidateVersion":
+        if not reason.strip():
+            raise ValueError("candidate approval requires a recorded rationale")
         if str(approver_principal_id) in {self.generator_id, self.grader_principal_id}:
             raise PermissionError("candidate approval requires an independent principal")
         return replace(
-            self.transition_to(target, actor_id=approver_principal_id, reason="approval recorded"),
+            self.transition_to(
+                target,
+                actor_id=approver_principal_id,
+                reason=f"approval recorded: {reason.strip()}",
+            ),
             approver_principal_id=str(approver_principal_id),
+            approval_reason=reason.strip(),
         )
 
 

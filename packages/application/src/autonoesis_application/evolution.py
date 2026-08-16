@@ -1,10 +1,11 @@
 """Governed candidate evaluation, approval, promotion, and rollback services."""
 
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Any, Protocol
 from uuid import UUID
 
 from autonoesis_domain import (
+    CandidateEvaluation,
     CandidateStatus,
     CandidateVersion,
     Deployment,
@@ -12,7 +13,13 @@ from autonoesis_domain import (
     ImprovementProposal,
     ImprovementTarget,
     Release,
+    Trial,
     require_improvement_target_allowed,
+)
+from autonoesis_evaluation import (
+    RepeatedTrialPolicy,
+    TrialConfidenceAssessment,
+    TrialConfidenceGate,
 )
 
 from autonoesis_application.platform import IdentityContext, RecordNotFound
@@ -38,6 +45,18 @@ class EvolutionRepository(Protocol):
     async def add_release(self, release: Release) -> None: ...
 
     async def get_active_release(self, tenant_id: UUID, candidate_id: UUID) -> Release: ...
+
+    async def add_trial(self, trial: Trial) -> None: ...
+
+    async def list_trials_for_candidate(
+        self, tenant_id: UUID, candidate_id: UUID
+    ) -> tuple[Trial, ...]: ...
+
+    async def add_evaluation_record(self, record: CandidateEvaluation) -> None: ...
+
+    async def list_evaluation_records(
+        self, tenant_id: UUID, candidate_id: UUID
+    ) -> tuple[CandidateEvaluation, ...]: ...
 
 
 class ImprovementTargetPolicy(Protocol):
@@ -69,11 +88,21 @@ class RegisterCandidate:
     suite_version: str
 
 
-@dataclass(frozen=True, slots=True)
-class EvaluationDecision:
-    passed: bool
-    score: float
-    threshold: float
+def assessment_payload(assessment: TrialConfidenceAssessment) -> dict[str, Any]:
+    return {
+        "decision": assessment.decision.value,
+        "passed_trials": assessment.passed_trials,
+        "failed_trials": assessment.failed_trials,
+        "invalid_trials": assessment.invalid_trials,
+        "valid_trials": assessment.valid_trials,
+        "pass_rate": assessment.pass_rate,
+        "lower_bound": assessment.lower_bound,
+        "upper_bound": assessment.upper_bound,
+        "confidence_level": assessment.policy.confidence_level,
+        "pass_threshold": assessment.policy.pass_threshold,
+        "min_valid_trials": assessment.policy.min_valid_trials,
+        "rationale": assessment.rationale,
+    }
 
 
 class CandidateLifecycleService:
@@ -142,28 +171,62 @@ class CandidateLifecycleService:
         await self._repository.save_candidate(candidate)
         return candidate
 
-    async def record_evaluation(
+    async def complete_evaluation(
         self,
         identity: IdentityContext,
         candidate_id: UUID,
-        decision: EvaluationDecision,
-    ) -> CandidateVersion:
+        policy: RepeatedTrialPolicy,
+    ) -> tuple[CandidateVersion, CandidateEvaluation]:
+        """Gate promotion on persisted Trials; caller-supplied outcomes are not accepted."""
         candidate = await self._repository.get_candidate(identity.tenant_id, candidate_id)
-        passed = decision.passed and decision.score >= decision.threshold
-        target = CandidateStatus.AWAITING_APPROVAL if passed else CandidateStatus.REJECTED
+        trials = await self._repository.list_trials_for_candidate(identity.tenant_id, candidate_id)
+        for trial in trials:
+            if trial.subject_version_id != candidate_id:
+                raise ValueError(
+                    "candidate evaluation trials must execute the candidate itself: "
+                    f"trial {trial.trial_id} executed {trial.subject_version_id}"
+                )
+            if (trial.suite_id, trial.suite_version) != (
+                candidate.suite_id,
+                candidate.suite_version,
+            ):
+                raise ValueError(
+                    "candidate evaluation trials must use the candidate's fixed suite: "
+                    f"trial {trial.trial_id} used {trial.suite_id}@{trial.suite_version}"
+                )
+        assessment = TrialConfidenceGate(policy).assess(trials)
+        record = CandidateEvaluation(
+            tenant_id=identity.tenant_id,
+            candidate_id=candidate_id,
+            decision=assessment.decision.value,
+            trial_ids=tuple(trial.trial_id for trial in trials),
+            assessment=assessment_payload(assessment),
+            grader_principal_id=str(identity.principal_id),
+            decided_at=None,
+        )
+        await self._repository.add_evaluation_record(record)
+        if assessment.met:
+            target = CandidateStatus.AWAITING_APPROVAL
+        elif assessment.policy.min_valid_trials > assessment.valid_trials:
+            raise ValueError(f"candidate evaluation evidence is incomplete: {assessment.rationale}")
+        else:
+            target = CandidateStatus.REJECTED
         candidate = candidate.record_evaluation(target, grader_principal_id=identity.principal_id)
         await self._repository.save_candidate(candidate)
-        return candidate
+        return candidate, record
 
     async def decide(
         self,
         identity: IdentityContext,
         candidate_id: UUID,
         approved: bool,
+        reason: str,
     ) -> CandidateVersion:
         candidate = await self._repository.get_candidate(identity.tenant_id, candidate_id)
         target = CandidateStatus.APPROVED if approved else CandidateStatus.REJECTED
-        candidate = candidate.record_approval(target, approver_principal_id=identity.principal_id)
+        candidate = candidate.record_approval(
+            target, approver_principal_id=identity.principal_id, reason=reason
+        )
         await self._repository.save_candidate(candidate)
         return candidate
 

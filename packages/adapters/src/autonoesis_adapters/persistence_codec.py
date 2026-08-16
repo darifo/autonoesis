@@ -14,6 +14,7 @@ from autonoesis_domain import (
     ApprovalStatus,
     BudgetAmount,
     BudgetUnit,
+    CandidateEvaluation,
     CandidateStatus,
     CandidateVersion,
     CompensationCapability,
@@ -559,6 +560,7 @@ def candidate_payload(item: CandidateVersion) -> dict[str, Any]:
         "transitions": [transition_payload(value) for value in item.transitions],
         "grader_principal_id": item.grader_principal_id,
         "approver_principal_id": item.approver_principal_id,
+        "approval_reason": item.approval_reason,
     }
 
 
@@ -579,6 +581,30 @@ def candidate_from_row(row: dict[str, Any]) -> CandidateVersion:
         transitions=transitions_from(definition.get("transitions")),
         grader_principal_id=definition.get("grader_principal_id"),
         approver_principal_id=definition.get("approver_principal_id"),
+        approval_reason=definition.get("approval_reason"),
+    )
+
+
+def evaluation_payload(item: CandidateEvaluation) -> dict[str, Any]:
+    return {
+        "decision": item.decision,
+        "trial_ids": [str(trial_id) for trial_id in item.trial_ids],
+        "assessment": item.assessment,
+        "grader_principal_id": item.grader_principal_id,
+        "decided_at": item.decided_at.isoformat() if item.decided_at else None,
+    }
+
+
+def evaluation_from_row(row: dict[str, Any]) -> CandidateEvaluation:
+    return CandidateEvaluation(
+        tenant_id=UUID(row["tenant_id"]),
+        candidate_id=UUID(row["candidate_id"]),
+        decision=row["decision"],
+        trial_ids=tuple(UUID(trial_id) for trial_id in row["trial_ids"]),
+        assessment=row["assessment"],
+        grader_principal_id=row["grader_principal_id"],
+        evaluation_id=UUID(row["id"]),
+        decided_at=row.get("created_at"),
     )
 
 
@@ -663,6 +689,7 @@ def trial_from_row(row: dict[str, Any]) -> Trial:
         subject_version_id=UUID(row["subject_version_id"]),
         harness_version=row["harness_version"],
         trial_id=UUID(row["id"]),
+        candidate_id=UUID(row["candidate_id"]) if row.get("candidate_id") else None,
         status=TrialStatus(row["status"]),
         random_seed=payload.get("random_seed"),
         case_results=tuple(

@@ -29,7 +29,6 @@ from autonoesis_application import (
     ConcurrencyConflict,
     CreateGoal,
     DecideApproval,
-    EvaluationDecision,
     GoalExecutionApplication,
     IdentityContext,
     ImprovementTargetPolicy,
@@ -59,6 +58,7 @@ from autonoesis_domain import (
     TemporaryAuthorization,
     Trial,
 )
+from autonoesis_evaluation import RepeatedTrialPolicy
 from autonoesis_governance import InMemoryKillSwitchStore, KillSwitchDimension
 from autonoesis_runtime import IsolationRiskPool, TenantNamespaces
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
@@ -161,14 +161,9 @@ class CandidateRequest(StrictRequest):
     suite_version: str = Field(min_length=1, max_length=64)
 
 
-class EvaluationRequest(StrictRequest):
-    passed: bool
-    score: float = Field(ge=0, le=1)
-    threshold: float = Field(ge=0, le=1)
-
-
 class CandidateDecisionRequest(StrictRequest):
     approved: bool
+    reason: str = Field(min_length=1, max_length=2000)
 
 
 class ApprovalDecisionRequest(StrictRequest):
@@ -214,6 +209,7 @@ def build_app(
     store: PlatformStore | None = None,
     platform_kill_switch: Any | None = None,
     improvement_policy: ImprovementTargetPolicy | None = None,
+    evaluation_policy: RepeatedTrialPolicy | None = None,
 ) -> FastAPI:
     platform_store = store or InMemoryPlatformStore()
     breakglass_engine = None
@@ -281,6 +277,7 @@ def build_app(
 
     execution = GoalExecutionApplication(platform_store.repository, platform_store)
     evolution = CandidateLifecycleService(platform_store, improvement_policy)
+    resolved_evaluation_policy = evaluation_policy or configured_evaluation_policy()
 
     @app.exception_handler(RecordNotFound)
     @app.exception_handler(TenantBoundaryViolation)
@@ -990,23 +987,31 @@ def build_app(
 
     @app.post("/v1/candidates/{candidate_id}/evaluate", tags=["improvement"])
     async def evaluate_candidate(
-        candidate_id: UUID, body: EvaluationRequest, context: Identity, _: WriteKey
+        candidate_id: UUID, context: Identity, _: WriteKey
     ) -> dict[str, Any]:
+        """Gate on persisted Trials; grader-supplied outcomes are not accepted."""
         require_role(context, {"grader"})
         await evolution.submit_for_evaluation(context.tenant_id, candidate_id)
-        candidate = await evolution.record_evaluation(
-            context,
-            candidate_id,
-            EvaluationDecision(body.passed, body.score, body.threshold),
+        candidate, record = await evolution.complete_evaluation(
+            context, candidate_id, resolved_evaluation_policy
         )
-        return candidate_view(candidate)
+        view = candidate_view(candidate)
+        view["evaluation"] = {
+            "evaluation_id": record.evaluation_id,
+            "decision": record.decision,
+            "trial_ids": [str(trial_id) for trial_id in record.trial_ids],
+            "assessment": record.assessment,
+        }
+        return view
 
     @app.post("/v1/candidates/{candidate_id}/decision", tags=["improvement"])
     async def decide_candidate(
         candidate_id: UUID, body: CandidateDecisionRequest, context: Identity, _: WriteKey
     ) -> dict[str, Any]:
         require_role(context, {"approver"})
-        return candidate_view(await evolution.decide(context, candidate_id, body.approved))
+        return candidate_view(
+            await evolution.decide(context, candidate_id, body.approved, body.reason)
+        )
 
     @app.post("/v1/candidates/{candidate_id}/promote", tags=["improvement"])
     async def promote_candidate(
@@ -1199,7 +1204,17 @@ def configured_improvement_policy() -> ImprovementTargetPolicy | None:
     return OPAImprovementTargetPolicy(opa_url, "opa-improvement@1")
 
 
+def configured_evaluation_policy() -> RepeatedTrialPolicy:
+    """Governed confidence policy; grader requests cannot weaken it."""
+    return RepeatedTrialPolicy(
+        pass_threshold=float(os.getenv("AUTONOESIS_EVALUATION_PASS_THRESHOLD", "0.8")),
+        confidence_level=float(os.getenv("AUTONOESIS_EVALUATION_CONFIDENCE_LEVEL", "0.95")),
+        min_valid_trials=int(os.getenv("AUTONOESIS_EVALUATION_MIN_VALID_TRIALS", "10")),
+    )
+
+
 app = build_app(
     configured_store(),
     improvement_policy=configured_improvement_policy(),
+    evaluation_policy=configured_evaluation_policy(),
 )

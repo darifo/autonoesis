@@ -13,7 +13,7 @@ from autonoesis_adapters import (
     JsonSchemaValidator,
     StaticToolCatalog,
 )
-from autonoesis_application import CandidateLifecycleService, EvaluationDecision, IdentityContext
+from autonoesis_application import CandidateLifecycleService, IdentityContext
 from autonoesis_domain import (
     Action,
     ActionStatus,
@@ -22,7 +22,11 @@ from autonoesis_domain import (
     CandidateVersion,
     JsonObject,
     RiskLevel,
+    Trial,
+    TrialCaseResult,
+    TrialStatus,
 )
+from autonoesis_evaluation import RepeatedTrialPolicy
 from autonoesis_governance import InMemoryKillSwitchStore
 from autonoesis_runtime import (
     AuthorizationContext,
@@ -159,18 +163,48 @@ async def test_candidate_generator_cannot_grade_its_own_candidate() -> None:
     await store.add_candidate(candidate)
     service = CandidateLifecycleService(store)
     await service.submit_for_evaluation(candidate.tenant_id, candidate.candidate_id)
+    for _ in range(16):
+        await store.add_trial(
+            Trial(
+                tenant_id=candidate.tenant_id,
+                suite_id=candidate.suite_id,
+                suite_version=candidate.suite_version,
+                subject_version_id=candidate.candidate_id,
+                harness_version="2",
+                status=TrialStatus.PASSED,
+                case_results=(
+                    TrialCaseResult(
+                        case_id="c1",
+                        input_payload={},
+                        output_payload={"answer": 42},
+                        subject_executed=True,
+                        executor_id="subject-runtime",
+                        evidence_refs=("evidence://execution/1",),
+                        environment_ref="environment://fixture/1",
+                    ),
+                ),
+                candidate_id=candidate.candidate_id,
+            )
+        )
+    policy = RepeatedTrialPolicy(pass_threshold=0.8, min_valid_trials=3)
     with pytest.raises(PermissionError, match="grade"):
-        await service.record_evaluation(
+        await service.complete_evaluation(
             IdentityContext(candidate.tenant_id, uuid4(), generator, frozenset({"grader"})),
             candidate.candidate_id,
-            EvaluationDecision(True, 1, 0.8),
+            policy,
         )
-    evaluated = await service.record_evaluation(
+    evaluated, record = await service.complete_evaluation(
         IdentityContext(candidate.tenant_id, uuid4(), uuid4(), frozenset({"grader"})),
         candidate.candidate_id,
-        EvaluationDecision(True, 0.9, 0.8),
+        policy,
     )
     assert evaluated.status is CandidateStatus.AWAITING_APPROVAL
+    assert record.decision == "met"
+    persisted = await store.list_evaluation_records(candidate.tenant_id, candidate.candidate_id)
+    assert [item.decision for item in persisted] == ["met", "met"]
     identity = IdentityContext(candidate.tenant_id, uuid4(), uuid4(), frozenset({"approver"}))
-    approved = await service.decide(identity, candidate.candidate_id, True)
+    approved = await service.decide(
+        identity, candidate.candidate_id, True, "independent review passed"
+    )
     assert approved.status is CandidateStatus.APPROVED
+    assert approved.approval_reason == "independent review passed"

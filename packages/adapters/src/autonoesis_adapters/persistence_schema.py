@@ -391,9 +391,30 @@ evaluation_trials = tenant_table(
     Column("suite_version", String(64), nullable=False),
     Column("subject_version_id", String(36), nullable=False),
     Column("harness_version", String(200), nullable=False),
+    Column("candidate_id", String(36), nullable=True),
     Column("status", String(32), nullable=False),
     Column("result", JSON, nullable=False),
+    tenant_reference("candidate_id", "candidates"),
+    Index(
+        "ix_evaluation_trials_candidate",
+        "tenant_id",
+        "candidate_id",
+    ),
     status_check("pending", "running", "passed", "failed", "invalid"),
+)
+candidate_evaluations = tenant_table(
+    "candidate_evaluations",
+    Column("candidate_id", String(36), nullable=False),
+    Column("decision", String(32), nullable=False),
+    Column("trial_ids", JSON, nullable=False),
+    Column("assessment", JSON, nullable=False),
+    Column("grader_principal_id", String(300), nullable=False),
+    tenant_reference("candidate_id", "candidates"),
+    Index("ix_candidate_evaluations_candidate", "tenant_id", "candidate_id"),
+    CheckConstraint(
+        "decision in ('met', 'not_met', 'insufficient_sample')",
+        name="candidates_evaluation_decision_check",
+    ),
 )
 environment_facts = tenant_table(
     "environment_facts",

@@ -8,6 +8,7 @@ from autonoesis_capability import CapabilityPackManifest, GoalTypeManifest
 from autonoesis_domain import (
     AgentVersion,
     ApprovalRequest,
+    CandidateEvaluation,
     CandidateVersion,
     Deployment,
     Evidence,
@@ -157,6 +158,19 @@ class PostgreSQLPlatformStore:
 
     async def list_trials(self, tenant_id: UUID) -> tuple[Trial, ...]:
         return await self.repository.list_trials(tenant_id)
+
+    async def list_trials_for_candidate(
+        self, tenant_id: UUID, candidate_id: UUID
+    ) -> tuple[Trial, ...]:
+        return await self.repository.list_trials_for_candidate(tenant_id, candidate_id)
+
+    async def add_evaluation_record(self, record: CandidateEvaluation) -> None:
+        await self.repository.add_evaluation_record(record)
+
+    async def list_evaluation_records(
+        self, tenant_id: UUID, candidate_id: UUID
+    ) -> tuple[CandidateEvaluation, ...]:
+        return await self.repository.list_evaluation_records(tenant_id, candidate_id)
 
     async def add_proposal(self, proposal: ImprovementProposal) -> None:
         await self.repository.add_proposal(proposal)

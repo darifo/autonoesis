@@ -23,6 +23,7 @@ from autonoesis_domain import (
     AgentVersion,
     ApprovalRequest,
     BudgetAmount,
+    CandidateEvaluation,
     CandidateVersion,
     ContextSnapshot,
     Deployment,
@@ -71,6 +72,7 @@ class InMemoryPlatformStore:
         self.deployments: dict[UUID, Deployment] = {}
         self.releases: dict[UUID, Release] = {}
         self.trials: dict[UUID, Trial] = {}
+        self.candidate_evaluations: dict[UUID, CandidateEvaluation] = {}
         self.idempotency: dict[tuple[UUID, str], UUID] = {}
         self.idempotency_digests: dict[tuple[UUID, str], str] = {}
 
@@ -502,6 +504,27 @@ class InMemoryPlatformStore:
 
     async def list_trials(self, tenant_id: UUID) -> tuple[Trial, ...]:
         return tuple(item for item in self.trials.values() if item.tenant_id == tenant_id)
+
+    async def list_trials_for_candidate(
+        self, tenant_id: UUID, candidate_id: UUID
+    ) -> tuple[Trial, ...]:
+        return tuple(
+            item
+            for item in self.trials.values()
+            if item.tenant_id == tenant_id and item.candidate_id == candidate_id
+        )
+
+    async def add_evaluation_record(self, record: CandidateEvaluation) -> None:
+        self.candidate_evaluations[record.evaluation_id] = record
+
+    async def list_evaluation_records(
+        self, tenant_id: UUID, candidate_id: UUID
+    ) -> tuple[CandidateEvaluation, ...]:
+        return tuple(
+            record
+            for record in self.candidate_evaluations.values()
+            if record.tenant_id == tenant_id and record.candidate_id == candidate_id
+        )
 
     async def add_proposal(self, proposal: ImprovementProposal) -> None:
         self.proposals[proposal.proposal_id] = proposal

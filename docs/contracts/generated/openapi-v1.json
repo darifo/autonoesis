@@ -138,10 +138,17 @@
           "approved": {
             "title": "Approved",
             "type": "boolean"
+          },
+          "reason": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
           }
         },
         "required": [
-          "approved"
+          "approved",
+          "reason"
         ],
         "title": "CandidateDecisionRequest",
         "type": "object"
@@ -318,34 +325,6 @@
           "error"
         ],
         "title": "ErrorEnvelope",
-        "type": "object"
-      },
-      "EvaluationRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "passed": {
-            "title": "Passed",
-            "type": "boolean"
-          },
-          "score": {
-            "maximum": 1.0,
-            "minimum": 0.0,
-            "title": "Score",
-            "type": "number"
-          },
-          "threshold": {
-            "maximum": 1.0,
-            "minimum": 0.0,
-            "title": "Threshold",
-            "type": "number"
-          }
-        },
-        "required": [
-          "passed",
-          "score",
-          "threshold"
-        ],
-        "title": "EvaluationRequest",
         "type": "object"
       },
       "ExecutionMode": {
@@ -1857,6 +1836,7 @@
     },
     "/v1/candidates/{candidate_id}/evaluate": {
       "post": {
+        "description": "Gate on persisted Trials; grader-supplied outcomes are not accepted.",
         "operationId": "evaluate_candidate_v1_candidates__candidate_id__evaluate_post",
         "parameters": [
           {
@@ -1879,16 +1859,6 @@
             }
           }
         ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/EvaluationRequest"
-              }
-            }
-          },
-          "required": true
-        },
         "responses": {
           "200": {
             "content": {

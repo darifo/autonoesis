@@ -69,7 +69,9 @@ from autonoesis_domain.identity import (
     TemporaryAuthorization,
 )
 from autonoesis_domain.improvement import (
+    CANDIDATE_EVALUATION_DECISIONS,
     FORBIDDEN_IMPROVEMENT_TARGETS,
+    CandidateEvaluation,
     CandidateStatus,
     CandidateVersion,
     Deployment,
@@ -91,6 +93,7 @@ from autonoesis_domain.values import (
 )
 
 __all__ = [
+    "CANDIDATE_EVALUATION_DECISIONS",
     "FORBIDDEN_IMPROVEMENT_TARGETS",
     "Action",
     "ActionAttempt",
@@ -105,6 +108,7 @@ __all__ = [
     "AssetStage",
     "BudgetAmount",
     "BudgetUnit",
+    "CandidateEvaluation",
     "CandidateStatus",
     "CandidateVersion",
     "CaseVisibility",

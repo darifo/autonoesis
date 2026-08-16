@@ -239,6 +239,7 @@ dependencies = [
     { name = "autonoesis-context" },
     { name = "autonoesis-contracts" },
     { name = "autonoesis-domain" },
+    { name = "autonoesis-evaluation" },
     { name = "autonoesis-runtime-kernel" },
 ]
 
@@ -248,6 +249,7 @@ requires-dist = [
     { name = "autonoesis-context", editable = "packages/context" },
     { name = "autonoesis-contracts", editable = "packages/contracts" },
     { name = "autonoesis-domain", editable = "packages/domain" },
+    { name = "autonoesis-evaluation", editable = "packages/evaluation" },
     { name = "autonoesis-runtime-kernel", editable = "packages/runtime-kernel" },
 ]
 

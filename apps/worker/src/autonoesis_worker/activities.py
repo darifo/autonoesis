@@ -9,7 +9,7 @@ These replace the placeholder stubs from Phase 1. Every activity:
 from __future__ import annotations
 
 from contextlib import suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from hashlib import sha256
 from typing import Protocol
 from uuid import UUID
@@ -30,6 +30,7 @@ from autonoesis_application import (
     TaskDefinition,
 )
 from autonoesis_domain import Task, Trial, TrialStatus
+from autonoesis_evaluation import RepeatedTrialPolicy
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
 
@@ -89,6 +90,7 @@ class ActivityDependencies:
     planner: RunPlanner | None = None
     executor: RunExecutor | None = None
     candidate_evaluator: CandidateEvaluator | None = None
+    evaluation_policy: RepeatedTrialPolicy | None = None
 
 
 def build_activity_dependencies(
@@ -99,6 +101,7 @@ def build_activity_dependencies(
     planner: RunPlanner | None = None,
     executor: RunExecutor | None = None,
     candidate_evaluator: CandidateEvaluator | None = None,
+    evaluation_policy: RepeatedTrialPolicy | None = None,
 ) -> ActivityDependencies:
     return ActivityDependencies(
         store=store,
@@ -107,6 +110,7 @@ def build_activity_dependencies(
         planner=planner,
         executor=executor,
         candidate_evaluator=candidate_evaluator,
+        evaluation_policy=evaluation_policy,
     )
 
 
@@ -311,6 +315,7 @@ async def evaluate_candidate(
     _heartbeat("evaluate_candidate")
     await evolution.submit_for_evaluation(tenant_id, candidate_id)
     trial = await evaluator.evaluate(tenant_id, candidate_id)
+    trial = replace(trial, candidate_id=candidate_id)
     await dependencies.store.add_trial(trial)
     if trial.status is TrialStatus.INVALID:
         raise ApplicationError(
@@ -318,17 +323,20 @@ async def evaluate_candidate(
             non_retryable=True,
         )
 
-    from autonoesis_application import EvaluationDecision
-
-    grader = _context(input.tenant_id, input.candidate_id, "evaluate-candidate").identity
-    passed = trial.status is TrialStatus.PASSED
-    candidate = await evolution.record_evaluation(
-        grader,
-        candidate_id,
-        EvaluationDecision(passed=passed, score=1.0 if passed else 0.0, threshold=1.0),
-    )
     from autonoesis_domain import CandidateStatus
 
+    grader = _context(input.tenant_id, input.candidate_id, "evaluate-candidate").identity
+    try:
+        candidate, _record = await evolution.complete_evaluation(
+            grader,
+            candidate_id,
+            dependencies.evaluation_policy or RepeatedTrialPolicy(pass_threshold=0.8),
+        )
+    except ValueError as exc:
+        raise ApplicationError(
+            f"candidate evaluation evidence is incomplete: {exc}",
+            non_retryable=True,
+        ) from exc
     return candidate.status is CandidateStatus.AWAITING_APPROVAL
 
 

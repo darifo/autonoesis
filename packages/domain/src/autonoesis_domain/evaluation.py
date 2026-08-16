@@ -80,6 +80,7 @@ class Trial:
     failure_reason: str | None = None
     started_at: datetime | None = None
     completed_at: datetime | None = None
+    candidate_id: UUID | None = None
 
     def __post_init__(self) -> None:
         if self.total_cost_microunits < 0:

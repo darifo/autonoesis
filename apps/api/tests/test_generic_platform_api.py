@@ -4,7 +4,7 @@ from uuid import UUID, uuid4
 
 from autonoesis_adapters import InMemoryPlatformStore
 from autonoesis_api.main import build_app
-from autonoesis_domain import ApprovalRequest
+from autonoesis_domain import ApprovalRequest, Trial, TrialCaseResult, TrialStatus
 from autonoesis_runtime import KillSwitchQuery
 from fastapi.testclient import TestClient
 
@@ -52,7 +52,8 @@ def manifest() -> dict[str, object]:
 
 def test_generic_goal_run_and_evolution_api() -> None:
     tenant_id, actor_id = uuid4(), uuid4()
-    client = TestClient(build_app(InMemoryPlatformStore()))
+    store = InMemoryPlatformStore()
+    client = TestClient(build_app(store))
     identity = headers(tenant_id, actor_id)
 
     pack = client.post(
@@ -146,19 +147,41 @@ def test_generic_goal_run_and_evolution_api() -> None:
         },
         headers={**headers(tenant_id, uuid4()), "Idempotency-Key": "candidate-1"},
     )
+    candidate_id = UUID(candidate.json()["candidate_id"])
+    executed_case = TrialCaseResult(
+        case_id="c1",
+        input_payload={},
+        output_payload={"answer": 42},
+        subject_executed=True,
+        executor_id="subject-runtime",
+        evidence_refs=("evidence://execution/1",),
+        environment_ref="environment://fixture/1",
+    )
+    for _ in range(16):
+        asyncio.run(
+            store.add_trial(
+                Trial(
+                    tenant_id=tenant_id,
+                    suite_id="delivery-suite",
+                    suite_version="1",
+                    subject_version_id=candidate_id,
+                    harness_version="2",
+                    status=TrialStatus.PASSED,
+                    case_results=(executed_case,),
+                    candidate_id=candidate_id,
+                )
+            )
+        )
     evaluated = client.post(
-        f"/v1/candidates/{candidate.json()['candidate_id']}/evaluate",
-        json={
-            "passed": True,
-            "score": 0.92,
-            "threshold": 0.8,
-        },
+        f"/v1/candidates/{candidate_id}/evaluate",
         headers={**headers(tenant_id, uuid4()), "Idempotency-Key": "evaluation-1"},
     )
     assert evaluated.json()["status"] == "awaiting_approval"
+    assert evaluated.json()["evaluation"]["decision"] == "met"
+    assert len(evaluated.json()["evaluation"]["trial_ids"]) == 16
     approved = client.post(
-        f"/v1/candidates/{candidate.json()['candidate_id']}/decision",
-        json={"approved": True},
+        f"/v1/candidates/{candidate_id}/decision",
+        json={"approved": True, "reason": "independent review passed"},
         headers={**headers(tenant_id, uuid4()), "Idempotency-Key": "approval-1"},
     )
     assert approved.json()["status"] == "approved"

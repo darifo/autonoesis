@@ -25,6 +25,7 @@ from autonoesis_domain import (
     AssetStage,
     BudgetAmount,
     BudgetUnit,
+    CandidateEvaluation,
     CandidateVersion,
     ContextSnapshot,
     DataClassification,
@@ -74,6 +75,7 @@ from autonoesis_adapters.persistence_codec import (
     context_snapshot_payload,
     deployment_from_row,
     deployment_payload,
+    evaluation_from_row,
     evidence_from_row,
     evidence_payload,
     memory_from_row,
@@ -101,6 +103,7 @@ from autonoesis_adapters.persistence_schema import (
     audit_events,
     budget_ledger,
     budgets,
+    candidate_evaluations,
     candidates,
     capability_packs,
     context_snapshots,
@@ -1343,6 +1346,7 @@ class SqlAlchemyPlatformRepository:
                     suite_version=trial.suite_version,
                     subject_version_id=str(trial.subject_version_id),
                     harness_version=trial.harness_version,
+                    candidate_id=str(trial.candidate_id) if trial.candidate_id else None,
                     status=trial.status.value,
                     result=trial_payload(trial),
                     optimistic_version=1,
@@ -1357,6 +1361,73 @@ class SqlAlchemyPlatformRepository:
         return tuple(
             trial_from_row(row) for row in await self._list_rows(evaluation_trials, tenant_id)
         )
+
+    async def list_trials_for_candidate(
+        self, tenant_id: UUID, candidate_id: UUID
+    ) -> tuple[Trial, ...]:
+        async with self._sessions() as session:
+            await self._scope_tenant(session, tenant_id)
+            rows = tuple(
+                dict(row)
+                for row in (
+                    await session.execute(
+                        select(evaluation_trials)
+                        .where(
+                            evaluation_trials.c.tenant_id == str(tenant_id),
+                            evaluation_trials.c.candidate_id == str(candidate_id),
+                        )
+                        .order_by(evaluation_trials.c.created_at)
+                    )
+                ).mappings()
+            )
+        return tuple(trial_from_row(row) for row in rows)
+
+    async def add_evaluation_record(self, record: CandidateEvaluation) -> None:
+        now = datetime.now(UTC)
+        async with self._sessions.begin() as session:
+            await self._scope_tenant(session, record.tenant_id)
+            await session.execute(
+                insert(candidate_evaluations).values(
+                    id=str(record.evaluation_id),
+                    tenant_id=str(record.tenant_id),
+                    candidate_id=str(record.candidate_id),
+                    decision=record.decision,
+                    trial_ids=[str(trial_id) for trial_id in record.trial_ids],
+                    assessment=record.assessment,
+                    grader_principal_id=record.grader_principal_id,
+                    optimistic_version=1,
+                    created_at=now,
+                )
+            )
+            await self._record_fact(
+                session,
+                record.tenant_id,
+                "candidate.evaluated",
+                "candidate_evaluation",
+                record.evaluation_id,
+                1,
+                now,
+            )
+
+    async def list_evaluation_records(
+        self, tenant_id: UUID, candidate_id: UUID
+    ) -> tuple[CandidateEvaluation, ...]:
+        async with self._sessions() as session:
+            await self._scope_tenant(session, tenant_id)
+            rows = tuple(
+                dict(row)
+                for row in (
+                    await session.execute(
+                        select(candidate_evaluations)
+                        .where(
+                            candidate_evaluations.c.tenant_id == str(tenant_id),
+                            candidate_evaluations.c.candidate_id == str(candidate_id),
+                        )
+                        .order_by(candidate_evaluations.c.created_at)
+                    )
+                ).mappings()
+            )
+        return tuple(evaluation_from_row(row) for row in rows)
 
     async def add_proposal(self, proposal: ImprovementProposal) -> None:
         now = datetime.now(UTC)

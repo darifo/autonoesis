@@ -9,7 +9,7 @@
 |---|---|
 | `environment.yml` | `217cde3c5f49080c1b35f5a65051770ad2f9952f9cb6aad4a1c1d9a3696c3119` |
 | `pyproject.toml` | `5d38d54e8885bf564eecb9e3978068874c0f52d1a26776273a020624e1fb0e1f` |
-| `uv.lock` | `1330f1124ea4e89918881b84b5153c16f59524d7057d9c4cd857c974ac0c5a2c` |
+| `uv.lock` | `f1eeba369e4a022c7daf714af7b10616fb9b8017eab0e2328409d980b4406f95` |
 | `package.json` | `50cb64a759a95e84c47f1cf5fe1cafa0167aa030bf0d5c806bda00eb48cfbf8a` |
 | `pnpm-lock.yaml` | `929ae26bb7e72d59b69b08d5d55c355a963004622e28fdcac443298b7a7bca30` |
 | `versions.lock` | `2eba0942a897865d9933b07445a45e030682b03c200c041cc159d6d753e08644` |
@@ -27,17 +27,17 @@ Configured Compose images (configuration inventory only; not integration evidenc
 
 ## Database Schema Baseline
 
-- Alembic head: `0010_fixed_candidate_references`
-- SQLAlchemy metadata digest: `sha256:2c801e23262d7a93f4a1c715fcf0d6d1f409a1251726ab92f16c6a483ee297c5`
-- Declared tables (40): `action_attempts`, `actions`, `agent_versions`, `approvals`, `audit_events`, `breakglass_alerts`, `budget_ledger`, `budgets`, `candidates`, `capability_packs`, `context_snapshots`, `deployments`, `environment_facts`, `evaluation_trials`, `evidence`, `evidence_capture_sagas`, `evidence_deletions`, `goals`, `idempotency_records`, `improvement_proposals`, `inbox`, `kill_switches`, `memory_deletion_edges`, `memory_ledger`, `memory_records`, `outbox`, `outcomes`, `plans`, `platform_audit_events`, `platform_kill_switches`, `policy_versions`, `releases`, `runs`, `skill_versions`, `tasks`, `telemetry_records`, `tenant_resource_namespaces`, `tenants`, `tool_versions`, `vector_index_projections`
+- Alembic head: `0011_evaluation_evidence_records`
+- SQLAlchemy metadata digest: `sha256:276e42e4cd398fbdd503017f0706091de878fd78ea6f44c6b4a1361cf6067f79`
+- Declared tables (41): `action_attempts`, `actions`, `agent_versions`, `approvals`, `audit_events`, `breakglass_alerts`, `budget_ledger`, `budgets`, `candidate_evaluations`, `candidates`, `capability_packs`, `context_snapshots`, `deployments`, `environment_facts`, `evaluation_trials`, `evidence`, `evidence_capture_sagas`, `evidence_deletions`, `goals`, `idempotency_records`, `improvement_proposals`, `inbox`, `kill_switches`, `memory_deletion_edges`, `memory_ledger`, `memory_records`, `outbox`, `outcomes`, `plans`, `platform_audit_events`, `platform_kill_switches`, `policy_versions`, `releases`, `runs`, `skill_versions`, `tasks`, `telemetry_records`, `tenant_resource_namespaces`, `tenants`, `tool_versions`, `vector_index_projections`
 - Evidence level: `integrated`; CI migrates PostgreSQL 17 and runs authority/Application transaction component tests.
 
 ## HTTP API Contract Baseline
 
 - Application contract version: `0.1.0`
 - OpenAPI dialect: `3.1.x`; frozen consumer contract: `openapi-v1`
-- Frozen OpenAPI digest: `sha256:0a15affe5290d6cda4c614ffb1396b17f4027be4d085520b87282a973c4a9915`
-- Route source digest: `sha256:2212da98e44712482af4d4062949a142c9d1755fa28e3326d38aa322ad7a48ac`
+- Frozen OpenAPI digest: `sha256:a5fd61899707bce08e9bb06e5ac08a831a4f808f7973af5e0a90bcbf3590d051`
+- Route source digest: `sha256:70b69dd6b32f9ad8f7bc5a988a2062432a4722e0d98280c0ec6d5f011e07fc36`
 - Declared operations (44):
 
   - `DELETE /v1/kill-switches`

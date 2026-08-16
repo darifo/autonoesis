@@ -26,6 +26,8 @@ class FakeEvolutionRepository:
         self.candidates: dict[UUID, Any] = {}
         self.deployments: dict[UUID, Any] = {}
         self.releases: dict[UUID, Any] = {}
+        self.trials: dict[UUID, list[Any]] = {}
+        self.evaluations: dict[UUID, list[Any]] = {}
 
     async def add_proposal(self, proposal: ImprovementProposal) -> None:
         self.proposals[proposal.proposal_id] = proposal
@@ -61,6 +63,18 @@ class FakeEvolutionRepository:
         return next(
             release for release in self.releases.values() if release.candidate_id == candidate_id
         )
+
+    async def add_trial(self, trial: Any) -> None:
+        self.trials.setdefault(trial.candidate_id, []).append(trial)
+
+    async def list_trials_for_candidate(self, tenant_id: UUID, candidate_id: UUID) -> Any:
+        return tuple(self.trials.get(candidate_id, ()))
+
+    async def add_evaluation_record(self, record: Any) -> None:
+        self.evaluations.setdefault(record.candidate_id, []).append(record)
+
+    async def list_evaluation_records(self, tenant_id: UUID, candidate_id: UUID) -> Any:
+        return tuple(self.evaluations.get(candidate_id, ()))
 
 
 class DenyingPolicy:
@@ -213,3 +227,165 @@ async def test_candidate_without_a_real_digest_is_rejected() -> None:
                 suite_version="1",
             ),
         )
+
+
+def _executed_case() -> Any:
+    from autonoesis_domain import TrialCaseResult
+
+    return TrialCaseResult(
+        case_id="c1",
+        input_payload={},
+        output_payload={"answer": 42},
+        subject_executed=True,
+        executor_id="subject-runtime",
+        evidence_refs=("evidence://execution/1",),
+        environment_ref="environment://fixture/1",
+    )
+
+
+def _trial(
+    candidate_id: UUID,
+    *,
+    status: str = "passed",
+    suite: str = "delivery-suite",
+    subject: UUID | None = None,
+) -> Any:
+    from autonoesis_domain import Trial, TrialStatus
+
+    return Trial(
+        tenant_id=UUID(int=1),
+        suite_id=suite,
+        suite_version="1",
+        subject_version_id=subject or candidate_id,
+        harness_version="2",
+        status=TrialStatus(status),
+        case_results=(_executed_case(),) if status in {"passed", "failed"} else (),
+        failure_reason="infrastructure failed" if status == "invalid" else None,
+        candidate_id=candidate_id,
+    )
+
+
+async def _candidate_in_evaluation(
+    service: CandidateLifecycleService, repository: FakeEvolutionRepository
+) -> UUID:
+    from autonoesis_application import RegisterCandidate
+
+    context = IdentityContext(UUID(int=1), uuid4(), uuid4(), frozenset({"candidate_generator"}))
+    proposal = await service.propose_improvement(
+        context,
+        ProposeImprovement(
+            target="agent_instruction",
+            target_version_id=uuid4(),
+            evidence_refs=("evidence://observation/1",),
+            diagnosis="diagnosis",
+            proposed_change="change",
+            validation_suite_id="delivery-suite",
+            rollback_plan="restore",
+        ),
+    )
+    candidate = await service.register_candidate(
+        context,
+        RegisterCandidate(
+            proposal_id=proposal.proposal_id,
+            baseline_version_id=uuid4(),
+            artifact_ref="artifact://agent/v2",
+            artifact_digest=DIGEST,
+            suite_id="delivery-suite",
+            suite_version="1",
+        ),
+    )
+    await service.submit_for_evaluation(candidate.tenant_id, candidate.candidate_id)
+    return candidate.candidate_id
+
+
+def _grader() -> IdentityContext:
+    return IdentityContext(UUID(int=1), uuid4(), uuid4(), frozenset({"grader"}))
+
+
+@pytest.mark.asyncio
+async def test_candidate_without_complete_evidence_stays_evaluating() -> None:
+    from autonoesis_evaluation import RepeatedTrialPolicy
+
+    repository = FakeEvolutionRepository()
+    service = CandidateLifecycleService(repository)
+    candidate_id = await _candidate_in_evaluation(service, repository)
+    for _ in range(5):
+        await repository.add_trial(_trial(candidate_id))
+    with pytest.raises(ValueError, match="incomplete"):
+        await service.complete_evaluation(
+            _grader(), candidate_id, RepeatedTrialPolicy(pass_threshold=0.8)
+        )
+    records = await repository.list_evaluation_records(UUID(int=1), candidate_id)
+    assert [record.decision for record in records] == ["insufficient_sample"]
+    assert repository.candidates[candidate_id].status.value == "evaluating"
+
+
+@pytest.mark.asyncio
+async def test_confident_sample_advances_candidate_and_persists_evidence() -> None:
+    from autonoesis_evaluation import RepeatedTrialPolicy
+
+    repository = FakeEvolutionRepository()
+    service = CandidateLifecycleService(repository)
+    candidate_id = await _candidate_in_evaluation(service, repository)
+    for _ in range(16):
+        await repository.add_trial(_trial(candidate_id))
+    candidate, record = await service.complete_evaluation(
+        _grader(), candidate_id, RepeatedTrialPolicy(pass_threshold=0.8)
+    )
+    assert candidate.status.value == "awaiting_approval"
+    assert record.decision == "met"
+    assert len(record.trial_ids) == 16
+    assert record.assessment["lower_bound"] >= 0.8
+
+
+@pytest.mark.asyncio
+async def test_confident_failure_rejects_candidate() -> None:
+    from autonoesis_evaluation import RepeatedTrialPolicy
+
+    repository = FakeEvolutionRepository()
+    service = CandidateLifecycleService(repository)
+    candidate_id = await _candidate_in_evaluation(service, repository)
+    for _ in range(30):
+        await repository.add_trial(_trial(candidate_id, status="failed"))
+    candidate, record = await service.complete_evaluation(
+        _grader(), candidate_id, RepeatedTrialPolicy(pass_threshold=0.8)
+    )
+    assert candidate.status.value == "rejected"
+    assert record.decision == "not_met"
+
+
+@pytest.mark.asyncio
+async def test_trials_from_another_suite_are_rejected() -> None:
+    from autonoesis_evaluation import RepeatedTrialPolicy
+
+    repository = FakeEvolutionRepository()
+    service = CandidateLifecycleService(repository)
+    candidate_id = await _candidate_in_evaluation(service, repository)
+    await repository.add_trial(_trial(candidate_id, suite="easier-suite"))
+    with pytest.raises(ValueError, match="fixed suite"):
+        await service.complete_evaluation(
+            _grader(), candidate_id, RepeatedTrialPolicy(pass_threshold=0.8)
+        )
+
+
+@pytest.mark.asyncio
+async def test_trials_executing_another_subject_are_rejected() -> None:
+    from autonoesis_evaluation import RepeatedTrialPolicy
+
+    repository = FakeEvolutionRepository()
+    service = CandidateLifecycleService(repository)
+    candidate_id = await _candidate_in_evaluation(service, repository)
+    await repository.add_trial(_trial(candidate_id, subject=uuid4()))
+    with pytest.raises(ValueError, match="execute the candidate itself"):
+        await service.complete_evaluation(
+            _grader(), candidate_id, RepeatedTrialPolicy(pass_threshold=0.8)
+        )
+
+
+@pytest.mark.asyncio
+async def test_approval_without_rationale_is_rejected() -> None:
+    repository = FakeEvolutionRepository()
+    service = CandidateLifecycleService(repository)
+    candidate_id = await _candidate_in_evaluation(service, repository)
+    with pytest.raises(ValueError, match="rationale"):
+        await service.decide(_grader(), candidate_id, True, "  ")

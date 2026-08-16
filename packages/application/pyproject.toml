@@ -8,6 +8,7 @@ dependencies = [
   "autonoesis-contracts",
   "autonoesis-context",
   "autonoesis-domain",
+  "autonoesis-evaluation",
   "autonoesis-runtime-kernel",
 ]
 
@@ -23,4 +24,5 @@ autonoesis-capability = { workspace = true }
 autonoesis-contracts = { workspace = true }
 autonoesis-context = { workspace = true }
 autonoesis-domain = { workspace = true }
+autonoesis-evaluation = { workspace = true }
 autonoesis-runtime-kernel = { workspace = true }

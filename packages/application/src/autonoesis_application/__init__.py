@@ -2,11 +2,11 @@
 
 from autonoesis_application.evolution import (
     CandidateLifecycleService,
-    EvaluationDecision,
     EvolutionRepository,
     ImprovementTargetPolicy,
     ProposeImprovement,
     RegisterCandidate,
+    assessment_payload,
 )
 from autonoesis_application.execution import (
     ActivateGoal,
@@ -94,7 +94,6 @@ __all__ = [
     "CreateGoalHandler",
     "CreateValidatedPlan",
     "DecideApproval",
-    "EvaluationDecision",
     "EvaluationRepository",
     "EvidenceAdmissionPolicy",
     "EvidenceAdmissionRejected",
@@ -135,5 +134,6 @@ __all__ = [
     "TrustedOutcomeVerifier",
     "VerificationRepository",
     "VerifyOutcome",
+    "assessment_payload",
     "verify_audit_chain",
 ]
