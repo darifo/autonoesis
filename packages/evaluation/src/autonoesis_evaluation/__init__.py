@@ -27,6 +27,13 @@ from autonoesis_evaluation.pipeline import (
     GraderStage,
     IndependentGrader,
 )
+from autonoesis_evaluation.statistics import (
+    ConfidenceDecision,
+    RepeatedTrialPolicy,
+    TrialConfidenceAssessment,
+    TrialConfidenceGate,
+    wilson_score_interval,
+)
 from autonoesis_evaluation.suite_access import (
     EvaluationSuiteCatalog,
     GeneratorSuiteView,
@@ -398,6 +405,7 @@ class ThresholdGrader(Grader):
 
 
 __all__ = [
+    "ConfidenceDecision",
     "DeterministicGrader",
     "EvaluationHarness",
     "EvaluationSuiteCatalog",
@@ -410,9 +418,13 @@ __all__ = [
     "HarnessSuite",
     "IndependentGrader",
     "PublicCaseDescriptor",
+    "RepeatedTrialPolicy",
     "SubjectExecutionResult",
     "SubjectExecutor",
     "SuiteAccessContext",
     "SuiteAccessRole",
     "ThresholdGrader",
+    "TrialConfidenceAssessment",
+    "TrialConfidenceGate",
+    "wilson_score_interval",
 ]

@@ -5,7 +5,8 @@
 ## Current implementation boundary
 
 - Gate 1 has fixed Subject execution, complete Trial records, ordered independent Grader stages,
-  weighted/gating semantics, four-state failure closing and protected Suite access at unit level.
+  weighted/gating semantics, four-state failure closing, protected Suite access, and repeated-Trial
+  Wilson confidence gating at unit level.
 - Gate 2 has generator/grader/approver separation and persisted Candidate decisions, but Candidate
   promotion is not yet bound to complete Trial/Evidence records.
 - Gates 3 and 4 have persisted Deployment/Release state and isolated algorithms only; real Shadow
@@ -37,6 +38,9 @@ Stable
 **Criteria**:
 - [ ] All deterministic rule checks pass (schema, data, security invariants).
 - [ ] Outcome/Evidence verification pass rate ≥ suite threshold.
+- [ ] Repeated Trials demonstrate the target pass rate: the Wilson score interval lower bound at
+      the configured confidence level is ≥ threshold, over at least the minimum valid sample.
+      Invalid Trials count toward neither the green rate nor the sample.
 - [ ] No security or safety case failures (gating).
 - [ ] Trajectory inspection passes (no unauthorized access, excessive retries, unnecessary exposure).
 - [ ] LLM Grader score ≥ threshold (if applicable).

@@ -1,6 +1,6 @@
 # Evaluation Methodology
 
-> Status: partially unit-tested · Last reviewed: 2026-08-14
+> Status: partially unit-tested · Last reviewed: 2026-08-16
 
 ## Purpose
 
@@ -68,6 +68,23 @@ Graders execute in strict priority order. Lower-priority graders only run if hig
 | `invalid` | Trial could not be completed (infrastructure failure, timeout) |
 
 `unknown` and `invalid` results must not be coerced into pass/fail. They are reported separately and investigated.
+
+## Repeated-Trial Confidence
+
+A pass rate estimated from Trials is a random variable, so a fixed run count ("N runs, N passes")
+is never accepted as evidence of the underlying rate. `TrialConfidenceGate` (ADR-0024) decides
+acceptance over repeated homogeneous Trials with a Wilson score interval:
+
+- The policy names a target pass threshold strictly between 0 and 1, a confidence level, and a
+  minimum valid sample. A threshold of 1 is rejected because the Wilson lower bound stays below
+  one for any finite sample.
+- Acceptance requires the lower bound of the interval at the configured confidence level to be at
+  or above the threshold. For all-pass samples the lower bound reduces to n / (n + z²), which makes
+  the required run count explicit.
+- Invalid Trials are excluded from both the pass count and the sample size and are reported as
+  infrastructure evidence. Outages can neither turn the gate green nor shrink the required sample.
+- Only terminal Trials sharing tenant, Suite id/version, Subject Version and Harness Version may be
+  aggregated. Duplicate Trial ids and in-flight Trials are rejected instead of averaged.
 
 ## Suite Design Principles
 

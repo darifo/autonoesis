@@ -36,8 +36,8 @@
 - 格式、静态类型和部分单元测试具备基础质量；
 - P0 参考纵向闭环已通过受控外部系统模拟器和真实 PostgreSQL、Temporal、OPA、MinIO；
 - P1-01～03 已完成多租户、企业身份和可信 Context/Memory 的集成级基线；
-- P1-04 已完成固定 Subject、完整 Trial、五级独立 Grader 和隐藏数据隔离的单元级闭环，
-  重复 Trial 统计、Candidate/Evidence 集成和真实 Grader 后端仍未完成；
+- P1-04 已完成固定 Subject、完整 Trial、五级独立 Grader、隐藏数据隔离和重复 Trial 统计置信门禁的
+  单元级闭环，Candidate/Evidence 集成和真实 Grader 后端仍未完成；
 - P1 Shadow/Canary 真实发布、P2 生产运维仍未端到端成立。
 
 在最终生产准入门槛满足以前，不得把当前版本描述为以下任一状态：
@@ -513,7 +513,7 @@ Tenant Authority 的初始化使用独立管理连接，不参与任何隔离断
 - [x] Grader Result 使用 `pass/fail/unknown/invalid` 四态语义；
 - [x] 建立确定性规则、Outcome、Trajectory、LLM 和 Human Grader 流水线；
 - [x] 隐藏用例和生产回放数据与 Candidate Generator 隔离；
-- [ ] 重复 Trial 使用统计方法，不以固定次数替代置信度；
+- [x] 重复 Trial 使用统计方法，不以固定次数替代置信度；
 - [ ] Candidate 必须引用固定 Baseline、Artifact Digest、Suite Version 和 Generator Identity；
 - [ ] Evaluation、Approval 和 Release 结果持久化并产生 Evidence；
 - [ ] Forbidden Improvement Target 在 Application 和 Policy 层双重禁止。
@@ -766,15 +766,15 @@ reviewers: Domain、Security、SRE 或相关角色
 
 ## 12. 当前实施顺序
 
-P0-01～08 与 P1-01～03 已完成当前定义下的退出项。后续迭代按以下顺序推进：
+P0-01～08 与 P1-01～03 已完成当前定义下的退出项；P1-04 的重复 Trial 统计置信门禁亦已闭环。
+后续迭代按以下顺序推进：
 
-1. 完成 P1-04 重复 Trial 统计与置信度门禁；
-2. 将固定 Candidate、Evaluation Trial、Grader Result 与 Evidence 在 Application 层闭环；
-3. 用真实 Subject Runtime 和独立 Grader 后端建立 PostgreSQL/Temporal 组件测试；
-4. 完成 P1-05 Shadow 双跑、Canary 分流、观察窗口和 Release Executor；
-5. 完成 P1-06 Capability Pack 签名、SBOM、隔离安装与撤销；
-6. 完成 P1-07 真实 Telemetry、FinOps 与 Cockpit 操作面；
-7. P1 退出门槛全部满足后，再启动 P2 生产部署、HA/DR、供应链和容量混沌验收。
+1. 将固定 Candidate、Evaluation Trial、Grader Result 与 Evidence 在 Application 层闭环；
+2. 用真实 Subject Runtime 和独立 Grader 后端建立 PostgreSQL/Temporal 组件测试；
+3. 完成 P1-05 Shadow 双跑、Canary 分流、观察窗口和 Release Executor；
+4. 完成 P1-06 Capability Pack 签名、SBOM、隔离安装与撤销；
+5. 完成 P1-07 真实 Telemetry、FinOps 与 Cockpit 操作面；
+6. P1 退出门槛全部满足后，再启动 P2 生产部署、HA/DR、供应链和容量混沌验收。
 
 在这一顺序中，API 和 Cockpit 只暴露已经由 Application 和真实 Repository 支持的能力。不得先做新的 UI 页面来代替后端闭环。
 

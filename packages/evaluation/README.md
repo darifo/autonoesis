@@ -5,8 +5,13 @@
 `unknown/invalid` 时，Trial 均为 `invalid`，不得计入绿色通过率。
 
 Trial 的权威 JSON 记录每个 Case 的输入、Subject 输出、环境、模型、工具、随机种子、成本、
-失败原因、评分结果和 Evidence 引用。当前达到 `unit-tested`；真实 Grader 后端、持久化 Catalog、
-统计重复 Trial 以及 Candidate/Evidence 真实组件集成仍属于 P1-04 后续工作。
+失败原因、评分结果和 Evidence 引用。当前达到 `unit-tested`；真实 Grader 后端、持久化 Catalog
+以及 Candidate/Evidence 真实组件集成仍属于 P1-04 后续工作。
+
+重复 Trial 由 `TrialConfidenceGate` 按统计方法验收：对同租户、同 Suite 版本、同 Subject
+Version、同 Harness 的终态 Trial 计算 Wilson 置信区间，仅当置信下界在设定置信水平下达到
+目标通过率且有效样本不小于最小值时才判定通过；固定次数全过不能替代置信度。Invalid Trial
+既不计入绿色通过率也不折抵最小样本，重复 Trial ID 与未终态 Trial 会被直接拒绝。
 
 Grader Pipeline 固定为 Deterministic → Outcome → Trajectory → LLM → Human；阶段顺序错误、
 重复身份或结果类型与阶段不一致都会被拒绝，任一阶段非 Pass 会阻止后续低优先级阶段运行。
