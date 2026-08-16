@@ -2,7 +2,7 @@
 
 > 状态：实施基线  
 > 适用版本：0.1.x 及后续整改版本  
-> 最后评审：2026-08-11  
+> 最后评审：2026-08-16
 > 目标：把现有架构原型推进为可审计、可恢复、不可绕过治理边界的企业级受控自进化智能体平台
 
 ## 1. 文档目的
@@ -35,9 +35,12 @@
 - API、Temporal Worker、Cockpit、PostgreSQL Schema 和若干适配器已经建立；
 - 格式、静态类型和部分单元测试具备基础质量；
 - P0 参考纵向闭环已通过受控外部系统模拟器和真实 PostgreSQL、Temporal、OPA、MinIO；
-  P1 企业治理、P2 生产运维和自进化真实发布仍未端到端成立。
+- P1-01～03 已完成多租户、企业身份和可信 Context/Memory 的集成级基线；
+- P1-04 已完成固定 Subject、完整 Trial、五级独立 Grader 和隐藏数据隔离的单元级闭环，
+  重复 Trial 统计、Candidate/Evidence 集成和真实 Grader 后端仍未完成；
+- P1 Shadow/Canary 真实发布、P2 生产运维仍未端到端成立。
 
-在 P0 退出以前，不得把当前版本描述为以下任一状态：
+在最终生产准入门槛满足以前，不得把当前版本描述为以下任一状态：
 
 - 生产级耐久执行平台；
 - 完整多租户隔离平台；
@@ -526,7 +529,7 @@ Tenant Authority 的初始化使用独立管理连接，不参与任何隔离断
 
 #### 实施任务
 
-- [ ] 建立持久化 Deployment Aggregate；
+- [x] 建立持久化 Deployment Aggregate；
 - [ ] Shadow 同时运行 Stable 与 Candidate，并确保 Candidate 结果不产生外部副作用；
 - [ ] 保存 Stable/Candidate 的 Outcome、成本、延迟、安全和人工修正对比；
 - [ ] Canary 使用稳定、可审计的流量分配规则；
@@ -761,20 +764,17 @@ reviewers: Domain、Security、SRE 或相关角色
 | 测试只覆盖 Fake | 错误生产信心 | 真实组件和故障注入进入 CI |
 | Capability Pack 任意代码执行 | 供应链入侵 | 签名、Sandbox、Allowlist 和最小权限 |
 
-## 12. 建议的首批实施顺序
+## 12. 当前实施顺序
 
-后续迭代应严格按以下顺序启动：
+P0-01～08 与 P1-01～03 已完成当前定义下的退出项。后续迭代按以下顺序推进：
 
-1. P0-01：校准 README、Roadmap 和 Cockpit 声明；
-2. P0-02：冻结 Action/Approval/Evidence/Outcome Contract；
-3. P0-03：建立 PostgreSQL 角色、约束和核心 Repository；
-4. P0-04：实现 Goal → Run → Plan → Task Application Use Case；
-5. P0-05：实现原子幂等和执行时授权 Tool Gateway；
-6. P0-07：实现真实 Evidence Store 和 Outcome Verifier；
-7. P0-06：将上述 Use Case 接入 Temporal Workflow；
-8. P0-08：用真实 PostgreSQL、Temporal、OPA、MinIO 建立 E2E；
-9. 执行 Worker Crash、重复写、Approval 过期和 Unknown 对账演练；
-10. 只有 P0 退出门槛全部满足后，启动 P1 多租户与受控进化。
+1. 完成 P1-04 重复 Trial 统计与置信度门禁；
+2. 将固定 Candidate、Evaluation Trial、Grader Result 与 Evidence 在 Application 层闭环；
+3. 用真实 Subject Runtime 和独立 Grader 后端建立 PostgreSQL/Temporal 组件测试；
+4. 完成 P1-05 Shadow 双跑、Canary 分流、观察窗口和 Release Executor；
+5. 完成 P1-06 Capability Pack 签名、SBOM、隔离安装与撤销；
+6. 完成 P1-07 真实 Telemetry、FinOps 与 Cockpit 操作面；
+7. P1 退出门槛全部满足后，再启动 P2 生产部署、HA/DR、供应链和容量混沌验收。
 
 在这一顺序中，API 和 Cockpit 只暴露已经由 Application 和真实 Repository 支持的能力。不得先做新的 UI 页面来代替后端闭环。
 

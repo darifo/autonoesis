@@ -1,6 +1,16 @@
 # Release Gates
 
-> Status: proposed · Last reviewed: 2026-08-09
+> Status: partially unit-tested · Last reviewed: 2026-08-16
+
+## Current implementation boundary
+
+- Gate 1 has fixed Subject execution, complete Trial records, ordered independent Grader stages,
+  weighted/gating semantics, four-state failure closing and protected Suite access at unit level.
+- Gate 2 has generator/grader/approver separation and persisted Candidate decisions, but Candidate
+  promotion is not yet bound to complete Trial/Evidence records.
+- Gates 3 and 4 have persisted Deployment/Release state and isolated algorithms only; real Shadow
+  traffic, Canary routing, observation enforcement, automatic rollback and Release Executor are absent.
+- No gate is production-proven, and the full Draft → Stable chain is not integrated end to end.
 
 ## Gate Overview
 

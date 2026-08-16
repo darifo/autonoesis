@@ -119,12 +119,11 @@ if self.side_effect in {REVERSIBLE_WRITE, HIGH_IMPACT_WRITE, PRIVILEGED} and not
 This is a hard constraint — it is impossible to register a write-capable
 tool without idempotency.
 
-> **Schema validation status**: The `input_schema` declared on `ToolDefinition`
-> defines the expected parameter shape, but **validation is not yet enforced
-> by the Gateway at tool invocation time**. Goal-level `input_schema` is
-> validated in `CreateGoalHandler`. Tool-level schema enforcement in the
-> Gateway pipeline is planned for a future release. Currently, adapters
-> should perform their own parameter validation in `execute()`.
+> **Schema validation status**: Goal-level `input_schema` is validated in
+> `CreateGoalHandler`. Tool invocation parameters are validated at the
+> Governed Tool Gateway with JSON Schema 2020-12 before execution. Adapters may
+> add provider-specific semantic checks, but cannot replace or bypass the
+> Gateway validation and authorization pipeline.
 
 ---
 

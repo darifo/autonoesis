@@ -1,6 +1,6 @@
 # Autonoesis Architecture Overview
 
-> Status: target architecture · Last reviewed: 2026-08-11 · Applicable version: 0.1.x
+> Status: target architecture · Last reviewed: 2026-08-16 · Applicable version: 0.1.x
 > Implementation evidence: [capability maturity matrix](../roadmap/capability-maturity.md)
 
 ## 1. System Responsibility
@@ -116,7 +116,7 @@ Each Stable retains a pointer to the previous Stable for rollback.
 
 ## 10. Deployment
 
-Local Compose starts PostgreSQL, Temporal, OPA, MinIO, OpenTelemetry/Jaeger, API, Worker, and Cockpit as a development prototype. Default credentials, in-memory application assembly, and incomplete component tests make this stack unsuitable for production. Kubernetes, real Shadow/Canary traffic experiments, and production hardening remain planned work.
+Local Compose starts PostgreSQL, Temporal, OPA, MinIO, OpenTelemetry/Jaeger, API, Worker, and Cockpit as a development prototype. API/Worker production paths use PostgreSQL authority when configured, but default local credentials, controlled external-authority simulators, incomplete production failure evidence and static Cockpit data make this stack unsuitable for production. Kubernetes, real Evaluation/Shadow/Canary execution, and production hardening remain planned work.
 
 See [deployment.md](deployment.md) for detailed deployment architecture.
 

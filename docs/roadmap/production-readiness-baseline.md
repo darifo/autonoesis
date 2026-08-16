@@ -1,6 +1,6 @@
 # 生产就绪基线与限制
 
-> 评审日期：2026-08-11
+> 评审日期：2026-08-16
 > 适用版本：0.1.x
 > 判定：架构原型 / 工程预览，不可用于生产或高风险真实写操作
 
@@ -13,8 +13,10 @@ OPA、KMS MinIO、参考纵向 E2E、依赖/Secret 扫描，以及 Cockpit 单�
 测试结果生成哈希清单并由 CI 保留 30 天。
 
 这些证据支持 P0 参考纵向切片、PostgreSQL 权威存储、HTTP/Application 用例、Governed Tool
-Gateway、Temporal 耐久编排、Evidence/Outcome/Audit 可信链和 P1-01 多维租户隔离的
-`integrated` 声明；其余能力最高仍为 `unit-tested`，没有任何能力达到 `production-proven`。
+Gateway、Temporal 耐久编排、Evidence/Outcome/Audit 可信链，以及 P1-01 多维租户隔离、
+P1-02 企业身份治理、P1-03 可信 Context/Memory 的 `integrated` 声明。P1-04 Evaluation
+完成固定 Subject、完整 Trial、五级 Grader 和隐藏数据隔离，仍为 `unit-tested`；没有任何能力
+达到 `production-proven`。
 
 ## 生产限制
 

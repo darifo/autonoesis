@@ -105,4 +105,7 @@ Cancellation may be requested at any time. The Run enters Cancelled state. In-fl
 - `GoalRunWorkflow` and `CandidateLifecycleWorkflow` are defined in `apps/worker/src/autonoesis_worker/workflows.py`.
 - `Harness`, `TaskRequest`, `TaskResult` protocols are in `packages/runtime-kernel/src/autonoesis_runtime/harness.py`.
 - `ModelGateway` and `GovernedToolGateway` are in `packages/runtime-kernel/src/autonoesis_runtime/`.
-- Temporal Activities are placeholder stubs awaiting Phase 2 implementation.
+- Temporal Activities use process-level injected Application dependencies; Goal execution has
+  Outbox dispatch, fixed Workflow IDs, reconciliation, cancellation, recovery and Replay evidence.
+- Candidate evaluation now fails closed without a real Evaluator. Fixed-Subject Harness and Grader
+  logic are unit-tested, but production Worker wiring and the end-to-end release path remain pending.
