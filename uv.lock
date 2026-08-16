@@ -458,6 +458,7 @@ source = { editable = "apps/worker" }
 dependencies = [
     { name = "autonoesis-adapters" },
     { name = "autonoesis-application" },
+    { name = "autonoesis-evaluation" },
     { name = "autonoesis-runtime-kernel" },
     { name = "temporalio" },
 ]
@@ -466,6 +467,7 @@ dependencies = [
 requires-dist = [
     { name = "autonoesis-adapters", editable = "packages/adapters" },
     { name = "autonoesis-application", editable = "packages/application" },
+    { name = "autonoesis-evaluation", editable = "packages/evaluation" },
     { name = "autonoesis-runtime-kernel", editable = "packages/runtime-kernel" },
     { name = "temporalio", specifier = ">=1.10" },
 ]

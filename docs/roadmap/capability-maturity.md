@@ -32,7 +32,7 @@ Context/Memory 达到 `integrated`。P1-04 Evaluation 九个实施项全部完�
 | Identity/Policy/Approval | `integrated` | P1-02 进程级 JWKS、严格 OIDC Claims、PostgreSQL 即时委托撤销、双 Principal 高风险审批、进化职责分离和 Break-glass 临时授权/告警/复核；真实 OPA Worker 决策 | 生产企业 IdP/SCIM、密钥轮换与故障、工作负载身份联邦和 SOC 告警演练 |
 | Evidence/Outcome/Audit | `integrated` | CI PostgreSQL 17 + KMS MinIO：预写入准入、Version/Object Lock、Saga 恢复、权威回读 Outcome、并发摘要审计链、真实 Audit Ref 和删除墓碑/证明 | 生产 KMS/跨区复制、真实业务 Authority、WORM 导出、保留/删除长期演练 |
 | Context/Environment/Memory | `integrated` | P1-03 多维 Context ACL、可复现 Snapshot 摘要、冲突/Injection 信号、Memory Write Gate；PostgreSQL Ledger、递归删除传播和向量投影清理 | 生产来源 Connector/DLP、规模化索引重建和数据主体删除演练 |
-| Evaluation | `unit-tested` | Harness 执行固定 Subject Version；Trial 完整保存固定条件与结果；五级 Grader 严格顺序/独立身份/短路门禁；隐藏与生产回放 Case Catalog 隔离；权威 JSON 无损持久化；重复 Trial 以 Wilson 置信下界统计门禁；Candidate 固定引用与禁止目标双层拒绝；CandidateEvaluation 证据记录持久化并绑定晋升，caller 决策路径已移除；Suite Catalog 持久化，真实进程内 Subject Runtime + 独立规则 Grader 后端经 PostgreSQL 组件测试驱动重复 Trial 至置信晋升 | Temporal 工作流驱动评估、Pack 沙箱 Subject 和长期攻击测试 |
+| Evaluation | `unit-tested` | Harness 执行固定 Subject Version；Trial 完整保存固定条件与结果；五级 Grader 严格顺序/独立身份/短路门禁；隐藏与生产回放 Case Catalog 隔离；权威 JSON 无损持久化；重复 Trial 以 Wilson 置信下界统计门禁；Candidate 固定引用与禁止目标双层拒绝；CandidateEvaluation 证据记录持久化并绑定晋升，caller 决策路径已移除；Suite Catalog 持久化，Pack 声明式 Subject（进程内）+ 独立规则 Grader 后端经真实 Temporal 工作流与 PostgreSQL 组件测试驱动重复 Trial 至置信晋升 | Pack 代码沙箱隔离、Outcome/LLM/Human Grader 后端和长期攻击测试 |
 | Shadow/Canary/Rollback | `unit-tested` | 持久化 Deployment/Release 与 Active Stable 唯一约束；晋升算法测试 | 真实双跑/分流、观察窗口和 Release Executor |
 | Cockpit | `unit-tested` | CI Vitest/typecheck/build/Playwright；静态样例和成熟度防误报测试 | 真实 API 数据、权限操作和生成 Client 接入 |
 | 可观测性/FinOps/SLO | `modeled` / 部分 `unit-tested` | 配置骨架和纯计算测试 | 真实 Trace/Metric/Ledger、告警和运行演练 |

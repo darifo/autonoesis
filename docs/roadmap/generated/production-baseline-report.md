@@ -9,7 +9,7 @@
 |---|---|
 | `environment.yml` | `217cde3c5f49080c1b35f5a65051770ad2f9952f9cb6aad4a1c1d9a3696c3119` |
 | `pyproject.toml` | `5d38d54e8885bf564eecb9e3978068874c0f52d1a26776273a020624e1fb0e1f` |
-| `uv.lock` | `f1eeba369e4a022c7daf714af7b10616fb9b8017eab0e2328409d980b4406f95` |
+| `uv.lock` | `be26efb181733084deef0b1ae1a277a448e66184b41d08a49cb1cc6a321f9d0b` |
 | `package.json` | `50cb64a759a95e84c47f1cf5fe1cafa0167aa030bf0d5c806bda00eb48cfbf8a` |
 | `pnpm-lock.yaml` | `929ae26bb7e72d59b69b08d5d55c355a963004622e28fdcac443298b7a7bca30` |
 | `versions.lock` | `2eba0942a897865d9933b07445a45e030682b03c200c041cc159d6d753e08644` |

@@ -5,8 +5,13 @@ import asyncio
 import os
 from uuid import UUID
 
-from autonoesis_adapters import PostgreSQLPlatformStore
+from autonoesis_adapters import (
+    HarnessCandidateEvaluator,
+    PackSubjectRuntime,
+    PostgreSQLPlatformStore,
+)
 from autonoesis_application import CandidateLifecycleService
+from autonoesis_evaluation import RepeatedTrialPolicy
 from autonoesis_runtime import IsolationRiskPool, TenantNamespaces
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from temporalio import activity
@@ -54,12 +59,27 @@ from autonoesis_worker.workflows import (
 _process_dependencies: ActivityDependencies | None = None
 
 
+def _configured_evaluation_policy() -> RepeatedTrialPolicy | None:
+    if not os.getenv("AUTONOESIS_EVALUATION_PASS_THRESHOLD"):
+        return None
+    return RepeatedTrialPolicy(
+        pass_threshold=float(os.environ["AUTONOESIS_EVALUATION_PASS_THRESHOLD"]),
+        confidence_level=float(os.getenv("AUTONOESIS_EVALUATION_CONFIDENCE_LEVEL", "0.95")),
+        min_valid_trials=int(os.getenv("AUTONOESIS_EVALUATION_MIN_VALID_TRIALS", "10")),
+    )
+
+
 def _get_dependencies() -> ActivityDependencies:
     global _process_dependencies
     if _process_dependencies is None:
         database_url = os.environ["AUTONOESIS_DATABASE_URL"]
         store = PostgreSQLPlatformStore.from_url(database_url)
-        _process_dependencies = build_activity_dependencies(store, CandidateLifecycleService(store))
+        _process_dependencies = build_activity_dependencies(
+            store,
+            CandidateLifecycleService(store),
+            candidate_evaluator=HarnessCandidateEvaluator(store, PackSubjectRuntime(store)),
+            evaluation_policy=_configured_evaluation_policy(),
+        )
     return _process_dependencies
 
 

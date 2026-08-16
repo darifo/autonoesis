@@ -40,8 +40,9 @@ P1-02 企业身份治理、P1-03 可信 Context/Memory 的 `integrated` 声明�
   Trial 不计入绿色率也不折抵最小样本；Candidate 必须携带不可变 Artifact Digest、固定 Suite
   与 Generator 身份，禁止改进目标在 Application 与 OPA 策略层双重拒绝；Candidate 晋升只能
   由持久化 Trial 的置信评估记录（candidate_evaluations）驱动，caller 决策路径已移除，
-  审批必须携带理由；Suite Catalog 已持久化，进程内 Subject Runtime 与独立规则 Grader 后端经 PostgreSQL
-  组件测试驱动重复 Trial 至置信晋升；Temporal 工作流驱动评估与 Pack 沙箱隔离仍未完成；
+  审批必须携带理由；Suite Catalog 已持久化，Pack 声明式 Subject（进程内执行）与独立规则 Grader 后端经真实
+  Temporal 工作流和 PostgreSQL 组件测试驱动重复 Trial 至置信晋升，生产 Worker 已装配评估器；
+  Pack 代码沙箱隔离与 Outcome/LLM/Human Grader 后端仍未完成；
 - Candidate/Shadow/Canary 已持久化 Deployment/Release，但没有真实流量双跑、分流、观察窗口和独立 Release Executor；
 - Cockpit 使用静态演示数据，不从公共 API 获取运营指标；
 - Compose 含本地默认凭证和公开测试 KMS key；MinIO 镜像已固定摘要，但配置不满足生产

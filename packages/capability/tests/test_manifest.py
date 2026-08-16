@@ -52,9 +52,18 @@ def test_manifest_rejects_unowned_or_unversioned_entry_points() -> None:
         "tools": list(manifest.tools),
         "policies": list(manifest.policies),
         "evaluation_suites": list(manifest.evaluation_suites),
+        "evaluation_subject": manifest.evaluation_subject,
     }
     with pytest.raises(ManifestError, match="owned"):
         parse_manifest(malicious)
+
+    unowned_subject = {
+        **malicious,
+        "python_entry_point": manifest.python_entry_point,
+        "evaluation_subject": "os:system",
+    }
+    with pytest.raises(ManifestError, match="owned"):
+        parse_manifest(unowned_subject)
 
     entry_point = EntryPoint(
         name=manifest.pack_id,

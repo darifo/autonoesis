@@ -1,10 +1,12 @@
-"""Real in-process Subject Runtime, Grader backends, and repeated-Trial evaluator."""
+"""Real in-process Subject Runtimes, Grader backends, and repeated-Trial evaluator."""
 
 from __future__ import annotations
 
+import importlib
+import inspect
 import secrets
-from collections.abc import Awaitable, Callable
-from typing import Any
+from collections.abc import Callable
+from typing import Any, Protocol
 from uuid import UUID
 
 from autonoesis_domain import EvaluationCase, GraderKind
@@ -26,7 +28,25 @@ from autonoesis_adapters.platform_store import PostgreSQLPlatformStore
 
 PlatformStore = PostgreSQLPlatformStore | InMemoryPlatformStore
 
-SubjectCallable = Callable[[dict[str, Any], int], Awaitable[dict[str, Any]]]
+SubjectCallable = Callable[[dict[str, Any], int], Any]
+
+
+class SubjectRuntime(Protocol):
+    async def execute_artifact(
+        self,
+        artifact_ref: str,
+        tenant_id: UUID,
+        subject_version_id: UUID,
+        input_payload: dict[str, Any],
+        random_seed: int,
+    ) -> SubjectExecutionResult: ...
+
+
+async def _invoke(subject: SubjectCallable, input_payload: dict[str, Any], random_seed: int) -> Any:
+    outcome = subject(input_payload, random_seed)
+    if inspect.isawaitable(outcome):
+        outcome = await outcome
+    return outcome
 
 
 class InProcessSubjectRuntime:
@@ -43,14 +63,10 @@ class InProcessSubjectRuntime:
     def register(self, artifact_ref: str, subject: SubjectCallable) -> None:
         self._subjects[artifact_ref] = subject
 
-    async def execute(
-        self, subject_version_id: UUID, input_payload: dict[str, Any], random_seed: int
-    ) -> SubjectExecutionResult:
-        raise NotImplementedError("resolve by artifact_ref is owned by the evaluator")
-
     async def execute_artifact(
         self,
         artifact_ref: str,
+        tenant_id: UUID,
         subject_version_id: UUID,
         input_payload: dict[str, Any],
         random_seed: int,
@@ -59,7 +75,7 @@ class InProcessSubjectRuntime:
             subject = self._subjects[artifact_ref]
         except KeyError as exc:
             raise RuntimeError(f"no subject runtime registered for {artifact_ref}") from exc
-        output_payload = await subject(input_payload, random_seed)
+        output_payload = await _invoke(subject, input_payload, random_seed)
         return SubjectExecutionResult(
             subject_version_id=subject_version_id,
             output_payload=output_payload,
@@ -67,6 +83,71 @@ class InProcessSubjectRuntime:
             evidence_refs=(f"subject://{artifact_ref}/seed/{random_seed}",),
             environment_ref="runtime://in-process/1",
         )
+
+
+class PackSubjectRuntime:
+    """Resolves subjects from tenant-registered Capability Packs.
+
+    Artifact references use `pack://<pack_id>/<version>`. The pack manifest must
+    declare an `evaluation_subject` entry point owned by the pack module; the
+    callable is imported once per (tenant, pack, version) and executed with the
+    Case input and Trial seed. Packs without a declared subject fail closed.
+    In-process execution only: sandbox isolation arrives with P1-06.
+    """
+
+    def __init__(self, store: PlatformStore) -> None:
+        self._store = store
+        self._subjects: dict[tuple[UUID, str], SubjectCallable] = {}
+
+    async def execute_artifact(
+        self,
+        artifact_ref: str,
+        tenant_id: UUID,
+        subject_version_id: UUID,
+        input_payload: dict[str, Any],
+        random_seed: int,
+    ) -> SubjectExecutionResult:
+        subject = await self._resolve(tenant_id, artifact_ref)
+        output_payload = await _invoke(subject, input_payload, random_seed)
+        return SubjectExecutionResult(
+            subject_version_id=subject_version_id,
+            output_payload=output_payload,
+            executor_id="pack-subject-runtime@1",
+            evidence_refs=(f"subject://{artifact_ref}/seed/{random_seed}",),
+            environment_ref="runtime://pack-in-process/1",
+        )
+
+    async def _resolve(self, tenant_id: UUID, artifact_ref: str) -> SubjectCallable:
+        parts = artifact_ref.removeprefix("pack://").split("/")
+        if len(parts) != 2 or not all(parts):
+            raise RuntimeError(f"pack artifact reference is malformed: {artifact_ref}")
+        pack_id, version = parts
+        cached = self._subjects.get((tenant_id, artifact_ref))
+        if cached is not None:
+            return cached
+        try:
+            manifest = next(
+                item
+                for item in await self._store.list_capability_packs(tenant_id)
+                if item.pack_id == pack_id and item.version == version
+            )
+        except StopIteration as exc:
+            raise RuntimeError(f"capability pack not registered: {artifact_ref}") from exc
+        if manifest.evaluation_subject is None:
+            raise RuntimeError(
+                f"capability pack {pack_id}@{version} declares no evaluation subject"
+            )
+        module_name, _, attribute = manifest.evaluation_subject.partition(":")
+        try:
+            module = importlib.import_module(module_name)
+            subject = getattr(module, attribute)
+        except (ImportError, AttributeError) as exc:
+            raise RuntimeError(f"evaluation subject unavailable for {artifact_ref}: {exc}") from exc
+        if not callable(subject):
+            raise RuntimeError(f"evaluation subject is not callable: {manifest.evaluation_subject}")
+        resolved: SubjectCallable = subject
+        self._subjects[(tenant_id, artifact_ref)] = resolved
+        return resolved
 
 
 class ExactMatchGraderBackend(GraderBackend):
@@ -98,15 +179,16 @@ class ExactMatchGraderBackend(GraderBackend):
 class _ArtifactBoundExecutor:
     """Binds the runtime to one artifact so the Harness sees a fixed Subject."""
 
-    def __init__(self, runtime: InProcessSubjectRuntime, artifact_ref: str) -> None:
+    def __init__(self, runtime: SubjectRuntime, tenant_id: UUID, artifact_ref: str) -> None:
         self._runtime = runtime
+        self._tenant_id = tenant_id
         self._artifact_ref = artifact_ref
 
     async def execute(
         self, subject_version_id: UUID, input_payload: dict[str, Any], random_seed: int
     ) -> SubjectExecutionResult:
         return await self._runtime.execute_artifact(
-            self._artifact_ref, subject_version_id, input_payload, random_seed
+            self._artifact_ref, self._tenant_id, subject_version_id, input_payload, random_seed
         )
 
 
@@ -121,7 +203,7 @@ class HarnessCandidateEvaluator:
     def __init__(
         self,
         store: PlatformStore,
-        subject_runtime: InProcessSubjectRuntime,
+        subject_runtime: SubjectRuntime,
         *,
         harness_version: str = "2",
     ) -> None:
@@ -140,7 +222,7 @@ class HarnessCandidateEvaluator:
             SuiteAccessContext(candidate_id, frozenset({SuiteAccessRole.EVALUATION_HARNESS})),
         )
 
-        executor = _ArtifactBoundExecutor(self._subject_runtime, candidate.artifact_ref)
+        executor = _ArtifactBoundExecutor(self._subject_runtime, tenant_id, candidate.artifact_ref)
         pipeline = GraderPipeline(
             (
                 GraderStage(
@@ -172,4 +254,6 @@ __all__ = [
     "ExactMatchGraderBackend",
     "HarnessCandidateEvaluator",
     "InProcessSubjectRuntime",
+    "PackSubjectRuntime",
+    "SubjectRuntime",
 ]

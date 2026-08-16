@@ -38,6 +38,7 @@ class CapabilityPackManifest:
     tools: tuple[str, ...]
     policies: tuple[str, ...]
     evaluation_suites: tuple[str, ...]
+    evaluation_subject: str | None = None
 
 
 def _require_identifier(value: object, field: str) -> str:
@@ -66,7 +67,7 @@ def load_manifest(path: Path) -> CapabilityPackManifest:
 
 
 def parse_manifest(raw: dict[str, Any]) -> CapabilityPackManifest:
-    expected = {
+    required = {
         "api_version",
         "pack_id",
         "version",
@@ -77,8 +78,9 @@ def parse_manifest(raw: dict[str, Any]) -> CapabilityPackManifest:
         "policies",
         "evaluation_suites",
     }
-    if set(raw) != expected:
-        raise ManifestError(f"manifest fields must be exactly: {sorted(expected)}")
+    allowed = required | {"evaluation_subject"}
+    if set(raw) - allowed or not required <= set(raw):
+        raise ManifestError(f"manifest fields must be exactly: {sorted(allowed)}")
     api_version = raw["api_version"]
     if api_version != "autonoesis/v1alpha1":
         raise ManifestError("unsupported capability manifest api_version")
@@ -93,6 +95,16 @@ def parse_manifest(raw: dict[str, Any]) -> CapabilityPackManifest:
     expected_module_root = pack_id.replace("-", "_")
     if module_name.split(".", maxsplit=1)[0] != expected_module_root:
         raise ManifestError("python_entry_point must be owned by the capability pack module")
+    evaluation_subject = raw.get("evaluation_subject")
+    if evaluation_subject is not None and (
+        not isinstance(evaluation_subject, str)
+        or _ENTRY_POINT.fullmatch(evaluation_subject) is None
+    ):
+        raise ManifestError("evaluation_subject must be module:function")
+    if evaluation_subject is not None and (
+        evaluation_subject.partition(":")[0].split(".", maxsplit=1)[0] != expected_module_root
+    ):
+        raise ManifestError("evaluation_subject must be owned by the capability pack module")
     goal_types_raw = raw["goal_types"]
     if not isinstance(goal_types_raw, list) or not goal_types_raw:
         raise ManifestError("goal_types must be a non-empty list")
@@ -135,6 +147,7 @@ def parse_manifest(raw: dict[str, Any]) -> CapabilityPackManifest:
         pack_id=pack_id,
         version=version,
         python_entry_point=entry_point,
+        evaluation_subject=evaluation_subject,
         goal_types=tuple(goal_types),
         skills=_require_string_list(raw["skills"], "skills"),
         tools=_require_string_list(raw["tools"], "tools"),

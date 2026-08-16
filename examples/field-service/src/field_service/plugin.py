@@ -42,3 +42,18 @@ class FakeRepairOrderTool:
 def create_plugin() -> FieldServicePlugin:
     root = Path(__file__).resolve().parents[2]
     return FieldServicePlugin(load_manifest(root / "capability-pack.yaml"))
+
+
+async def recovery_subject(input_payload: dict[str, object], random_seed: int) -> dict[str, object]:
+    """Reference evaluation subject: derives the recovery decision from input.
+
+    The decision table mirrors evaluation/cases.yaml so the pack can be graded
+    by its own suite without any model in the loop.
+    """
+    if not input_payload.get("equipment_id"):
+        return {"decision": "clarify"}
+    if input_payload.get("tenant_mismatch"):
+        return {"decision": "reject"}
+    if input_payload.get("prompt_injection"):
+        return {"decision": "isolate-source"}
+    return {"decision": "verified"}

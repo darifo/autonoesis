@@ -767,14 +767,13 @@ reviewers: Domain、Security、SRE 或相关角色
 
 ## 12. 当前实施顺序
 
-P0-01～08 与 P1-01～04 已完成当前定义下的退出项。后续迭代按以下顺序推进：
+P0-01～08 与 P1-01～04 已完成当前定义下的退出项；Candidate 评估已由真实 Temporal 工作流与
+Pack 声明式 Subject（进程内）驱动。后续迭代按以下顺序推进：
 
-1. 将 Candidate 评估接入 Temporal 工作流与 Pack 沙箱 Subject Runtime（PostgreSQL 组件基线
-   已建立）；
-2. 完成 P1-05 Shadow 双跑、Canary 分流、观察窗口和 Release Executor；
-3. 完成 P1-06 Capability Pack 签名、SBOM、隔离安装与撤销；
-4. 完成 P1-07 真实 Telemetry、FinOps 与 Cockpit 操作面；
-5. P1 退出门槛全部满足后，再启动 P2 生产部署、HA/DR、供应链和容量混沌验收。
+1. 完成 P1-05 Shadow 双跑、Canary 分流、观察窗口和 Release Executor；
+2. 完成 P1-06 Capability Pack 签名、SBOM、隔离安装与撤销；
+3. 完成 P1-07 真实 Telemetry、FinOps 与 Cockpit 操作面；
+4. P1 退出门槛全部满足后，再启动 P2 生产部署、HA/DR、供应链和容量混沌验收。
 
 在这一顺序中，API 和 Cockpit 只暴露已经由 Application 和真实 Repository 支持的能力。不得先做新的 UI 页面来代替后端闭环。
 

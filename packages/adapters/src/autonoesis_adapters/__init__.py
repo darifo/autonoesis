@@ -8,6 +8,8 @@ from autonoesis_adapters.evaluation_runtime import (
     ExactMatchGraderBackend,
     HarnessCandidateEvaluator,
     InProcessSubjectRuntime,
+    PackSubjectRuntime,
+    SubjectRuntime,
 )
 from autonoesis_adapters.evidence_store import (
     Boto3ObjectStore,
@@ -88,6 +90,7 @@ __all__ = [
     "OpenAIResponsesAdapter",
     "OutboxRelay",
     "OutboxWriter",
+    "PackSubjectRuntime",
     "PostgreSQLAtomicExecutionReservations",
     "PostgreSQLDelegationStore",
     "PostgreSQLPlatformStore",
@@ -98,6 +101,7 @@ __all__ = [
     "SqlKillSwitchStore",
     "SqlPlatformKillSwitchStore",
     "StaticToolCatalog",
+    "SubjectRuntime",
     "cached_oidc_validator",
     "create_repository",
     "metadata",
