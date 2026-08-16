@@ -11,6 +11,7 @@ from autonoesis_domain import (
     CandidateEvaluation,
     CandidateVersion,
     Deployment,
+    EvaluationSuite,
     Evidence,
     GoalContract,
     ImprovementProposal,
@@ -163,6 +164,15 @@ class PostgreSQLPlatformStore:
         self, tenant_id: UUID, candidate_id: UUID
     ) -> tuple[Trial, ...]:
         return await self.repository.list_trials_for_candidate(tenant_id, candidate_id)
+
+    async def add_suite(self, tenant_id: UUID, suite: EvaluationSuite) -> None:
+        await self.repository.add_suite(tenant_id, suite)
+
+    async def get_suite(self, tenant_id: UUID, suite_id: str, version: str) -> EvaluationSuite:
+        return await self.repository.get_suite(tenant_id, suite_id, version)
+
+    async def list_suites(self, tenant_id: UUID) -> tuple[EvaluationSuite, ...]:
+        return await self.repository.list_suites(tenant_id)
 
     async def add_evaluation_record(self, record: CandidateEvaluation) -> None:
         await self.repository.add_evaluation_record(record)

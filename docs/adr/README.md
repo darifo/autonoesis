@@ -31,3 +31,4 @@ ADRs record decisions affecting authoritative ownership, process boundaries, pro
 - [ADR-0024: Repeated-Trial Statistical Confidence Gates](0024-repeated-trial-confidence-gates.md)
 - [ADR-0025: Fixed Candidate References and Doubly-Prohibited Improvement Targets](0025-fixed-candidate-references-and-forbidden-targets.md)
 - [ADR-0026: Persisted Evaluation Evidence Gates Candidate Promotion](0026-persisted-evaluation-evidence-gates-promotion.md)
+- [ADR-0027: Real Subject Runtime, Persisted Suite Catalog, Repeated-Trial Execution](0027-real-subject-runtime-and-suite-catalog.md)

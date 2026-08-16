@@ -27,6 +27,7 @@ from autonoesis_domain import (
     CandidateVersion,
     ContextSnapshot,
     Deployment,
+    EvaluationSuite,
     Evidence,
     GoalContract,
     ImprovementProposal,
@@ -73,6 +74,7 @@ class InMemoryPlatformStore:
         self.releases: dict[UUID, Release] = {}
         self.trials: dict[UUID, Trial] = {}
         self.candidate_evaluations: dict[UUID, CandidateEvaluation] = {}
+        self.suites: dict[tuple[UUID, str, str], EvaluationSuite] = {}
         self.idempotency: dict[tuple[UUID, str], UUID] = {}
         self.idempotency_digests: dict[tuple[UUID, str], str] = {}
 
@@ -501,6 +503,18 @@ class InMemoryPlatformStore:
 
     async def add_trial(self, trial: Trial) -> None:
         self.trials[trial.trial_id] = trial
+
+    async def add_suite(self, tenant_id: UUID, suite: EvaluationSuite) -> None:
+        self.suites[(tenant_id, suite.suite_id, suite.version)] = suite
+
+    async def get_suite(self, tenant_id: UUID, suite_id: str, version: str) -> EvaluationSuite:
+        try:
+            return self.suites[(tenant_id, suite_id, version)]
+        except KeyError as exc:
+            raise RecordNotFound(f"evaluation suite not found: {suite_id}@{version}") from exc
+
+    async def list_suites(self, tenant_id: UUID) -> tuple[EvaluationSuite, ...]:
+        return tuple(suite for (owner, _, _), suite in self.suites.items() if owner == tenant_id)
 
     async def list_trials(self, tenant_id: UUID) -> tuple[Trial, ...]:
         return tuple(item for item in self.trials.values() if item.tenant_id == tenant_id)

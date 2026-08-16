@@ -27,9 +27,9 @@ Configured Compose images (configuration inventory only; not integration evidenc
 
 ## Database Schema Baseline
 
-- Alembic head: `0011_evaluation_evidence_records`
-- SQLAlchemy metadata digest: `sha256:276e42e4cd398fbdd503017f0706091de878fd78ea6f44c6b4a1361cf6067f79`
-- Declared tables (41): `action_attempts`, `actions`, `agent_versions`, `approvals`, `audit_events`, `breakglass_alerts`, `budget_ledger`, `budgets`, `candidate_evaluations`, `candidates`, `capability_packs`, `context_snapshots`, `deployments`, `environment_facts`, `evaluation_trials`, `evidence`, `evidence_capture_sagas`, `evidence_deletions`, `goals`, `idempotency_records`, `improvement_proposals`, `inbox`, `kill_switches`, `memory_deletion_edges`, `memory_ledger`, `memory_records`, `outbox`, `outcomes`, `plans`, `platform_audit_events`, `platform_kill_switches`, `policy_versions`, `releases`, `runs`, `skill_versions`, `tasks`, `telemetry_records`, `tenant_resource_namespaces`, `tenants`, `tool_versions`, `vector_index_projections`
+- Alembic head: `0012_evaluation_suite_catalog`
+- SQLAlchemy metadata digest: `sha256:b38b124fabec7253d7d13c68bf87f6a15dfa0920d07e01b5e4091918cecbbadd`
+- Declared tables (42): `action_attempts`, `actions`, `agent_versions`, `approvals`, `audit_events`, `breakglass_alerts`, `budget_ledger`, `budgets`, `candidate_evaluations`, `candidates`, `capability_packs`, `context_snapshots`, `deployments`, `environment_facts`, `evaluation_suites`, `evaluation_trials`, `evidence`, `evidence_capture_sagas`, `evidence_deletions`, `goals`, `idempotency_records`, `improvement_proposals`, `inbox`, `kill_switches`, `memory_deletion_edges`, `memory_ledger`, `memory_records`, `outbox`, `outcomes`, `plans`, `platform_audit_events`, `platform_kill_switches`, `policy_versions`, `releases`, `runs`, `skill_versions`, `tasks`, `telemetry_records`, `tenant_resource_namespaces`, `tenants`, `tool_versions`, `vector_index_projections`
 - Evidence level: `integrated`; CI migrates PostgreSQL 17 and runs authority/Application transaction component tests.
 
 ## HTTP API Contract Baseline

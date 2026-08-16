@@ -402,6 +402,13 @@ evaluation_trials = tenant_table(
     ),
     status_check("pending", "running", "passed", "failed", "invalid"),
 )
+evaluation_suites = tenant_table(
+    "evaluation_suites",
+    Column("suite_id", String(200), nullable=False),
+    Column("version", String(64), nullable=False),
+    Column("definition", JSON, nullable=False),
+    UniqueConstraint("tenant_id", "suite_id", "version", name="uq_evaluation_suites_version"),
+)
 candidate_evaluations = tenant_table(
     "candidate_evaluations",
     Column("candidate_id", String(36), nullable=False),

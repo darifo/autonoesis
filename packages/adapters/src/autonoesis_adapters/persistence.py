@@ -31,6 +31,7 @@ from autonoesis_domain import (
     DataClassification,
     DataPolicy,
     Deployment,
+    EvaluationSuite,
     Evidence,
     ExecutionMode,
     GoalContract,
@@ -89,6 +90,8 @@ from autonoesis_adapters.persistence_codec import (
     release_payload,
     run_from_row,
     run_payload,
+    suite_from_row,
+    suite_payload,
     task_payload,
     transition_payload,
     transitions_from,
@@ -108,6 +111,7 @@ from autonoesis_adapters.persistence_schema import (
     capability_packs,
     context_snapshots,
     deployments,
+    evaluation_suites,
     evaluation_trials,
     evidence,
     evidence_capture_sagas,
@@ -1360,6 +1364,47 @@ class SqlAlchemyPlatformRepository:
     async def list_trials(self, tenant_id: UUID) -> tuple[Trial, ...]:
         return tuple(
             trial_from_row(row) for row in await self._list_rows(evaluation_trials, tenant_id)
+        )
+
+    async def add_suite(self, tenant_id: UUID, suite: EvaluationSuite) -> None:
+        now = datetime.now(UTC)
+        async with self._sessions.begin() as session:
+            await self._scope_tenant(session, tenant_id)
+            await session.execute(
+                insert(evaluation_suites).values(
+                    id=str(uuid4()),
+                    tenant_id=str(tenant_id),
+                    suite_id=suite.suite_id,
+                    version=suite.version,
+                    definition=suite_payload(suite),
+                    optimistic_version=1,
+                    created_at=now,
+                )
+            )
+
+    async def get_suite(self, tenant_id: UUID, suite_id: str, version: str) -> EvaluationSuite:
+        async with self._sessions() as session:
+            await self._scope_tenant(session, tenant_id)
+            row = (
+                (
+                    await session.execute(
+                        select(evaluation_suites).where(
+                            evaluation_suites.c.tenant_id == str(tenant_id),
+                            evaluation_suites.c.suite_id == suite_id,
+                            evaluation_suites.c.version == version,
+                        )
+                    )
+                )
+                .mappings()
+                .one_or_none()
+            )
+        if row is None:
+            raise RecordNotFound(f"evaluation suite not found: {suite_id}@{version}")
+        return suite_from_row(dict(row))
+
+    async def list_suites(self, tenant_id: UUID) -> tuple[EvaluationSuite, ...]:
+        return tuple(
+            suite_from_row(row) for row in await self._list_rows(evaluation_suites, tenant_id)
         )
 
     async def list_trials_for_candidate(

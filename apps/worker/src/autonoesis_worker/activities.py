@@ -29,7 +29,7 @@ from autonoesis_application import (
     StartTask,
     TaskDefinition,
 )
-from autonoesis_domain import Task, Trial, TrialStatus
+from autonoesis_domain import Task, Trial
 from autonoesis_evaluation import RepeatedTrialPolicy
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
@@ -312,32 +312,32 @@ async def evaluate_candidate(
             non_retryable=True,
         )
 
-    _heartbeat("evaluate_candidate")
-    await evolution.submit_for_evaluation(tenant_id, candidate_id)
-    trial = await evaluator.evaluate(tenant_id, candidate_id)
-    trial = replace(trial, candidate_id=candidate_id)
-    await dependencies.store.add_trial(trial)
-    if trial.status is TrialStatus.INVALID:
-        raise ApplicationError(
-            f"candidate evaluation invalid: {trial.failure_reason}",
-            non_retryable=True,
-        )
-
     from autonoesis_domain import CandidateStatus
 
+    policy = dependencies.evaluation_policy or RepeatedTrialPolicy(pass_threshold=0.8)
+    # Invalid Trials are infrastructure evidence: consume the attempt budget but
+    # never count toward the sample or the green rate.
+    max_attempts = policy.min_valid_trials * 2
+    _heartbeat("evaluate_candidate")
+    await evolution.submit_for_evaluation(tenant_id, candidate_id)
     grader = _context(input.tenant_id, input.candidate_id, "evaluate-candidate").identity
-    try:
-        candidate, _record = await evolution.complete_evaluation(
-            grader,
-            candidate_id,
-            dependencies.evaluation_policy or RepeatedTrialPolicy(pass_threshold=0.8),
-        )
-    except ValueError as exc:
-        raise ApplicationError(
-            f"candidate evaluation evidence is incomplete: {exc}",
-            non_retryable=True,
-        ) from exc
-    return candidate.status is CandidateStatus.AWAITING_APPROVAL
+    last_incompleteness = "no trial executed"
+    for _attempt in range(max_attempts):
+        _heartbeat("evaluate_candidate")
+        trial = await evaluator.evaluate(tenant_id, candidate_id)
+        trial = replace(trial, candidate_id=candidate_id)
+        await dependencies.store.add_trial(trial)
+        try:
+            candidate, _record = await evolution.complete_evaluation(grader, candidate_id, policy)
+        except ValueError as exc:
+            last_incompleteness = str(exc)
+            continue
+        return candidate.status is CandidateStatus.AWAITING_APPROVAL
+    raise ApplicationError(
+        "candidate evaluation evidence is incomplete after "
+        f"{max_attempts} attempts: {last_incompleteness}",
+        non_retryable=True,
+    )
 
 
 @activity.defn

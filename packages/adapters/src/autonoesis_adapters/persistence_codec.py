@@ -17,12 +17,15 @@ from autonoesis_domain import (
     CandidateEvaluation,
     CandidateStatus,
     CandidateVersion,
+    CaseVisibility,
     CompensationCapability,
     ContextSnapshot,
     DataClassification,
     Deployment,
     DeploymentStatus,
     EnvironmentFact,
+    EvaluationCase,
+    EvaluationSuite,
     Evidence,
     EvidenceCaptureMethod,
     EvidenceIntegrity,
@@ -582,6 +585,45 @@ def candidate_from_row(row: dict[str, Any]) -> CandidateVersion:
         grader_principal_id=definition.get("grader_principal_id"),
         approver_principal_id=definition.get("approver_principal_id"),
         approval_reason=definition.get("approval_reason"),
+    )
+
+
+def suite_payload(item: EvaluationSuite) -> dict[str, Any]:
+    return {
+        "pass_threshold": item.pass_threshold,
+        "cases": [
+            {
+                "case_id": case.case_id,
+                "input_payload": case.input_payload,
+                "expected_outcome": case.expected_outcome,
+                "tags": list(case.tags),
+                "visibility": case.visibility.value,
+                "weight": case.weight,
+                "gating": case.gating,
+            }
+            for case in item.cases
+        ],
+    }
+
+
+def suite_from_row(row: dict[str, Any]) -> EvaluationSuite:
+    definition = row["definition"]
+    return EvaluationSuite(
+        suite_id=row["suite_id"],
+        version=row["version"],
+        cases=tuple(
+            EvaluationCase(
+                case_id=case["case_id"],
+                input_payload=case.get("input_payload", {}),
+                expected_outcome=case.get("expected_outcome", {}),
+                tags=tuple(case.get("tags", ())),
+                visibility=CaseVisibility(case.get("visibility", "public")),
+                weight=case.get("weight", 1.0),
+                gating=case.get("gating", False),
+            )
+            for case in definition.get("cases", ())
+        ),
+        pass_threshold=definition.get("pass_threshold", 1.0),
     )
 
 

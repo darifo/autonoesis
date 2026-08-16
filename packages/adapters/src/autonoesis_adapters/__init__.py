@@ -4,6 +4,11 @@ from autonoesis_adapters.emergency_authorization import (
     InMemoryTemporaryAuthorizationStore,
     PostgreSQLTemporaryAuthorizationStore,
 )
+from autonoesis_adapters.evaluation_runtime import (
+    ExactMatchGraderBackend,
+    HarnessCandidateEvaluator,
+    InProcessSubjectRuntime,
+)
 from autonoesis_adapters.evidence_store import (
     Boto3ObjectStore,
     InMemoryObjectStore,
@@ -56,7 +61,9 @@ __all__ = [
     "Boto3ObjectStore",
     "DevelopmentPolicy",
     "EphemeralCredentialBroker",
+    "ExactMatchGraderBackend",
     "FakeModelAdapter",
+    "HarnessCandidateEvaluator",
     "HttpAuthoritativeReadback",
     "InMemoryAtomicExecutionReservations",
     "InMemoryBudgetLedger",
@@ -66,6 +73,7 @@ __all__ = [
     "InMemoryObjectStore",
     "InMemoryPlatformStore",
     "InMemoryTemporaryAuthorizationStore",
+    "InProcessSubjectRuntime",
     "InboxConsumer",
     "JsonSchemaValidator",
     "MCPServerAdapter",

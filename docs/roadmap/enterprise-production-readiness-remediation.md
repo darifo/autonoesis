@@ -769,8 +769,8 @@ reviewers: Domain、Security、SRE 或相关角色
 
 P0-01～08 与 P1-01～04 已完成当前定义下的退出项。后续迭代按以下顺序推进：
 
-1. 用真实 Subject Runtime 和独立 Grader 后端建立 PostgreSQL/Temporal 组件测试，打通重复
-   Trial 的端到端执行；
+1. 将 Candidate 评估接入 Temporal 工作流与 Pack 沙箱 Subject Runtime（PostgreSQL 组件基线
+   已建立）；
 2. 完成 P1-05 Shadow 双跑、Canary 分流、观察窗口和 Release Executor；
 3. 完成 P1-06 Capability Pack 签名、SBOM、隔离安装与撤销；
 4. 完成 P1-07 真实 Telemetry、FinOps 与 Cockpit 操作面；
