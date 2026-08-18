@@ -19,6 +19,7 @@ from autonoesis_adapters import (
     PostgreSQLTemporaryAuthorizationStore,
     SqlKillSwitchStore,
     SqlPlatformKillSwitchStore,
+    SqlShadowWriteGuard,
     cached_oidc_validator,
 )
 from autonoesis_application import (
@@ -291,7 +292,11 @@ def build_app(
             return app.state.kill_switch.for_tenant(context.tenant_id)
         return app.state.kill_switch
 
-    execution = GoalExecutionApplication(platform_store.repository, platform_store)
+    execution = GoalExecutionApplication(
+        platform_store.repository,
+        platform_store,
+        shadow_write_guard=SqlShadowWriteGuard(platform_store),
+    )
     evolution = CandidateLifecycleService(platform_store, improvement_policy)
     resolved_evaluation_policy = evaluation_policy or configured_evaluation_policy()
 

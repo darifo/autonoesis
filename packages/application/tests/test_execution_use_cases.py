@@ -678,3 +678,36 @@ async def test_plan_and_idempotency_roll_back_when_run_update_conflicts() -> Non
         await store.get_idempotency(identity.tenant_id, "create_validated_plan:plan-rollback")
         is None
     )
+
+
+class _DenyingShadowGuard:
+    def __init__(self) -> None:
+        self.called = False
+
+    async def assert_writable(self, tenant_id: UUID, run_id: UUID) -> None:
+        self.called = True
+        raise PermissionError("shadow deployment cannot produce external side effects")
+
+
+class _StubGateway:
+    async def execute(self, *args: object, **kwargs: object) -> object:
+        raise AssertionError("governed gateway must not execute for a shadow write")
+
+
+@pytest.mark.asyncio
+async def test_shadow_write_guard_blocks_write_action_before_gateway() -> None:
+    store, _, identity = _setup()
+    guard = _DenyingShadowGuard()
+    application = GoalExecutionApplication(
+        store.repository,
+        store,
+        governed_gateway=_StubGateway(),  # type: ignore[arg-type]
+        shadow_write_guard=guard,
+    )
+    _, _, action = await _prepare_action(application, identity, suffix="shadow")
+    with pytest.raises(PermissionError, match="shadow deployment"):
+        await application.execute_governed_action(
+            _context(identity, "shadow-execute"),
+            ExecuteGovernedAction(action.action_id, None, "vertical-policy@1", None, 3),
+        )
+    assert guard.called

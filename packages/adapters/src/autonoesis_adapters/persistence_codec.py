@@ -102,6 +102,7 @@ def run_payload(run: Run) -> dict[str, Any]:
             else None
         ),
         "transitions": [transition_payload(item) for item in run.transitions],
+        "deployment_id": str(run.deployment_id) if run.deployment_id else None,
     }
 
 
@@ -130,6 +131,9 @@ def run_from_row(row: dict[str, Any]) -> Run:
         optimistic_version=row["optimistic_version"],
         created_at=row["created_at"],
         transitions=transitions_from(definition.get("transitions")),
+        deployment_id=(
+            UUID(definition["deployment_id"]) if definition.get("deployment_id") else None
+        ),
     )
 
 

@@ -214,6 +214,7 @@ class Run:
     optimistic_version: int = 1
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     transitions: tuple[StateTransition, ...] = ()
+    deployment_id: UUID | None = None
 
     def __post_init__(self) -> None:
         if self.created_at.tzinfo is None:

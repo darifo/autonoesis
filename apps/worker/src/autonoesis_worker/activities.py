@@ -14,7 +14,11 @@ from hashlib import sha256
 from typing import Protocol
 from uuid import UUID
 
-from autonoesis_adapters import InMemoryPlatformStore, PostgreSQLPlatformStore
+from autonoesis_adapters import (
+    InMemoryPlatformStore,
+    PostgreSQLPlatformStore,
+    SqlShadowWriteGuard,
+)
 from autonoesis_application import (
     CancelRun,
     CandidateLifecycleService,
@@ -105,7 +109,10 @@ def build_activity_dependencies(
 ) -> ActivityDependencies:
     return ActivityDependencies(
         store=store,
-        application=application or GoalExecutionApplication(store.repository, store),
+        application=application
+        or GoalExecutionApplication(
+            store.repository, store, shadow_write_guard=SqlShadowWriteGuard(store)
+        ),
         evolution=evolution,
         planner=planner,
         executor=executor,

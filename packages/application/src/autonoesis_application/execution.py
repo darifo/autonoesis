@@ -4,7 +4,7 @@ import json
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
-from typing import Any
+from typing import Any, Protocol
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from autonoesis_capability import validate_payload
@@ -68,6 +68,20 @@ from autonoesis_application.verification import (
     EvidenceDeletionStatus,
     TrustedOutcomeVerifier,
 )
+
+_WRITE_RISKS = frozenset(
+    {
+        RiskLevel.L2_REVERSIBLE_WRITE,
+        RiskLevel.L3_HIGH_IMPACT_WRITE,
+        RiskLevel.L4_PRIVILEGED,
+    }
+)
+
+
+class ShadowWriteGuard(Protocol):
+    """Execution-time gate that keeps shadow deployments from producing side effects."""
+
+    async def assert_writable(self, tenant_id: UUID, run_id: UUID) -> None: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -303,6 +317,7 @@ class GoalExecutionApplication:
         authoritative_readback: AuthoritativeReadback | None = None,
         evidence_policy: EvidenceAdmissionPolicy | None = None,
         context_assembler: ContextAssembler | None = None,
+        shadow_write_guard: ShadowWriteGuard | None = None,
     ) -> None:
         self._repository = repository
         self._catalog = catalog
@@ -312,6 +327,7 @@ class GoalExecutionApplication:
         self._authoritative_readback = authoritative_readback
         self._evidence_policy = evidence_policy or EvidenceAdmissionPolicy()
         self._context_assembler = context_assembler or ContextAssembler()
+        self._shadow_write_guard = shadow_write_guard
         self._outcome_verifier = (
             TrustedOutcomeVerifier(authoritative_readback, evidence_artifacts)
             if authoritative_readback is not None and evidence_artifacts is not None
@@ -786,6 +802,11 @@ class GoalExecutionApplication:
                 await self._repository.get_approval(context.identity.tenant_id, command.approval_id)
                 if command.approval_id is not None
                 else None
+            )
+
+        if action.risk_level in _WRITE_RISKS and self._shadow_write_guard is not None:
+            await self._shadow_write_guard.assert_writable(
+                context.identity.tenant_id, action.run_id
             )
 
         authorization = AuthorizationContext(

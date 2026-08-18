@@ -57,6 +57,7 @@ from autonoesis_adapters.persistence import (
 )
 from autonoesis_adapters.platform_store import PostgreSQLPlatformStore
 from autonoesis_adapters.readback import HttpAuthoritativeReadback, ReadbackEndpoint
+from autonoesis_adapters.shadow_write_guard import SqlShadowWriteGuard
 
 __all__ = [
     "AnthropicMessagesAdapter",
@@ -100,6 +101,7 @@ __all__ = [
     "SqlAlchemyPlatformRepository",
     "SqlKillSwitchStore",
     "SqlPlatformKillSwitchStore",
+    "SqlShadowWriteGuard",
     "StaticToolCatalog",
     "SubjectRuntime",
     "cached_oidc_validator",
