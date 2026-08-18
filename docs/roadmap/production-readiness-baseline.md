@@ -43,7 +43,10 @@ P1-02 企业身份治理、P1-03 可信 Context/Memory 的 `integrated` 声明�
   审批必须携带理由；Suite Catalog 已持久化，Pack 声明式 Subject（进程内执行）与独立规则 Grader 后端经真实
   Temporal 工作流和 PostgreSQL 组件测试驱动重复 Trial 至置信晋升，生产 Worker 已装配评估器；
   Pack 代码沙箱隔离与 Outcome/LLM/Human Grader 后端仍未完成；
-- Candidate/Shadow/Canary 已持久化 Deployment/Release，但没有真实流量双跑、分流、观察窗口和独立 Release Executor；
+- Candidate/Shadow/Canary 已持久化 Deployment/Release、Active Stable 唯一约束与乐观版本 CAS；
+  Canary 晋升受观察窗口、最小样本和指标缺失拒绝门禁约束，Guardrail 越界自动回滚且按
+  (租户, 部署, 阶段, 指标) 隔离，并发晋升唯一胜出有组件测试；但真实 Shadow 双跑禁写、
+  流量分流规则和独立 Release Executor 仍未完成；
 - Cockpit 使用静态演示数据，不从公共 API 获取运营指标；
 - Compose 含本地默认凭证和公开测试 KMS key；MinIO 镜像已固定摘要，但配置不满足生产
   Secret/KMS 与供应链要求；

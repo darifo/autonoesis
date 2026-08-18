@@ -22,6 +22,7 @@ from autonoesis_domain import (
     ContextSnapshot,
     DataClassification,
     Deployment,
+    DeploymentObservation,
     DeploymentStatus,
     EnvironmentFact,
     EvaluationCase,
@@ -585,6 +586,22 @@ def candidate_from_row(row: dict[str, Any]) -> CandidateVersion:
         grader_principal_id=definition.get("grader_principal_id"),
         approver_principal_id=definition.get("approver_principal_id"),
         approval_reason=definition.get("approval_reason"),
+    )
+
+
+def observation_from_row(row: dict[str, Any]) -> DeploymentObservation:
+    return DeploymentObservation(
+        tenant_id=UUID(row["tenant_id"]),
+        deployment_id=UUID(row["deployment_id"]),
+        stage=DeploymentStatus(row["stage"]),
+        metric=row["metric"],
+        sample_count=row["sample_count"],
+        breach_count=row["breach_count"],
+        last_value=row["last_value"],
+        first_sample_at=row["first_sample_at"],
+        last_sample_at=row["last_sample_at"],
+        observation_id=UUID(row["id"]),
+        optimistic_version=row["optimistic_version"],
     )
 
 

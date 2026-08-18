@@ -60,6 +60,13 @@ class DeploymentStatus(StrEnum):
     ROLLED_BACK = "rolled_back"
 
 
+class GuardrailOperator(StrEnum):
+    LT = "lt"
+    GT = "gt"
+    LTE = "lte"
+    GTE = "gte"
+
+
 # Decisions a persisted evaluation record may carry. Mirrors the confidence
 # gate outcomes without coupling the domain package to the evaluation package.
 CANDIDATE_EVALUATION_DECISIONS: frozenset[str] = frozenset(
@@ -279,6 +286,41 @@ class Deployment:
             optimistic_version=self.optimistic_version + 1,
             transitions=(*self.transitions, transition),
         )
+
+    def entered_at(self, status: DeploymentStatus) -> datetime | None:
+        for transition in self.transitions:
+            if transition.to_status == status.value:
+                return transition.occurred_at
+        return None
+
+
+@dataclass(frozen=True, slots=True)
+class DeploymentObservation:
+    """A per-deployment, per-stage, per-metric observation counter.
+
+    Isolated by tenant, deployment, stage, and metric (P1-05). Breach count
+    tracks consecutive breaches of the governing rule, resetting on a pass.
+    """
+
+    tenant_id: UUID
+    deployment_id: UUID
+    stage: DeploymentStatus
+    metric: str
+    sample_count: int = 0
+    breach_count: int = 0
+    last_value: float | None = None
+    first_sample_at: datetime | None = None
+    last_sample_at: datetime | None = None
+    observation_id: UUID = field(default_factory=uuid4)
+    optimistic_version: int = 1
+
+    def __post_init__(self) -> None:
+        if not self.metric.strip():
+            raise ValueError("observation metric is required")
+        if self.sample_count < 0 or self.breach_count < 0:
+            raise ValueError("observation counts cannot be negative")
+        if self.breach_count > self.sample_count:
+            raise ValueError("breach count cannot exceed sample count")
 
 
 @dataclass(frozen=True, slots=True)

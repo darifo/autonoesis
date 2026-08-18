@@ -28,6 +28,7 @@ class FakeEvolutionRepository:
         self.releases: dict[UUID, Any] = {}
         self.trials: dict[UUID, list[Any]] = {}
         self.evaluations: dict[UUID, list[Any]] = {}
+        self.observations: dict[tuple[UUID, str, str], Any] = {}
 
     async def add_proposal(self, proposal: ImprovementProposal) -> None:
         self.proposals[proposal.proposal_id] = proposal
@@ -75,6 +76,16 @@ class FakeEvolutionRepository:
 
     async def list_evaluation_records(self, tenant_id: UUID, candidate_id: UUID) -> Any:
         return tuple(self.evaluations.get(candidate_id, ()))
+
+    async def get_observation(
+        self, tenant_id: UUID, deployment_id: UUID, stage: Any, metric: str
+    ) -> Any:
+        return self.observations.get((deployment_id, stage.value, metric))
+
+    async def save_observation(self, observation: Any) -> None:
+        self.observations[
+            (observation.deployment_id, observation.stage.value, observation.metric)
+        ] = observation
 
 
 class DenyingPolicy:
@@ -389,3 +400,127 @@ async def test_approval_without_rationale_is_rejected() -> None:
     candidate_id = await _candidate_in_evaluation(service, repository)
     with pytest.raises(ValueError, match="rationale"):
         await service.decide(_grader(), candidate_id, True, "  ")
+
+
+async def _approved_candidate(
+    service: CandidateLifecycleService, repository: FakeEvolutionRepository
+) -> UUID:
+    from autonoesis_evaluation import RepeatedTrialPolicy
+
+    candidate_id = await _candidate_in_evaluation(service, repository)
+    for _ in range(16):
+        await repository.add_trial(_trial(candidate_id))
+    candidate, _ = await service.complete_evaluation(
+        _grader(), candidate_id, RepeatedTrialPolicy(pass_threshold=0.8)
+    )
+    assert candidate.status.value == "awaiting_approval"
+    approved = await service.decide(
+        IdentityContext(UUID(int=1), uuid4(), uuid4(), frozenset({"approver"})),
+        candidate_id,
+        True,
+        "approve for promotion",
+    )
+    assert approved.status.value == "approved"
+    return candidate_id
+
+
+async def _shadow_deployment(
+    service: CandidateLifecycleService, repository: FakeEvolutionRepository
+) -> Any:
+    candidate_id = await _approved_candidate(service, repository)
+    return await service.begin_shadow(
+        IdentityContext(UUID(int=1), uuid4(), uuid4(), frozenset({"release_executor"})),
+        candidate_id,
+    )
+
+
+@pytest.mark.asyncio
+async def test_release_stable_requires_canary_observations() -> None:
+    from autonoesis_application import PromotionPolicy
+
+    repository = FakeEvolutionRepository()
+    service = CandidateLifecycleService(repository)
+    deployment = await _shadow_deployment(service, repository)
+    canary = await service.promote_to_canary(
+        IdentityContext(UUID(int=1), uuid4(), uuid4(), frozenset({"release_executor"})),
+        deployment.deployment_id,
+    )
+    with pytest.raises(ValueError, match="missing evidence"):
+        await service.release_stable(
+            IdentityContext(UUID(int=1), uuid4(), uuid4(), frozenset({"release_executor"})),
+            canary.deployment_id,
+            uuid4(),
+            PromotionPolicy(min_samples=2, required_metrics=("outcome_rate",)),
+        )
+
+
+@pytest.mark.asyncio
+async def test_release_stable_promotes_once_observations_satisfy_gate() -> None:
+    from autonoesis_application import PromotionPolicy, RecordObservation
+    from autonoesis_domain import DeploymentStatus
+
+    repository = FakeEvolutionRepository()
+    service = CandidateLifecycleService(repository)
+    deployment = await _shadow_deployment(service, repository)
+    executor = IdentityContext(UUID(int=1), uuid4(), uuid4(), frozenset({"release_executor"}))
+    canary = await service.promote_to_canary(executor, deployment.deployment_id)
+    for _ in range(3):
+        await service.record_observation(
+            executor,
+            RecordObservation(canary.deployment_id, DeploymentStatus.CANARY, "outcome_rate", 0.99),
+        )
+    release = await service.release_stable(
+        executor,
+        canary.deployment_id,
+        uuid4(),
+        PromotionPolicy(min_samples=2, required_metrics=("outcome_rate",)),
+    )
+    assert release.stable_version_id is not None
+    assert repository.deployments[canary.deployment_id].status.value == "stable"
+
+
+@pytest.mark.asyncio
+async def test_guardrail_breach_rolls_back_only_target_deployment() -> None:
+    from autonoesis_application import RecordObservation
+    from autonoesis_domain import DeploymentStatus, GuardrailOperator
+
+    repository = FakeEvolutionRepository()
+    service = CandidateLifecycleService(repository)
+    executor = IdentityContext(UUID(int=1), uuid4(), uuid4(), frozenset({"release_executor"}))
+    first = await _shadow_deployment(service, repository)
+    second = await _shadow_deployment(service, repository)
+    canary_first = await service.promote_to_canary(executor, first.deployment_id)
+    for _ in range(3):
+        await service.record_observation(
+            executor,
+            RecordObservation(
+                canary_first.deployment_id,
+                DeploymentStatus.CANARY,
+                "error_rate",
+                0.5,
+                GuardrailOperator.GTE,
+                0.1,
+            ),
+        )
+    rolled_back = await service.rollback_if_breached(
+        executor, canary_first.deployment_id, DeploymentStatus.CANARY, "error_rate", 2
+    )
+    assert rolled_back is not None
+    assert rolled_back.status.value == "rolled_back"
+    assert second.status.value == "shadow"
+
+
+@pytest.mark.asyncio
+async def test_observation_stage_must_match_deployment() -> None:
+    from autonoesis_application import RecordObservation
+    from autonoesis_domain import DeploymentStatus
+
+    repository = FakeEvolutionRepository()
+    service = CandidateLifecycleService(repository)
+    deployment = await _shadow_deployment(service, repository)
+    executor = IdentityContext(UUID(int=1), uuid4(), uuid4(), frozenset({"release_executor"}))
+    with pytest.raises(ValueError, match="does not match deployment"):
+        await service.record_observation(
+            executor,
+            RecordObservation(deployment.deployment_id, DeploymentStatus.CANARY, "m", 1.0),
+        )

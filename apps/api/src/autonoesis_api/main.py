@@ -32,8 +32,10 @@ from autonoesis_application import (
     GoalExecutionApplication,
     IdentityContext,
     ImprovementTargetPolicy,
+    PromotionPolicy,
     ProposeImprovement,
     RecordNotFound,
+    RecordObservation,
     RegisterCandidate,
     RequestRun,
     TenantBoundaryViolation,
@@ -47,9 +49,11 @@ from autonoesis_domain import (
     BudgetUnit,
     CandidateVersion,
     DataClassification,
+    DeploymentStatus,
     Evidence,
     ExecutionMode,
     GoalContract,
+    GuardrailOperator,
     ImprovementTarget,
     LoopPolicy,
     RiskTier,
@@ -174,6 +178,18 @@ class ApprovalDecisionRequest(StrictRequest):
 
 class PromotionRequest(StrictRequest):
     stable_version_id: UUID
+    min_samples: int = Field(default=1, ge=1)
+    observation_seconds: int = Field(default=0, ge=0)
+    required_metrics: tuple[str, ...] = ()
+
+
+class ObservationRequest(StrictRequest):
+    deployment_id: UUID
+    stage: DeploymentStatus
+    metric: str = Field(min_length=1, max_length=300)
+    value: float
+    operator: GuardrailOperator | None = None
+    threshold: float | None = None
 
 
 class TemporaryAuthorizationRequest(StrictRequest):
@@ -1038,12 +1054,41 @@ def build_app(
         deployment_id: UUID, body: PromotionRequest, context: Identity, _: WriteKey
     ) -> dict[str, Any]:
         require_role(context, {"release_executor"})
-        release = await evolution.release_stable(context, deployment_id, body.stable_version_id)
+        release = await evolution.release_stable(
+            context,
+            deployment_id,
+            body.stable_version_id,
+            PromotionPolicy(body.min_samples, body.observation_seconds, body.required_metrics),
+        )
         return {
             "release_id": release.release_id,
             "deployment_id": release.deployment_id,
             "stable_version_id": release.stable_version_id,
             "previous_stable_version_id": release.previous_stable_version_id,
+        }
+
+    @app.post("/v1/deployments/observations", status_code=201, tags=["improvement"])
+    async def record_observation(
+        body: ObservationRequest, context: Identity, _: WriteKey
+    ) -> dict[str, Any]:
+        require_role(context, {"release_executor"})
+        observation = await evolution.record_observation(
+            context,
+            RecordObservation(
+                deployment_id=body.deployment_id,
+                stage=body.stage,
+                metric=body.metric,
+                value=body.value,
+                operator=body.operator,
+                threshold=body.threshold,
+            ),
+        )
+        return {
+            "deployment_id": observation.deployment_id,
+            "stage": observation.stage,
+            "metric": observation.metric,
+            "sample_count": observation.sample_count,
+            "breach_count": observation.breach_count,
         }
 
     @app.post("/v1/releases/{release_id}/rollback", tags=["improvement"])

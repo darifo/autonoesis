@@ -191,7 +191,7 @@ persisted evaluation evidence records that are the only path to Awaiting Approva
 | Remediation Stage | Checklist Progress | Current Boundary |
 |---|---:|---|
 | **P0** | 146 / 146 | Integrated controlled-execution reference slice |
-| **P1** | 36 / 68 | Governance foundation integrated; release path evidence closed at unit level, real runtimes pending |
+| **P1** | 41 / 68 | Governance foundation integrated; promotion gates and guardrail observations persisted |
 | **P2** | 0 / 38 | Production operations and scale work not started |
 
 Checklist progress is an implementation indicator, not a production-readiness percentage.

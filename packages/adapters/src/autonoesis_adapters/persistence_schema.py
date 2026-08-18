@@ -409,6 +409,29 @@ evaluation_suites = tenant_table(
     Column("definition", JSON, nullable=False),
     UniqueConstraint("tenant_id", "suite_id", "version", name="uq_evaluation_suites_version"),
 )
+deployment_observations = tenant_table(
+    "deployment_observations",
+    Column("deployment_id", String(36), nullable=False),
+    Column("stage", String(32), nullable=False),
+    Column("metric", String(300), nullable=False),
+    Column("sample_count", Integer, nullable=False),
+    Column("breach_count", Integer, nullable=False),
+    Column("last_value", Float, nullable=True),
+    Column("first_sample_at", DateTime(timezone=True), nullable=True),
+    Column("last_sample_at", DateTime(timezone=True), nullable=True),
+    tenant_reference("deployment_id", "deployments"),
+    UniqueConstraint(
+        "tenant_id",
+        "deployment_id",
+        "stage",
+        "metric",
+        name="uq_deployment_observations_scope",
+    ),
+    CheckConstraint(
+        "stage IN ('shadow', 'canary', 'stable', 'failed', 'rolled_back')",
+        name="legal_observation_stage",
+    ),
+)
 candidate_evaluations = tenant_table(
     "candidate_evaluations",
     Column("candidate_id", String(36), nullable=False),

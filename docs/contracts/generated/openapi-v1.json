@@ -270,6 +270,17 @@
         "title": "DataClassification",
         "type": "string"
       },
+      "DeploymentStatus": {
+        "enum": [
+          "shadow",
+          "canary",
+          "stable",
+          "failed",
+          "rolled_back"
+        ],
+        "title": "DeploymentStatus",
+        "type": "string"
+      },
       "ErrorDetail": {
         "properties": {
           "audit_ref": {
@@ -465,6 +476,16 @@
         "title": "GoalRequest",
         "type": "object"
       },
+      "GuardrailOperator": {
+        "enum": [
+          "lt",
+          "gt",
+          "lte",
+          "gte"
+        ],
+        "title": "GuardrailOperator",
+        "type": "string"
+      },
       "ImprovementProposalRequest": {
         "additionalProperties": false,
         "properties": {
@@ -576,9 +597,81 @@
         "title": "KillSwitchDeactivateRequest",
         "type": "object"
       },
+      "ObservationRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "deployment_id": {
+            "format": "uuid",
+            "title": "Deployment Id",
+            "type": "string"
+          },
+          "metric": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Metric",
+            "type": "string"
+          },
+          "operator": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GuardrailOperator"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "stage": {
+            "$ref": "#/components/schemas/DeploymentStatus"
+          },
+          "threshold": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threshold"
+          },
+          "value": {
+            "title": "Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "deployment_id",
+          "stage",
+          "metric",
+          "value"
+        ],
+        "title": "ObservationRequest",
+        "type": "object"
+      },
       "PromotionRequest": {
         "additionalProperties": false,
         "properties": {
+          "min_samples": {
+            "default": 1,
+            "minimum": 1.0,
+            "title": "Min Samples",
+            "type": "integer"
+          },
+          "observation_seconds": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Observation Seconds",
+            "type": "integer"
+          },
+          "required_metrics": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Required Metrics",
+            "type": "array"
+          },
           "stable_version_id": {
             "format": "uuid",
             "title": "Stable Version Id",
@@ -2268,6 +2361,120 @@
         "summary": "Install Pack",
         "tags": [
           "configuration"
+        ]
+      }
+    },
+    "/v1/deployments/observations": {
+      "post": {
+        "operationId": "record_observation_v1_deployments_observations_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ObservationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Record Observation V1 Deployments Observations Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Common tenant-safe error envelope"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Common tenant-safe error envelope"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Common tenant-safe error envelope"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Common tenant-safe error envelope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Common tenant-safe error envelope"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Common tenant-safe error envelope"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Common tenant-safe error envelope"
+          }
+        },
+        "summary": "Record Observation",
+        "tags": [
+          "improvement"
         ]
       }
     },

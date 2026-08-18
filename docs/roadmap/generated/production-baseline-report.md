@@ -27,18 +27,18 @@ Configured Compose images (configuration inventory only; not integration evidenc
 
 ## Database Schema Baseline
 
-- Alembic head: `0012_evaluation_suite_catalog`
-- SQLAlchemy metadata digest: `sha256:b38b124fabec7253d7d13c68bf87f6a15dfa0920d07e01b5e4091918cecbbadd`
-- Declared tables (42): `action_attempts`, `actions`, `agent_versions`, `approvals`, `audit_events`, `breakglass_alerts`, `budget_ledger`, `budgets`, `candidate_evaluations`, `candidates`, `capability_packs`, `context_snapshots`, `deployments`, `environment_facts`, `evaluation_suites`, `evaluation_trials`, `evidence`, `evidence_capture_sagas`, `evidence_deletions`, `goals`, `idempotency_records`, `improvement_proposals`, `inbox`, `kill_switches`, `memory_deletion_edges`, `memory_ledger`, `memory_records`, `outbox`, `outcomes`, `plans`, `platform_audit_events`, `platform_kill_switches`, `policy_versions`, `releases`, `runs`, `skill_versions`, `tasks`, `telemetry_records`, `tenant_resource_namespaces`, `tenants`, `tool_versions`, `vector_index_projections`
+- Alembic head: `0013_deployment_observations`
+- SQLAlchemy metadata digest: `sha256:b8c7d41955cd1daa6f9f189896f541b4db557bc975acc49bd29a8579d1f2ba9b`
+- Declared tables (43): `action_attempts`, `actions`, `agent_versions`, `approvals`, `audit_events`, `breakglass_alerts`, `budget_ledger`, `budgets`, `candidate_evaluations`, `candidates`, `capability_packs`, `context_snapshots`, `deployment_observations`, `deployments`, `environment_facts`, `evaluation_suites`, `evaluation_trials`, `evidence`, `evidence_capture_sagas`, `evidence_deletions`, `goals`, `idempotency_records`, `improvement_proposals`, `inbox`, `kill_switches`, `memory_deletion_edges`, `memory_ledger`, `memory_records`, `outbox`, `outcomes`, `plans`, `platform_audit_events`, `platform_kill_switches`, `policy_versions`, `releases`, `runs`, `skill_versions`, `tasks`, `telemetry_records`, `tenant_resource_namespaces`, `tenants`, `tool_versions`, `vector_index_projections`
 - Evidence level: `integrated`; CI migrates PostgreSQL 17 and runs authority/Application transaction component tests.
 
 ## HTTP API Contract Baseline
 
 - Application contract version: `0.1.0`
 - OpenAPI dialect: `3.1.x`; frozen consumer contract: `openapi-v1`
-- Frozen OpenAPI digest: `sha256:a5fd61899707bce08e9bb06e5ac08a831a4f808f7973af5e0a90bcbf3590d051`
-- Route source digest: `sha256:70b69dd6b32f9ad8f7bc5a988a2062432a4722e0d98280c0ec6d5f011e07fc36`
-- Declared operations (44):
+- Frozen OpenAPI digest: `sha256:4dbada3ea849ad769b17347270ce9f46475a33a268f11157b60b0842cdc937fd`
+- Route source digest: `sha256:3486bb10ccd44aaf3cd86c3f69dc545af4c6d87a3b2290ad6e784bbaef08cdce`
+- Declared operations (45):
 
   - `DELETE /v1/kill-switches`
   - `DELETE /v1/platform/break-glass/kill-switch`
@@ -70,6 +70,7 @@ Configured Compose images (configuration inventory only; not integration evidenc
   - `POST /v1/candidates/{candidate_id}/evaluate`
   - `POST /v1/candidates/{candidate_id}/promote`
   - `POST /v1/capability-packs`
+  - `POST /v1/deployments/observations`
   - `POST /v1/deployments/{deployment_id}/canary`
   - `POST /v1/deployments/{deployment_id}/stable`
   - `POST /v1/goals`

@@ -31,6 +31,8 @@ from autonoesis_domain import (
     DataClassification,
     DataPolicy,
     Deployment,
+    DeploymentObservation,
+    DeploymentStatus,
     EvaluationSuite,
     Evidence,
     ExecutionMode,
@@ -81,6 +83,7 @@ from autonoesis_adapters.persistence_codec import (
     evidence_payload,
     memory_from_row,
     memory_payload,
+    observation_from_row,
     outcome_from_row,
     outcome_payload,
     plan_from_rows,
@@ -110,6 +113,7 @@ from autonoesis_adapters.persistence_schema import (
     candidates,
     capability_packs,
     context_snapshots,
+    deployment_observations,
     deployments,
     evaluation_suites,
     evaluation_trials,
@@ -1594,6 +1598,60 @@ class SqlAlchemyPlatformRepository:
             },
             "deployment",
         )
+
+    async def get_observation(
+        self, tenant_id: UUID, deployment_id: UUID, stage: DeploymentStatus, metric: str
+    ) -> DeploymentObservation | None:
+        async with self._sessions() as session:
+            await self._scope_tenant(session, tenant_id)
+            row = (
+                (
+                    await session.execute(
+                        select(deployment_observations).where(
+                            deployment_observations.c.tenant_id == str(tenant_id),
+                            deployment_observations.c.deployment_id == str(deployment_id),
+                            deployment_observations.c.stage == stage.value,
+                            deployment_observations.c.metric == metric,
+                        )
+                    )
+                )
+                .mappings()
+                .one_or_none()
+            )
+        return observation_from_row(dict(row)) if row is not None else None
+
+    async def save_observation(self, observation: DeploymentObservation) -> None:
+        now = datetime.now(UTC)
+        async with self._sessions.begin() as session:
+            await self._scope_tenant(session, observation.tenant_id)
+            await session.execute(
+                postgresql_insert(deployment_observations)
+                .values(
+                    id=str(observation.observation_id),
+                    tenant_id=str(observation.tenant_id),
+                    deployment_id=str(observation.deployment_id),
+                    stage=observation.stage.value,
+                    metric=observation.metric,
+                    sample_count=observation.sample_count,
+                    breach_count=observation.breach_count,
+                    last_value=observation.last_value,
+                    first_sample_at=observation.first_sample_at,
+                    last_sample_at=observation.last_sample_at,
+                    optimistic_version=observation.optimistic_version,
+                    created_at=now,
+                )
+                .on_conflict_do_update(
+                    constraint="uq_deployment_observations_scope",
+                    set_={
+                        "sample_count": observation.sample_count,
+                        "breach_count": observation.breach_count,
+                        "last_value": observation.last_value,
+                        "last_sample_at": observation.last_sample_at,
+                        "optimistic_version": observation.optimistic_version,
+                        "updated_at": now,
+                    },
+                )
+            )
 
     async def add_release(self, release: Release) -> None:
         now = datetime.now(UTC)

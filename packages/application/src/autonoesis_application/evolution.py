@@ -1,6 +1,7 @@
 """Governed candidate evaluation, approval, promotion, and rollback services."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from datetime import UTC, datetime
 from typing import Any, Protocol
 from uuid import UUID
 
@@ -9,7 +10,9 @@ from autonoesis_domain import (
     CandidateStatus,
     CandidateVersion,
     Deployment,
+    DeploymentObservation,
     DeploymentStatus,
+    GuardrailOperator,
     ImprovementProposal,
     ImprovementTarget,
     Release,
@@ -58,6 +61,12 @@ class EvolutionRepository(Protocol):
         self, tenant_id: UUID, candidate_id: UUID
     ) -> tuple[CandidateEvaluation, ...]: ...
 
+    async def get_observation(
+        self, tenant_id: UUID, deployment_id: UUID, stage: DeploymentStatus, metric: str
+    ) -> DeploymentObservation | None: ...
+
+    async def save_observation(self, observation: DeploymentObservation) -> None: ...
+
 
 class ImprovementTargetPolicy(Protocol):
     """External policy decision point consulted before any improvement proposal."""
@@ -88,6 +97,35 @@ class RegisterCandidate:
     suite_version: str
 
 
+@dataclass(frozen=True, slots=True)
+class PromotionPolicy:
+    """Governed promotion gate: real-time observation and minimum samples."""
+
+    min_samples: int = 1
+    observation_seconds: int = 0
+    required_metrics: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.min_samples < 1:
+            raise ValueError("promotion policy requires a positive minimum sample")
+        if self.observation_seconds < 0:
+            raise ValueError("promotion policy observation window cannot be negative")
+
+
+@dataclass(frozen=True, slots=True)
+class RecordObservation:
+    deployment_id: UUID
+    stage: DeploymentStatus
+    metric: str
+    value: float
+    operator: GuardrailOperator | None = None
+    threshold: float | None = None
+
+    def __post_init__(self) -> None:
+        if (self.operator is None) != (self.threshold is None):
+            raise ValueError("guardrail operator and threshold must be provided together")
+
+
 def assessment_payload(assessment: TrialConfidenceAssessment) -> dict[str, Any]:
     return {
         "decision": assessment.decision.value,
@@ -103,6 +141,22 @@ def assessment_payload(assessment: TrialConfidenceAssessment) -> dict[str, Any]:
         "min_valid_trials": assessment.policy.min_valid_trials,
         "rationale": assessment.rationale,
     }
+
+
+def _guardrail_breached(
+    operator: GuardrailOperator | None, threshold: float | None, value: float
+) -> bool:
+    if operator is None or threshold is None:
+        return False
+    match operator:
+        case GuardrailOperator.LT:
+            return value < threshold
+        case GuardrailOperator.GT:
+            return value > threshold
+        case GuardrailOperator.LTE:
+            return value <= threshold
+        case GuardrailOperator.GTE:
+            return value >= threshold
 
 
 class CandidateLifecycleService:
@@ -268,8 +322,13 @@ class CandidateLifecycleService:
         identity: IdentityContext,
         deployment_id: UUID,
         stable_version_id: UUID,
+        policy: PromotionPolicy | None = None,
     ) -> Release:
         deployment = await self._repository.get_deployment(identity.tenant_id, deployment_id)
+        if deployment.status is not DeploymentStatus.CANARY:
+            raise ValueError("only a canary deployment can promote to stable")
+        policy = policy or PromotionPolicy()
+        await self._assert_promotion_gate(deployment, policy)
         candidate = await self._repository.get_candidate(
             identity.tenant_id, deployment.candidate_id
         )
@@ -287,6 +346,113 @@ class CandidateLifecycleService:
         await self._repository.save_deployment(deployment)
         await self._repository.add_release(release)
         return release
+
+    async def _assert_promotion_gate(self, deployment: Deployment, policy: PromotionPolicy) -> None:
+        entered_at = deployment.entered_at(DeploymentStatus.CANARY)
+        if entered_at is None:
+            raise ValueError("canary observation window has not started")
+        elapsed = datetime.now(UTC) - entered_at
+        if elapsed.total_seconds() < policy.observation_seconds:
+            raise ValueError(
+                "canary observation window not elapsed: "
+                f"{elapsed.total_seconds():.1f}s < {policy.observation_seconds}s"
+            )
+        for metric in policy.required_metrics:
+            observation = await self._repository.get_observation(
+                deployment.tenant_id, deployment.deployment_id, DeploymentStatus.CANARY, metric
+            )
+            if observation is None or observation.sample_count < policy.min_samples:
+                count = observation.sample_count if observation else 0
+                raise ValueError(
+                    f"missing evidence for required metric {metric!r}: "
+                    f"{count} < {policy.min_samples} samples"
+                )
+            if observation.last_value is None:
+                raise ValueError(
+                    f"missing evidence for required metric {metric!r}: no sample value"
+                )
+
+    async def record_observation(
+        self,
+        identity: IdentityContext,
+        command: RecordObservation,
+    ) -> DeploymentObservation:
+        deployment = await self._repository.get_deployment(
+            identity.tenant_id, command.deployment_id
+        )
+        if deployment.status is not command.stage:
+            raise ValueError(
+                f"observation stage {command.stage.value} does not match deployment "
+                f"status {deployment.status.value}"
+            )
+        now = datetime.now(UTC)
+        existing = await self._repository.get_observation(
+            identity.tenant_id, command.deployment_id, command.stage, command.metric
+        )
+        breached = (
+            _guardrail_breached(command.operator, command.threshold, command.value)
+            if command.operator is not None
+            else False
+        )
+        if existing is None:
+            observation = DeploymentObservation(
+                tenant_id=identity.tenant_id,
+                deployment_id=command.deployment_id,
+                stage=command.stage,
+                metric=command.metric,
+                sample_count=1,
+                breach_count=1 if breached else 0,
+                last_value=command.value,
+                first_sample_at=now,
+                last_sample_at=now,
+            )
+        else:
+            observation = replace(
+                existing,
+                sample_count=existing.sample_count + 1,
+                breach_count=(existing.breach_count + 1) if breached else 0,
+                last_value=command.value,
+                last_sample_at=now,
+            )
+        await self._repository.save_observation(observation)
+        return observation
+
+    async def rollback_if_breached(
+        self,
+        identity: IdentityContext,
+        deployment_id: UUID,
+        stage: DeploymentStatus,
+        metric: str,
+        min_consecutive: int,
+    ) -> Deployment | None:
+        """Roll back a deployment when a guardrail counter reaches its breach threshold."""
+        observation = await self._repository.get_observation(
+            identity.tenant_id, deployment_id, stage, metric
+        )
+        if observation is None or observation.breach_count < min_consecutive:
+            return None
+        return await self.rollback_deployment(
+            identity,
+            deployment_id,
+            f"guardrail breach: {metric} breached {observation.breach_count} consecutive samples",
+        )
+
+    async def rollback_deployment(
+        self,
+        identity: IdentityContext,
+        deployment_id: UUID,
+        reason: str,
+    ) -> Deployment:
+        if not reason.strip():
+            raise ValueError("rollback requires a recorded reason")
+        deployment = await self._repository.get_deployment(identity.tenant_id, deployment_id)
+        deployment = deployment.transition_to(
+            DeploymentStatus.ROLLED_BACK,
+            actor_id=identity.actor_id,
+            reason=reason.strip(),
+        )
+        await self._repository.save_deployment(deployment)
+        return deployment
 
     async def rollback(self, identity: IdentityContext, release_id: UUID) -> Release:
         try:

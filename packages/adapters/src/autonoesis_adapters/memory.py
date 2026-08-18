@@ -27,6 +27,8 @@ from autonoesis_domain import (
     CandidateVersion,
     ContextSnapshot,
     Deployment,
+    DeploymentObservation,
+    DeploymentStatus,
     EvaluationSuite,
     Evidence,
     GoalContract,
@@ -75,6 +77,7 @@ class InMemoryPlatformStore:
         self.trials: dict[UUID, Trial] = {}
         self.candidate_evaluations: dict[UUID, CandidateEvaluation] = {}
         self.suites: dict[tuple[UUID, str, str], EvaluationSuite] = {}
+        self.observations: dict[tuple[UUID, UUID, str, str], DeploymentObservation] = {}
         self.idempotency: dict[tuple[UUID, str], UUID] = {}
         self.idempotency_digests: dict[tuple[UUID, str], str] = {}
 
@@ -530,6 +533,21 @@ class InMemoryPlatformStore:
 
     async def add_evaluation_record(self, record: CandidateEvaluation) -> None:
         self.candidate_evaluations[record.evaluation_id] = record
+
+    async def get_observation(
+        self, tenant_id: UUID, deployment_id: UUID, stage: DeploymentStatus, metric: str
+    ) -> DeploymentObservation | None:
+        return self.observations.get((tenant_id, deployment_id, stage.value, metric))
+
+    async def save_observation(self, observation: DeploymentObservation) -> None:
+        self.observations[
+            (
+                observation.tenant_id,
+                observation.deployment_id,
+                observation.stage.value,
+                observation.metric,
+            )
+        ] = observation
 
     async def list_evaluation_records(
         self, tenant_id: UUID, candidate_id: UUID

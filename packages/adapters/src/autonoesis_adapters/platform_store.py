@@ -11,6 +11,8 @@ from autonoesis_domain import (
     CandidateEvaluation,
     CandidateVersion,
     Deployment,
+    DeploymentObservation,
+    DeploymentStatus,
     EvaluationSuite,
     Evidence,
     GoalContract,
@@ -176,6 +178,14 @@ class PostgreSQLPlatformStore:
 
     async def add_evaluation_record(self, record: CandidateEvaluation) -> None:
         await self.repository.add_evaluation_record(record)
+
+    async def get_observation(
+        self, tenant_id: UUID, deployment_id: UUID, stage: DeploymentStatus, metric: str
+    ) -> DeploymentObservation | None:
+        return await self.repository.get_observation(tenant_id, deployment_id, stage, metric)
+
+    async def save_observation(self, observation: DeploymentObservation) -> None:
+        await self.repository.save_observation(observation)
 
     async def list_evaluation_records(
         self, tenant_id: UUID, candidate_id: UUID
