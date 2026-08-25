@@ -1,6 +1,8 @@
 """Tests for Temporal Activity implementations."""
 
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 from uuid import UUID, uuid4
 
 import pytest
@@ -20,6 +22,7 @@ from autonoesis_domain import (
     LoopPolicy,
     RiskTier,
     RunStatus,
+    ShadowMeasurements,
     SubjectRef,
     SuccessCriterion,
 )
@@ -29,8 +32,10 @@ from autonoesis_worker.activities import (
     evaluate_candidate,
     evaluate_run,
     execute_run,
+    execute_shadow_pair,
     load_approval,
     prepare_run,
+    promote_candidate,
     reject_run,
     take_over_run,
 )
@@ -41,7 +46,9 @@ from autonoesis_worker.contracts import (
     EvaluateRunInput,
     ExecuteRunInput,
     PrepareRunInput,
+    PromoteCandidateInput,
     RejectRunInput,
+    ShadowPairInput,
     TakeOverRunInput,
 )
 from temporalio.exceptions import ApplicationError
@@ -55,6 +62,62 @@ async def test_candidate_evaluation_fails_closed_without_real_harness() -> None:
             EvaluateCandidateInput(tenant_id, str(uuid4())),
             build_activity_dependencies(store),
         )
+
+
+@pytest.mark.asyncio
+async def test_shadow_activity_fails_closed_without_runtime() -> None:
+    store, _, tenant_id = _setup_store()
+    with pytest.raises(ApplicationError, match="refusing synthetic comparison"):
+        await execute_shadow_pair(
+            ShadowPairInput(tenant_id, str(uuid4()), "request://shadow/1", {}),
+            build_activity_dependencies(store),
+        )
+
+
+@pytest.mark.asyncio
+async def test_candidate_promotion_fails_closed_without_release_service() -> None:
+    store, _, tenant_id = _setup_store()
+    candidate_id = str(uuid4())
+    with pytest.raises(ApplicationError, match="refusing synthetic promotion"):
+        await promote_candidate(
+            PromoteCandidateInput(tenant_id, candidate_id, candidate_id),
+            build_activity_dependencies(store),
+        )
+
+
+@pytest.mark.asyncio
+async def test_shadow_activity_delegates_to_governed_application_use_case() -> None:
+    store, _, tenant_id = _setup_store()
+    comparison_id = uuid4()
+    evolution = AsyncMock()
+    evolution.execute_shadow_pair.return_value = SimpleNamespace(comparison_id=comparison_id)
+
+    class Runtime:
+        async def execute_shadow_subject(self, **command: object) -> ShadowMeasurements:
+            raise AssertionError("application service owns runtime invocation")
+
+    runtime = Runtime()
+    dependencies = build_activity_dependencies(
+        store,
+        evolution=evolution,
+        shadow_runtime=runtime,
+    )
+    deployment_id = uuid4()
+    result = await execute_shadow_pair(
+        ShadowPairInput(
+            tenant_id,
+            str(deployment_id),
+            "request://shadow/2",
+            {"prompt": "mirror"},
+        ),
+        dependencies,
+    )
+
+    assert result == str(comparison_id)
+    command = evolution.execute_shadow_pair.await_args.args[1]
+    assert command.deployment_id == deployment_id
+    assert command.request_ref == "request://shadow/2"
+    assert evolution.execute_shadow_pair.await_args.args[2] is runtime
 
 
 def _test_manifest() -> dict[str, object]:

@@ -25,11 +25,13 @@ from autonoesis_application import (
     CommandContext,
     CompleteRun,
     CreateValidatedPlan,
+    ExecuteShadowPair,
     FailRun,
     GoalExecutionApplication,
     IdentityContext,
     PrepareRunContext,
     SatisfyOrFailGoal,
+    ShadowSubjectRuntime,
     StartTask,
     TaskDefinition,
 )
@@ -48,6 +50,7 @@ from autonoesis_worker.contracts import (
     PrepareRunInput,
     PromoteCandidateInput,
     RejectRunInput,
+    ShadowPairInput,
     TakeOverRunInput,
 )
 
@@ -95,6 +98,7 @@ class ActivityDependencies:
     executor: RunExecutor | None = None
     candidate_evaluator: CandidateEvaluator | None = None
     evaluation_policy: RepeatedTrialPolicy | None = None
+    shadow_runtime: ShadowSubjectRuntime | None = None
 
 
 def build_activity_dependencies(
@@ -106,6 +110,7 @@ def build_activity_dependencies(
     executor: RunExecutor | None = None,
     candidate_evaluator: CandidateEvaluator | None = None,
     evaluation_policy: RepeatedTrialPolicy | None = None,
+    shadow_runtime: ShadowSubjectRuntime | None = None,
 ) -> ActivityDependencies:
     return ActivityDependencies(
         store=store,
@@ -118,6 +123,7 @@ def build_activity_dependencies(
         executor=executor,
         candidate_evaluator=candidate_evaluator,
         evaluation_policy=evaluation_policy,
+        shadow_runtime=shadow_runtime,
     )
 
 
@@ -352,7 +358,7 @@ async def promote_candidate(
     input: PromoteCandidateInput,
     dependencies: ActivityDependencies,
 ) -> str:
-    """Promote an approved Candidate to Stable and create a Release."""
+    """Start an approved Candidate in Shadow; later gates own Stable release."""
     evolution = dependencies.evolution
     if evolution is not None:
         _heartbeat("promote_candidate")
@@ -367,4 +373,43 @@ async def promote_candidate(
         await evolution.begin_shadow(identity, UUID(input.candidate_id))
         return "shadow"
 
-    return "promoted"
+    raise ApplicationError(
+        "candidate release service is not configured; refusing synthetic promotion",
+        non_retryable=True,
+    )
+
+
+@activity.defn
+async def execute_shadow_pair(
+    input: ShadowPairInput,
+    dependencies: ActivityDependencies,
+) -> str:
+    """Execute and persist one mirrored Stable/Candidate request pair."""
+
+    evolution = dependencies.evolution
+    runtime = dependencies.shadow_runtime
+    if evolution is None or runtime is None:
+        raise ApplicationError(
+            "shadow execution runtime is not configured; refusing synthetic comparison",
+            non_retryable=True,
+        )
+    _heartbeat("execute_shadow_pair")
+    worker = UUID(int=0)
+    identity = IdentityContext(
+        tenant_id=UUID(input.tenant_id),
+        actor_id=worker,
+        principal_id=worker,
+        roles=frozenset({"shadow_executor"}),
+        agent_id="temporal-shadow-worker",
+    )
+    comparison = await evolution.execute_shadow_pair(
+        identity,
+        ExecuteShadowPair(
+            deployment_id=UUID(input.deployment_id),
+            request_ref=input.request_ref,
+            input_payload=input.input_payload,
+        ),
+        runtime,
+    )
+    _heartbeat(f"shadow_comparison_persisted:{comparison.comparison_id}")
+    return str(comparison.comparison_id)

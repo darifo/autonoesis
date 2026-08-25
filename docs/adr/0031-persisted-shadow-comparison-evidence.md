@@ -37,5 +37,7 @@ Deployment. That label bypassed the intended Shadow evidence, Canary, and Stable
 - A failed metric projection cannot erase the immutable comparison source fact; projections can be
   rebuilt from it. Atomic outbox-based projection is a future hardening item.
 - The application orchestration boundary is implemented and testable. A production Worker adapter
-  that mirrors live requests into this port, Candidate runtime sandboxing, Canary routing, and the
-  independent Release Executor remain required before P1-05 is complete.
+  now exposes a registered, non-retryable `ShadowPairWorkflow`/Activity contract and fails closed
+  when no Shadow Runtime is injected. Live-request dispatch, a production Shadow Runtime and
+  Candidate sandboxing, Canary routing, and the independent Release Executor remain required before
+  P1-05 is complete.

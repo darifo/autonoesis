@@ -88,8 +88,8 @@ Configured Compose images (configuration inventory only; not integration evidenc
 
 ## Workflow Type Baseline
 
-- Workflow source digest: `sha256:0e2153f8fee07d2d01bfe2b38124909914c778222e0a01b093b51d0c21fbe9f6`
-- Declared Workflow types (2): `CandidateLifecycleWorkflow`, `GoalRunWorkflow`
+- Workflow source digest: `sha256:b51ab942168ad73f2086db77fe51fa89729b66d0d2cacb56361cc70f82e93299`
+- Declared Workflow types (3): `CandidateLifecycleWorkflow`, `GoalRunWorkflow`, `ShadowPairWorkflow`
 - Workflow patch/version markers: `p0-06-approval-id-signal`
 - Replay evidence: CI real-Temporal history replay test.
 

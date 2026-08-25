@@ -17,6 +17,7 @@ from autonoesis_worker.contracts import (
     PrepareRunInput,
     PromoteCandidateInput,
     RejectRunInput,
+    ShadowPairInput,
     TakeOverRunInput,
 )
 
@@ -294,9 +295,39 @@ class CandidateLifecycleWorkflow:
         return self._phase
 
 
+@workflow.defn
+class ShadowPairWorkflow:
+    """Durably mirror one production input through a governed Shadow pair."""
+
+    def __init__(self) -> None:
+        self._phase = "pending"
+
+    @workflow.query
+    def current_phase(self) -> str:
+        return self._phase
+
+    @workflow.run
+    async def run(self, command: ShadowPairInput) -> str:
+        self._phase = "executing"
+        comparison_id: str = await workflow.execute_activity(
+            "execute_shadow_pair",
+            command,
+            result_type=str,
+            start_to_close_timeout=timedelta(minutes=30),
+            heartbeat_timeout=timedelta(seconds=30),
+            # Stable may serve the real request, so blind retries could repeat a
+            # side effect. Recovery must reconcile by request_ref first.
+            retry_policy=_WRITE_NO_RETRY,
+        )
+        self._phase = "recorded"
+        return comparison_id
+
+
 __all__ = [
     "CandidateLifecycleInput",
     "CandidateLifecycleWorkflow",
     "GoalRunInput",
     "GoalRunWorkflow",
+    "ShadowPairInput",
+    "ShadowPairWorkflow",
 ]

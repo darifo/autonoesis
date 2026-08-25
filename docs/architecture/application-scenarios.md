@@ -271,7 +271,7 @@ capabilities with industry-specific custom development:
 |---|---|---|
 | `GoalContract`, `Plan`, `Action`, `Evidence`, `Outcome` | ✅ Domain model | — |
 | `GovernedToolGateway` (8-step pipeline) | ✅ Runtime kernel | — |
-| `GoalRunWorkflow`, `CandidateLifecycleWorkflow` | ✅ Worker | — |
+| `GoalRunWorkflow`, `CandidateLifecycleWorkflow`, `ShadowPairWorkflow` | ✅ Worker | — |
 | `EvaluationHarness`, `DeploymentPipeline` | ✅ Evolution package | — |
 | `field-service` example Pack (YAML + 10 eval cases) | ✅ Reference only | Connect to real IoT/CMMS |
 | Tool Adapters (SAP, MQTT, REST, SWIFT) | — | ✅ Implement `ToolExecutor` Protocol |

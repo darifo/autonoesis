@@ -1,6 +1,7 @@
 """Stable, serialization-safe Temporal Workflow and Activity contracts."""
 
 from dataclasses import dataclass, replace
+from typing import Any
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,3 +90,11 @@ class PromoteCandidateInput:
     tenant_id: str
     candidate_id: str
     stable_version_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class ShadowPairInput:
+    tenant_id: str
+    deployment_id: str
+    request_ref: str
+    input_payload: dict[str, Any]

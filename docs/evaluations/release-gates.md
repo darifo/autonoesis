@@ -13,8 +13,9 @@
   the confidence assessment; caller-supplied outcomes are not accepted, and approvals require a
   recorded rationale (ADR-0026).
 - Gate 3 has application-level concurrent Stable/Candidate execution, explicit Candidate effect
-  suppression, immutable per-request comparison evidence, and Shadow metric projections. The
-  production Worker traffic mirror and Candidate sandbox are not assembled yet.
+  suppression, immutable per-request comparison evidence, Shadow metric projections, and a
+  registered Temporal ShadowPair Workflow/Activity that fails closed without a Runtime. Live
+  traffic dispatch, the production Shadow Runtime, and Candidate sandbox are not assembled yet.
 - Gate 4 enforces persisted observation windows, minimum samples, required metrics, and targeted
   guardrail rollback. Auditable Canary routing and the independent Release Executor are absent.
 - No gate is production-proven, and the full Draft → Stable chain is not integrated end to end.

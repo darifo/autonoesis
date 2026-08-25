@@ -48,7 +48,8 @@ P1-02 企业身份治理、P1-03 可信 Context/Memory 的 `integrated` 声明�
   (租户, 部署, 阶段, 指标) 隔离，并发晋升唯一胜出有组件测试；Shadow 写抑制已落地——Run 可选
   绑定部署，执行时对 L2+ 写操作失败封闭拒绝，读取仍放行；Application 已具备 Stable/Candidate
   并发成对执行端口，并持久化 Outcome、成本、延迟、安全和人工修正的逐请求对比证据；生产
-  Worker 流量镜像、Candidate 沙箱、Canary 分流规则和独立 Release Executor 仍未完成；
+  Worker 已注册逐请求 `ShadowPairWorkflow`/Activity 合约，缺少 Shadow Runtime 时失败封闭；实时流量
+  Dispatch、生产 Shadow Runtime、Candidate 沙箱、Canary 分流规则和独立 Release Executor 仍未完成；
 - Cockpit 使用静态演示数据，不从公共 API 获取运营指标；
 - Compose 含本地默认凭证和公开测试 KMS key；MinIO 镜像已固定摘要，但配置不满足生产
   Secret/KMS 与供应链要求；
