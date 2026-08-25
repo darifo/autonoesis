@@ -532,7 +532,7 @@ Tenant Authority 的初始化使用独立管理连接，不参与任何隔离断
 
 - [x] 建立持久化 Deployment Aggregate；
 - [ ] Shadow 同时运行 Stable 与 Candidate，并确保 Candidate 结果不产生外部副作用；
-- [ ] 保存 Stable/Candidate 的 Outcome、成本、延迟、安全和人工修正对比；
+- [x] 保存 Stable/Candidate 的 Outcome、成本、延迟、安全和人工修正对比；
 - [ ] Canary 使用稳定、可审计的流量分配规则；
 - [x] Guardrail Counter 按 Tenant、Deployment、Stage、Metric 隔离；
 - [x] Observation Window 使用真实时间和最小样本门槛；

@@ -81,6 +81,8 @@ from autonoesis_domain.improvement import (
     ImprovementProposal,
     ImprovementTarget,
     Release,
+    ShadowComparison,
+    ShadowMeasurements,
     require_improvement_target_allowed,
 )
 from autonoesis_domain.transitions import InvalidStateTransition, StateTransition
@@ -159,6 +161,8 @@ __all__ = [
     "RunStatus",
     "Session",
     "SessionStatus",
+    "ShadowComparison",
+    "ShadowMeasurements",
     "SideEffectClass",
     "SkillDefinition",
     "StateTransition",

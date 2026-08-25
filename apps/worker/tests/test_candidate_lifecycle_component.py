@@ -149,7 +149,7 @@ async def test_candidate_workflow_evaluates_and_promotes_durably() -> None:
             await evolution.decide(approver, candidate.candidate_id, True, "component approval")
             await handle.signal(CandidateLifecycleWorkflow.approval_decided, "approval-1")
             result = await asyncio.wait_for(handle.result(), timeout=60)
-            assert result == "stable"
+            assert result == "shadow"
     finally:
         await store.close()
 

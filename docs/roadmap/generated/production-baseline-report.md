@@ -27,9 +27,9 @@ Configured Compose images (configuration inventory only; not integration evidenc
 
 ## Database Schema Baseline
 
-- Alembic head: `0013_deployment_observations`
-- SQLAlchemy metadata digest: `sha256:b8c7d41955cd1daa6f9f189896f541b4db557bc975acc49bd29a8579d1f2ba9b`
-- Declared tables (43): `action_attempts`, `actions`, `agent_versions`, `approvals`, `audit_events`, `breakglass_alerts`, `budget_ledger`, `budgets`, `candidate_evaluations`, `candidates`, `capability_packs`, `context_snapshots`, `deployment_observations`, `deployments`, `environment_facts`, `evaluation_suites`, `evaluation_trials`, `evidence`, `evidence_capture_sagas`, `evidence_deletions`, `goals`, `idempotency_records`, `improvement_proposals`, `inbox`, `kill_switches`, `memory_deletion_edges`, `memory_ledger`, `memory_records`, `outbox`, `outcomes`, `plans`, `platform_audit_events`, `platform_kill_switches`, `policy_versions`, `releases`, `runs`, `skill_versions`, `tasks`, `telemetry_records`, `tenant_resource_namespaces`, `tenants`, `tool_versions`, `vector_index_projections`
+- Alembic head: `0014_shadow_comparisons`
+- SQLAlchemy metadata digest: `sha256:9014cfd0447b19d4602c4d7d323f29850e10b2f138310f443bf65ace90cccd0e`
+- Declared tables (44): `action_attempts`, `actions`, `agent_versions`, `approvals`, `audit_events`, `breakglass_alerts`, `budget_ledger`, `budgets`, `candidate_evaluations`, `candidates`, `capability_packs`, `context_snapshots`, `deployment_observations`, `deployments`, `environment_facts`, `evaluation_suites`, `evaluation_trials`, `evidence`, `evidence_capture_sagas`, `evidence_deletions`, `goals`, `idempotency_records`, `improvement_proposals`, `inbox`, `kill_switches`, `memory_deletion_edges`, `memory_ledger`, `memory_records`, `outbox`, `outcomes`, `plans`, `platform_audit_events`, `platform_kill_switches`, `policy_versions`, `releases`, `runs`, `shadow_comparisons`, `skill_versions`, `tasks`, `telemetry_records`, `tenant_resource_namespaces`, `tenants`, `tool_versions`, `vector_index_projections`
 - Evidence level: `integrated`; CI migrates PostgreSQL 17 and runs authority/Application transaction component tests.
 
 ## HTTP API Contract Baseline
@@ -88,7 +88,7 @@ Configured Compose images (configuration inventory only; not integration evidenc
 
 ## Workflow Type Baseline
 
-- Workflow source digest: `sha256:c9621c4ec94ac0d75f43ffc26106947aa47e8353ccd6a85bb66c23586600cf01`
+- Workflow source digest: `sha256:0e2153f8fee07d2d01bfe2b38124909914c778222e0a01b093b51d0c21fbe9f6`
 - Declared Workflow types (2): `CandidateLifecycleWorkflow`, `GoalRunWorkflow`
 - Workflow patch/version markers: `p0-06-approval-id-signal`
 - Replay evidence: CI real-Temporal history replay test.

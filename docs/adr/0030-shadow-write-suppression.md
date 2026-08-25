@@ -27,6 +27,5 @@ shadowed Candidate could still reach the governed tool gateway and perform write
   call write tools" acceptance rule at the mechanism level.
 - Shadow reads and compute (L0/L1) are permitted so shadow runs can still observe and compare
   without side effects.
-- The remaining piece of shadow dual-run — the orchestrator that actually starts a Run against the
-  Candidate and binds its `deployment_id` — is the next P1-05 increment alongside the independent
-  Release Executor.
+- ADR-0031 adds the application-level paired Stable/Candidate orchestrator and comparison evidence.
+  Production Worker traffic mirroring and the independent Release Executor remain P1-05 work.

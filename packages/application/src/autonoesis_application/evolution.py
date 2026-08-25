@@ -1,5 +1,6 @@
 """Governed candidate evaluation, approval, promotion, and rollback services."""
 
+import asyncio
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import Any, Protocol
@@ -16,6 +17,8 @@ from autonoesis_domain import (
     ImprovementProposal,
     ImprovementTarget,
     Release,
+    ShadowComparison,
+    ShadowMeasurements,
     Trial,
     require_improvement_target_allowed,
 )
@@ -67,11 +70,32 @@ class EvolutionRepository(Protocol):
 
     async def save_observation(self, observation: DeploymentObservation) -> None: ...
 
+    async def add_shadow_comparison(self, comparison: ShadowComparison) -> None: ...
+
+    async def list_shadow_comparisons(
+        self, tenant_id: UUID, deployment_id: UUID
+    ) -> tuple[ShadowComparison, ...]: ...
+
 
 class ImprovementTargetPolicy(Protocol):
     """External policy decision point consulted before any improvement proposal."""
 
     async def assert_target_allowed(self, raw_target: str) -> None: ...
+
+
+class ShadowSubjectRuntime(Protocol):
+    """Execute a pinned version with an explicit external-effect contract."""
+
+    async def execute_shadow_subject(
+        self,
+        *,
+        tenant_id: UUID,
+        deployment_id: UUID,
+        version_id: UUID,
+        request_ref: str,
+        input_payload: dict[str, Any],
+        external_effects_enabled: bool,
+    ) -> ShadowMeasurements: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -124,6 +148,17 @@ class RecordObservation:
     def __post_init__(self) -> None:
         if (self.operator is None) != (self.threshold is None):
             raise ValueError("guardrail operator and threshold must be provided together")
+
+
+@dataclass(frozen=True, slots=True)
+class ExecuteShadowPair:
+    deployment_id: UUID
+    request_ref: str
+    input_payload: dict[str, Any]
+
+    def __post_init__(self) -> None:
+        if not self.request_ref.strip():
+            raise ValueError("shadow request reference is required")
 
 
 def assessment_payload(assessment: TrialConfidenceAssessment) -> dict[str, Any]:
@@ -302,6 +337,73 @@ class CandidateLifecycleService:
         )
         await self._repository.add_deployment(deployment)
         return deployment
+
+    async def execute_shadow_pair(
+        self,
+        identity: IdentityContext,
+        command: ExecuteShadowPair,
+        runtime: ShadowSubjectRuntime,
+    ) -> ShadowComparison:
+        """Mirror one input through Stable and Candidate and persist paired evidence."""
+
+        deployment = await self._repository.get_deployment(
+            identity.tenant_id, command.deployment_id
+        )
+        if deployment.status is not DeploymentStatus.SHADOW:
+            raise ValueError("shadow pair execution requires a shadow deployment")
+        candidate = await self._repository.get_candidate(
+            identity.tenant_id, deployment.candidate_id
+        )
+        stable_result, candidate_result = await asyncio.gather(
+            runtime.execute_shadow_subject(
+                tenant_id=identity.tenant_id,
+                deployment_id=deployment.deployment_id,
+                version_id=candidate.baseline_version_id,
+                request_ref=command.request_ref,
+                input_payload=command.input_payload,
+                external_effects_enabled=True,
+            ),
+            runtime.execute_shadow_subject(
+                tenant_id=identity.tenant_id,
+                deployment_id=deployment.deployment_id,
+                version_id=candidate.candidate_id,
+                request_ref=command.request_ref,
+                input_payload=command.input_payload,
+                external_effects_enabled=False,
+            ),
+        )
+        comparison = ShadowComparison(
+            tenant_id=identity.tenant_id,
+            deployment_id=deployment.deployment_id,
+            request_ref=command.request_ref,
+            stable_version_id=candidate.baseline_version_id,
+            candidate_version_id=candidate.candidate_id,
+            stable=stable_result,
+            candidate=candidate_result,
+        )
+        await self._repository.add_shadow_comparison(comparison)
+        metrics = {
+            "outcome_score_delta": candidate_result.outcome_score - stable_result.outcome_score,
+            "cost_microunits_delta": float(
+                candidate_result.cost_microunits - stable_result.cost_microunits
+            ),
+            "latency_ms_delta": candidate_result.latency_ms - stable_result.latency_ms,
+            "security_violations": float(candidate_result.security_violations),
+            "human_corrections_delta": float(
+                candidate_result.human_corrections - stable_result.human_corrections
+            ),
+        }
+        for metric, value in metrics.items():
+            await self.record_observation(
+                identity,
+                RecordObservation(
+                    deployment_id=deployment.deployment_id,
+                    stage=DeploymentStatus.SHADOW,
+                    metric=metric,
+                    value=value,
+                ),
+            )
+        return comparison
 
     async def promote_to_canary(
         self,

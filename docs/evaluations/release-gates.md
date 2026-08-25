@@ -12,8 +12,11 @@
   driven only by persisted Trials through a persisted `CandidateEvaluation` evidence record with
   the confidence assessment; caller-supplied outcomes are not accepted, and approvals require a
   recorded rationale (ADR-0026).
-- Gates 3 and 4 have persisted Deployment/Release state and isolated algorithms only; real Shadow
-  traffic, Canary routing, observation enforcement, automatic rollback and Release Executor are absent.
+- Gate 3 has application-level concurrent Stable/Candidate execution, explicit Candidate effect
+  suppression, immutable per-request comparison evidence, and Shadow metric projections. The
+  production Worker traffic mirror and Candidate sandbox are not assembled yet.
+- Gate 4 enforces persisted observation windows, minimum samples, required metrics, and targeted
+  guardrail rollback. Auditable Canary routing and the independent Release Executor are absent.
 - No gate is production-proven, and the full Draft → Stable chain is not integrated end to end.
 
 ## Gate Overview

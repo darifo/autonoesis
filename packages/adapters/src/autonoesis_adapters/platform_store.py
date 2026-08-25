@@ -20,6 +20,7 @@ from autonoesis_domain import (
     MemoryRecord,
     Release,
     Run,
+    ShadowComparison,
     Trial,
 )
 from autonoesis_runtime import TenantTelemetryRecord
@@ -186,6 +187,14 @@ class PostgreSQLPlatformStore:
 
     async def save_observation(self, observation: DeploymentObservation) -> None:
         await self.repository.save_observation(observation)
+
+    async def add_shadow_comparison(self, comparison: ShadowComparison) -> None:
+        await self.repository.add_shadow_comparison(comparison)
+
+    async def list_shadow_comparisons(
+        self, tenant_id: UUID, deployment_id: UUID
+    ) -> tuple[ShadowComparison, ...]:
+        return await self.repository.list_shadow_comparisons(tenant_id, deployment_id)
 
     async def list_evaluation_records(
         self, tenant_id: UUID, candidate_id: UUID

@@ -49,6 +49,8 @@ from autonoesis_domain import (
     Run,
     RunExecutionSnapshot,
     RunStatus,
+    ShadowComparison,
+    ShadowMeasurements,
     StateTransition,
     SubjectRef,
     Task,
@@ -606,6 +608,31 @@ def observation_from_row(row: dict[str, Any]) -> DeploymentObservation:
         last_sample_at=row["last_sample_at"],
         observation_id=UUID(row["id"]),
         optimistic_version=row["optimistic_version"],
+    )
+
+
+def shadow_measurements_payload(item: ShadowMeasurements) -> dict[str, float | int]:
+    return {
+        "outcome_score": item.outcome_score,
+        "cost_microunits": item.cost_microunits,
+        "latency_ms": item.latency_ms,
+        "security_violations": item.security_violations,
+        "human_corrections": item.human_corrections,
+        "external_write_attempts": item.external_write_attempts,
+    }
+
+
+def shadow_comparison_from_row(row: dict[str, Any]) -> ShadowComparison:
+    return ShadowComparison(
+        tenant_id=UUID(row["tenant_id"]),
+        deployment_id=UUID(row["deployment_id"]),
+        request_ref=row["request_ref"],
+        stable_version_id=UUID(row["stable_version_id"]),
+        candidate_version_id=UUID(row["candidate_version_id"]),
+        stable=ShadowMeasurements(**row["stable_measurements"]),
+        candidate=ShadowMeasurements(**row["candidate_measurements"]),
+        observed_at=row["observed_at"],
+        comparison_id=UUID(row["id"]),
     )
 
 

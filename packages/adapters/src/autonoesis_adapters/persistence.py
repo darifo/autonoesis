@@ -48,6 +48,7 @@ from autonoesis_domain import (
     Release,
     RiskTier,
     Run,
+    ShadowComparison,
     SubjectRef,
     SuccessCriterion,
     Task,
@@ -93,6 +94,8 @@ from autonoesis_adapters.persistence_codec import (
     release_payload,
     run_from_row,
     run_payload,
+    shadow_comparison_from_row,
+    shadow_measurements_payload,
     suite_from_row,
     suite_payload,
     task_payload,
@@ -130,6 +133,7 @@ from autonoesis_adapters.persistence_schema import (
     policy_versions,
     releases,
     runs,
+    shadow_comparisons,
     skill_versions,
     tasks,
     telemetry_records,
@@ -1652,6 +1656,47 @@ class SqlAlchemyPlatformRepository:
                     },
                 )
             )
+
+    async def add_shadow_comparison(self, comparison: ShadowComparison) -> None:
+        now = datetime.now(UTC)
+        async with self._sessions.begin() as session:
+            await self._scope_tenant(session, comparison.tenant_id)
+            await session.execute(
+                insert(shadow_comparisons).values(
+                    id=str(comparison.comparison_id),
+                    tenant_id=str(comparison.tenant_id),
+                    deployment_id=str(comparison.deployment_id),
+                    request_ref=comparison.request_ref,
+                    stable_version_id=str(comparison.stable_version_id),
+                    candidate_version_id=str(comparison.candidate_version_id),
+                    stable_measurements=shadow_measurements_payload(comparison.stable),
+                    candidate_measurements=shadow_measurements_payload(comparison.candidate),
+                    observed_at=comparison.observed_at,
+                    optimistic_version=1,
+                    created_at=now,
+                )
+            )
+
+    async def list_shadow_comparisons(
+        self, tenant_id: UUID, deployment_id: UUID
+    ) -> tuple[ShadowComparison, ...]:
+        async with self._sessions() as session:
+            await self._scope_tenant(session, tenant_id)
+            rows = (
+                (
+                    await session.execute(
+                        select(shadow_comparisons)
+                        .where(
+                            shadow_comparisons.c.tenant_id == str(tenant_id),
+                            shadow_comparisons.c.deployment_id == str(deployment_id),
+                        )
+                        .order_by(shadow_comparisons.c.observed_at, shadow_comparisons.c.id)
+                    )
+                )
+                .mappings()
+                .all()
+            )
+        return tuple(shadow_comparison_from_row(dict(row)) for row in rows)
 
     async def add_release(self, release: Release) -> None:
         now = datetime.now(UTC)

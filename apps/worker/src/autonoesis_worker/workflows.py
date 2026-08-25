@@ -287,7 +287,10 @@ class CandidateLifecycleWorkflow:
             start_to_close_timeout=timedelta(minutes=2),
             retry_policy=_WRITE_NO_RETRY,
         )
-        self._phase = "stable"
+        # Starting Shadow is not a release. A later, independently governed
+        # workflow must collect Shadow evidence, enter Canary, and pass its
+        # observation gate before Stable can be declared.
+        self._phase = "shadow"
         return self._phase
 
 

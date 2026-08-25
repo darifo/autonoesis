@@ -432,6 +432,23 @@ deployment_observations = tenant_table(
         name="legal_observation_stage",
     ),
 )
+shadow_comparisons = tenant_table(
+    "shadow_comparisons",
+    Column("deployment_id", String(36), nullable=False),
+    Column("request_ref", String(500), nullable=False),
+    Column("stable_version_id", String(36), nullable=False),
+    Column("candidate_version_id", String(36), nullable=False),
+    Column("stable_measurements", JSON, nullable=False),
+    Column("candidate_measurements", JSON, nullable=False),
+    Column("observed_at", DateTime(timezone=True), nullable=False),
+    tenant_reference("deployment_id", "deployments"),
+    UniqueConstraint(
+        "tenant_id",
+        "deployment_id",
+        "request_ref",
+        name="uq_shadow_comparisons_request",
+    ),
+)
 candidate_evaluations = tenant_table(
     "candidate_evaluations",
     Column("candidate_id", String(36), nullable=False),

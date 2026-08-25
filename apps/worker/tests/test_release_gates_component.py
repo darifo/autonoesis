@@ -9,6 +9,7 @@ import pytest
 from autonoesis_adapters import PostgreSQLPlatformStore
 from autonoesis_application import (
     CandidateLifecycleService,
+    ExecuteShadowPair,
     IdentityContext,
     PromotionPolicy,
     ProposeImprovement,
@@ -20,6 +21,7 @@ from autonoesis_domain import (
     EvaluationCase,
     EvaluationSuite,
     GuardrailOperator,
+    ShadowMeasurements,
 )
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
@@ -117,6 +119,13 @@ async def _approved_candidate(store: Any, tenant_id: UUID, index: int) -> UUID:
     return candidate.candidate_id
 
 
+class ComponentShadowRuntime:
+    async def execute_shadow_subject(self, **command: Any) -> ShadowMeasurements:
+        if command["external_effects_enabled"]:
+            return ShadowMeasurements(0.8, 120, 30.0, human_corrections=1)
+        return ShadowMeasurements(0.9, 100, 25.0)
+
+
 @pytest.mark.asyncio
 async def test_promotion_gate_and_guardrail_isolation() -> None:
     tenant_id = uuid4()
@@ -127,6 +136,24 @@ async def test_promotion_gate_and_guardrail_isolation() -> None:
     try:
         candidate_id = await _approved_candidate(store, tenant_id, 1)
         deployment = await evolution.begin_shadow(executor, candidate_id)
+        comparison = await evolution.execute_shadow_pair(
+            executor,
+            ExecuteShadowPair(
+                deployment.deployment_id,
+                "request://component/shadow-1",
+                {"prompt": "component"},
+            ),
+            ComponentShadowRuntime(),
+        )
+        persisted = await store.list_shadow_comparisons(tenant_id, deployment.deployment_id)
+        assert persisted == (comparison,)
+        outcome_delta = await store.get_observation(
+            tenant_id,
+            deployment.deployment_id,
+            DeploymentStatus.SHADOW,
+            "outcome_score_delta",
+        )
+        assert outcome_delta is not None and outcome_delta.last_value == pytest.approx(0.1)
         canary = await evolution.promote_to_canary(executor, deployment.deployment_id)
 
         # Insufficient sample refuses promotion (metric missing blocks, never silent).

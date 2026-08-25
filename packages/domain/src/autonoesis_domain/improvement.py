@@ -3,6 +3,7 @@
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from enum import StrEnum
+from math import isfinite
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -321,6 +322,53 @@ class DeploymentObservation:
             raise ValueError("observation counts cannot be negative")
         if self.breach_count > self.sample_count:
             raise ValueError("breach count cannot exceed sample count")
+
+
+@dataclass(frozen=True, slots=True)
+class ShadowMeasurements:
+    """Comparable measurements emitted by one side of a Shadow pair."""
+
+    outcome_score: float
+    cost_microunits: int
+    latency_ms: float
+    security_violations: int = 0
+    human_corrections: int = 0
+    external_write_attempts: int = 0
+
+    def __post_init__(self) -> None:
+        if not isfinite(self.outcome_score) or not 0 <= self.outcome_score <= 1:
+            raise ValueError("shadow outcome score must be finite and between zero and one")
+        if not isfinite(self.latency_ms) or self.latency_ms < 0:
+            raise ValueError("shadow latency must be finite and non-negative")
+        for value, label in (
+            (self.cost_microunits, "cost"),
+            (self.security_violations, "security violations"),
+            (self.human_corrections, "human corrections"),
+            (self.external_write_attempts, "external write attempts"),
+        ):
+            if value < 0:
+                raise ValueError(f"shadow {label} cannot be negative")
+
+
+@dataclass(frozen=True, slots=True)
+class ShadowComparison:
+    """Immutable paired evidence from Stable and Candidate execution."""
+
+    tenant_id: UUID
+    deployment_id: UUID
+    request_ref: str
+    stable_version_id: UUID
+    candidate_version_id: UUID
+    stable: ShadowMeasurements
+    candidate: ShadowMeasurements
+    observed_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    comparison_id: UUID = field(default_factory=uuid4)
+
+    def __post_init__(self) -> None:
+        if not self.request_ref.strip():
+            raise ValueError("shadow comparison request reference is required")
+        if self.observed_at.tzinfo is None:
+            raise ValueError("shadow comparison timestamp must be timezone-aware")
 
 
 @dataclass(frozen=True, slots=True)

@@ -39,6 +39,7 @@ from autonoesis_domain import (
     Plan,
     Release,
     Run,
+    ShadowComparison,
     Task,
     Trial,
 )
@@ -78,6 +79,7 @@ class InMemoryPlatformStore:
         self.candidate_evaluations: dict[UUID, CandidateEvaluation] = {}
         self.suites: dict[tuple[UUID, str, str], EvaluationSuite] = {}
         self.observations: dict[tuple[UUID, UUID, str, str], DeploymentObservation] = {}
+        self.shadow_comparisons: dict[UUID, ShadowComparison] = {}
         self.idempotency: dict[tuple[UUID, str], UUID] = {}
         self.idempotency_digests: dict[tuple[UUID, str], str] = {}
 
@@ -548,6 +550,18 @@ class InMemoryPlatformStore:
                 observation.metric,
             )
         ] = observation
+
+    async def add_shadow_comparison(self, comparison: ShadowComparison) -> None:
+        self.shadow_comparisons[comparison.comparison_id] = comparison
+
+    async def list_shadow_comparisons(
+        self, tenant_id: UUID, deployment_id: UUID
+    ) -> tuple[ShadowComparison, ...]:
+        return tuple(
+            item
+            for item in self.shadow_comparisons.values()
+            if item.tenant_id == tenant_id and item.deployment_id == deployment_id
+        )
 
     async def list_evaluation_records(
         self, tenant_id: UUID, candidate_id: UUID

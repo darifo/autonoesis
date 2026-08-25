@@ -3,11 +3,13 @@
 from autonoesis_application.evolution import (
     CandidateLifecycleService,
     EvolutionRepository,
+    ExecuteShadowPair,
     ImprovementTargetPolicy,
     PromotionPolicy,
     ProposeImprovement,
     RecordObservation,
     RegisterCandidate,
+    ShadowSubjectRuntime,
     assessment_payload,
 )
 from autonoesis_application.execution import (
@@ -108,6 +110,7 @@ __all__ = [
     "EvidenceDeletionStatus",
     "EvolutionRepository",
     "ExecuteGovernedAction",
+    "ExecuteShadowPair",
     "ExecutionRepository",
     "FailRun",
     "GoalExecutionApplication",
@@ -130,6 +133,7 @@ __all__ = [
     "RequestEvidenceDeletion",
     "RequestRun",
     "SatisfyOrFailGoal",
+    "ShadowSubjectRuntime",
     "ShadowWriteGuard",
     "StartGoalRun",
     "StartGoalRunHandler",

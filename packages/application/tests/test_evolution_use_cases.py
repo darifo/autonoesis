@@ -1,5 +1,6 @@
 """Tests for governed improvement proposal and candidate registration use cases."""
 
+import asyncio
 from dataclasses import replace
 from typing import Any
 from uuid import UUID, uuid4
@@ -29,6 +30,7 @@ class FakeEvolutionRepository:
         self.trials: dict[UUID, list[Any]] = {}
         self.evaluations: dict[UUID, list[Any]] = {}
         self.observations: dict[tuple[UUID, str, str], Any] = {}
+        self.shadow_comparisons: list[Any] = []
 
     async def add_proposal(self, proposal: ImprovementProposal) -> None:
         self.proposals[proposal.proposal_id] = proposal
@@ -86,6 +88,18 @@ class FakeEvolutionRepository:
         self.observations[
             (observation.deployment_id, observation.stage.value, observation.metric)
         ] = observation
+
+    async def add_shadow_comparison(self, comparison: Any) -> None:
+        self.shadow_comparisons.append(comparison)
+
+    async def list_shadow_comparisons(
+        self, tenant_id: UUID, deployment_id: UUID
+    ) -> tuple[Any, ...]:
+        return tuple(
+            item
+            for item in self.shadow_comparisons
+            if item.tenant_id == tenant_id and item.deployment_id == deployment_id
+        )
 
 
 class DenyingPolicy:
@@ -432,6 +446,77 @@ async def _shadow_deployment(
         IdentityContext(UUID(int=1), uuid4(), uuid4(), frozenset({"release_executor"})),
         candidate_id,
     )
+
+
+class RecordingShadowRuntime:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+        self._both_started = asyncio.Event()
+
+    async def execute_shadow_subject(self, **command: Any) -> Any:
+        from autonoesis_domain import ShadowMeasurements
+
+        self.calls.append(command)
+        if len(self.calls) == 2:
+            self._both_started.set()
+        await asyncio.wait_for(self._both_started.wait(), timeout=1)
+        if command["external_effects_enabled"]:
+            return ShadowMeasurements(0.8, 120, 30.0, human_corrections=1)
+        return ShadowMeasurements(0.9, 100, 25.0)
+
+
+@pytest.mark.asyncio
+async def test_shadow_pair_runs_concurrently_and_persists_comparison_metrics() -> None:
+    from autonoesis_application import ExecuteShadowPair
+    from autonoesis_domain import DeploymentStatus
+
+    repository = FakeEvolutionRepository()
+    service = CandidateLifecycleService(repository)
+    deployment = await _shadow_deployment(service, repository)
+    executor = IdentityContext(UUID(int=1), uuid4(), uuid4(), frozenset({"release_executor"}))
+    runtime = RecordingShadowRuntime()
+
+    comparison = await service.execute_shadow_pair(
+        executor,
+        ExecuteShadowPair(deployment.deployment_id, "request://shadow/1", {"prompt": "hello"}),
+        runtime,
+    )
+
+    assert [call["external_effects_enabled"] for call in runtime.calls] == [True, False]
+    assert comparison.stable.outcome_score == 0.8
+    assert comparison.candidate.outcome_score == 0.9
+    assert repository.shadow_comparisons == [comparison]
+    expected = {
+        "outcome_score_delta": pytest.approx(0.1),
+        "cost_microunits_delta": -20.0,
+        "latency_ms_delta": -5.0,
+        "security_violations": 0.0,
+        "human_corrections_delta": -1.0,
+    }
+    for metric, value in expected.items():
+        observation = repository.observations[
+            (deployment.deployment_id, DeploymentStatus.SHADOW.value, metric)
+        ]
+        assert observation.sample_count == 1
+        assert observation.last_value == value
+
+
+@pytest.mark.asyncio
+async def test_shadow_pair_refuses_non_shadow_deployment() -> None:
+    from autonoesis_application import ExecuteShadowPair
+
+    repository = FakeEvolutionRepository()
+    service = CandidateLifecycleService(repository)
+    deployment = await _shadow_deployment(service, repository)
+    executor = IdentityContext(UUID(int=1), uuid4(), uuid4(), frozenset({"release_executor"}))
+    await service.promote_to_canary(executor, deployment.deployment_id)
+
+    with pytest.raises(ValueError, match="requires a shadow deployment"):
+        await service.execute_shadow_pair(
+            executor,
+            ExecuteShadowPair(deployment.deployment_id, "request://shadow/2", {}),
+            RecordingShadowRuntime(),
+        )
 
 
 @pytest.mark.asyncio
