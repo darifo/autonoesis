@@ -62,6 +62,13 @@ class TenantNamespaces:
     def workflow_id(self, run_id: UUID) -> str:
         return f"tenant-{self.tenant_token}-goal-run-{run_id}"
 
+    def shadow_workflow_id(self, deployment_id: UUID, request_id: UUID, payload_digest: str) -> str:
+        if re.fullmatch(r"[0-9a-f]{64}", payload_digest) is None:
+            raise ValueError("shadow payload digest must be lowercase sha256 hex")
+        return (
+            f"tenant-{self.tenant_token}-shadow-{deployment_id}-{request_id}-{payload_digest[:16]}"
+        )
+
     def worker_pool(self, risk_pool: IsolationRiskPool) -> str:
         return f"{self.prefix}/tenant/{self.tenant_id}/{risk_pool.value}"
 

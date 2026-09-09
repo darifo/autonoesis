@@ -9,6 +9,15 @@ from autonoesis_runtime import KillSwitchQuery
 from fastapi.testclient import TestClient
 
 
+class RecordingShadowDispatcher:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, object]] = []
+
+    async def dispatch(self, **command: object) -> str:
+        self.calls.append(command)
+        return f"shadow-workflow-{command['request_id']}"
+
+
 def headers(tenant_id: UUID, actor_id: UUID, key: str | None = None) -> dict[str, str]:
     result = {
         "X-Tenant-ID": str(tenant_id),
@@ -53,7 +62,8 @@ def manifest() -> dict[str, object]:
 def test_generic_goal_run_and_evolution_api() -> None:
     tenant_id, actor_id = uuid4(), uuid4()
     store = InMemoryPlatformStore()
-    client = TestClient(build_app(store))
+    shadow_dispatcher = RecordingShadowDispatcher()
+    client = TestClient(build_app(store, shadow_dispatcher=shadow_dispatcher))
     identity = headers(tenant_id, actor_id)
 
     pack = client.post(
@@ -190,6 +200,28 @@ def test_generic_goal_run_and_evolution_api() -> None:
         headers={**headers(tenant_id, uuid4()), "Idempotency-Key": "promotion-1"},
     )
     assert shadow.json()["status"] == "shadow"
+    shadow_request_id = uuid4()
+    dispatched = client.post(
+        f"/v1/deployments/{shadow.json()['deployment_id']}/shadow-requests",
+        json={"request_id": str(shadow_request_id), "input_payload": {"request": "mirror"}},
+        headers={**identity, "Idempotency-Key": "shadow-request-1"},
+    )
+    assert dispatched.status_code == 202
+    assert dispatched.json()["status"] == "dispatched"
+    assert shadow_dispatcher.calls == [
+        {
+            "tenant_id": tenant_id,
+            "deployment_id": UUID(shadow.json()["deployment_id"]),
+            "request_id": shadow_request_id,
+            "input_payload": {"request": "mirror"},
+        }
+    ]
+    unavailable = TestClient(build_app(store)).post(
+        f"/v1/deployments/{shadow.json()['deployment_id']}/shadow-requests",
+        json={"request_id": str(uuid4()), "input_payload": {"request": "mirror"}},
+        headers={**identity, "Idempotency-Key": "shadow-request-unconfigured"},
+    )
+    assert unavailable.status_code == 503
     canary = client.post(
         f"/v1/deployments/{shadow.json()['deployment_id']}/canary",
         headers={**identity, "Idempotency-Key": "canary-1"},

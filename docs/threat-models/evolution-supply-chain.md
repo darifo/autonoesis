@@ -92,6 +92,8 @@ The evolution pipeline (ImprovementProposal → Candidate → Evaluation → App
 
 **Controls**:
 - Shadow execution uses production data but discards results—no external side effects.
+- Shadow request dispatch derives tenant/Deployment-scoped Workflow IDs from a UUID and Payload
+  digest, routes them through the tenant high-risk pool, and never embeds raw input in identifiers.
 - Shadow environment has same data access controls as production.
 - Canary traffic is limited to a percentage; automatic rollback on guardrail breach.
 - All Shadow/Canary execution is audited and subject to the same data policies as Stable.

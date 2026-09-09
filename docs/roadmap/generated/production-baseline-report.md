@@ -36,9 +36,9 @@ Configured Compose images (configuration inventory only; not integration evidenc
 
 - Application contract version: `0.1.0`
 - OpenAPI dialect: `3.1.x`; frozen consumer contract: `openapi-v1`
-- Frozen OpenAPI digest: `sha256:4dbada3ea849ad769b17347270ce9f46475a33a268f11157b60b0842cdc937fd`
-- Route source digest: `sha256:3e1ac88670dc25cebe4af725e2e40e354850cfa600ef91ee4aab1269a3cb28c7`
-- Declared operations (45):
+- Frozen OpenAPI digest: `sha256:f76733f6116a66a9eab74f15778bd16b23aa6073ea4527fb557e28964f80861a`
+- Route source digest: `sha256:e7d485516fd477d1f51529ca865e133c72813314fe52484b7a989fa418bbdbef`
+- Declared operations (46):
 
   - `DELETE /v1/kill-switches`
   - `DELETE /v1/platform/break-glass/kill-switch`
@@ -72,6 +72,7 @@ Configured Compose images (configuration inventory only; not integration evidenc
   - `POST /v1/capability-packs`
   - `POST /v1/deployments/observations`
   - `POST /v1/deployments/{deployment_id}/canary`
+  - `POST /v1/deployments/{deployment_id}/shadow-requests`
   - `POST /v1/deployments/{deployment_id}/stable`
   - `POST /v1/goals`
   - `POST /v1/goals/{goal_id}/activation`

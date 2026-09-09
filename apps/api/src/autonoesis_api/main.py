@@ -73,6 +73,11 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from temporalio.client import Client
 
+from autonoesis_api.shadow_dispatch import (
+    ShadowWorkflowDispatcher,
+    TemporalShadowWorkflowDispatcher,
+)
+
 
 class StrictRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -193,6 +198,11 @@ class ObservationRequest(StrictRequest):
     threshold: float | None = None
 
 
+class ShadowDispatchRequest(StrictRequest):
+    request_id: UUID
+    input_payload: dict[str, Any]
+
+
 class TemporaryAuthorizationRequest(StrictRequest):
     principal_id: UUID
     reason: str = Field(min_length=8, max_length=1000)
@@ -227,6 +237,7 @@ def build_app(
     platform_kill_switch: Any | None = None,
     improvement_policy: ImprovementTargetPolicy | None = None,
     evaluation_policy: RepeatedTrialPolicy | None = None,
+    shadow_dispatcher: ShadowWorkflowDispatcher | None = None,
 ) -> FastAPI:
     platform_store = store or InMemoryPlatformStore()
     breakglass_engine = None
@@ -299,6 +310,18 @@ def build_app(
     )
     evolution = CandidateLifecycleService(platform_store, improvement_policy)
     resolved_evaluation_policy = evaluation_policy or configured_evaluation_policy()
+    resolved_shadow_dispatcher = shadow_dispatcher
+    if (
+        resolved_shadow_dispatcher is None
+        and os.getenv("AUTONOESIS_TEMPORAL_START", "false").lower() == "true"
+    ):
+        resolved_shadow_dispatcher = TemporalShadowWorkflowDispatcher(
+            os.getenv("AUTONOESIS_TEMPORAL_TARGET", "localhost:7233"),
+            tenant_isolated=os.getenv("AUTONOESIS_TENANT_ISOLATED_WORKFLOWS", "true").lower()
+            == "true",
+            shared_namespace=os.getenv("AUTONOESIS_TEMPORAL_NAMESPACE", "default"),
+            shared_task_queue=os.getenv("AUTONOESIS_TEMPORAL_TASK_QUEUE", "autonoesis"),
+        )
 
     @app.exception_handler(RecordNotFound)
     @app.exception_handler(TenantBoundaryViolation)
@@ -1053,6 +1076,36 @@ def build_app(
         require_role(context, {"release_executor"})
         deployment = await evolution.promote_to_canary(context, deployment_id)
         return {"deployment_id": deployment.deployment_id, "status": deployment.status}
+
+    @app.post(
+        "/v1/deployments/{deployment_id}/shadow-requests",
+        status_code=202,
+        tags=["improvement"],
+    )
+    async def dispatch_shadow_request(
+        deployment_id: UUID,
+        body: ShadowDispatchRequest,
+        context: Identity,
+        _: WriteKey,
+    ) -> dict[str, Any]:
+        require_role(context, {"release_executor", "shadow_dispatcher"})
+        deployment = await platform_store.get_deployment(context.tenant_id, deployment_id)
+        if deployment.status is not DeploymentStatus.SHADOW:
+            raise HTTPException(409, "shadow requests require a Shadow deployment")
+        if resolved_shadow_dispatcher is None:
+            raise HTTPException(503, "Shadow workflow dispatch is not configured")
+        workflow_id = await resolved_shadow_dispatcher.dispatch(
+            tenant_id=context.tenant_id,
+            deployment_id=deployment_id,
+            request_id=body.request_id,
+            input_payload=body.input_payload,
+        )
+        return {
+            "deployment_id": deployment_id,
+            "request_id": body.request_id,
+            "workflow_id": workflow_id,
+            "status": "dispatched",
+        }
 
     @app.post("/v1/deployments/{deployment_id}/stable", tags=["improvement"])
     async def promote_deployment_to_stable(

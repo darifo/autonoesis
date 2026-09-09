@@ -36,3 +36,4 @@ ADRs record decisions affecting authoritative ownership, process boundaries, pro
 - [ADR-0029: Promotion Gates and Per-Deployment Guardrail Observations](0029-promotion-gates-and-guardrail-observations.md)
 - [ADR-0030: Shadow Deployments Cannot Produce External Side Effects](0030-shadow-write-suppression.md)
 - [ADR-0031: Persist Paired Shadow Comparison Evidence](0031-persisted-shadow-comparison-evidence.md)
+- [ADR-0032: Tenant-Isolated Shadow Request Dispatch](0032-tenant-isolated-shadow-request-dispatch.md)

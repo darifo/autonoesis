@@ -123,6 +123,7 @@ the response never reveals whether the target exists elsewhere.
 | `POST` | `/v1/candidates/{id}/evaluate` | Submit evaluation |
 | `POST` | `/v1/candidates/{id}/decision` | Approve/reject candidate |
 | `POST` | `/v1/candidates/{id}/promote` | Start an approved candidate in Shadow |
+| `POST` | `/v1/deployments/{id}/shadow-requests` | Dispatch one idempotent mirrored input to the tenant-isolated Shadow Workflow |
 | `POST` | `/v1/deployments/{id}/canary` | Promote a Shadow deployment to Canary |
 | `POST` | `/v1/deployments/{id}/stable` | Promote a Canary deployment and create the Stable release |
 | `POST` | `/v1/releases/{id}/rollback` | Rollback release |

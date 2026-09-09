@@ -108,5 +108,8 @@ Cancellation may be requested at any time. The Run enters Cancelled state. In-fl
 - `ModelGateway` and `GovernedToolGateway` are in `packages/runtime-kernel/src/autonoesis_runtime/`.
 - Temporal Activities use process-level injected Application dependencies; Goal execution has
   Outbox dispatch, fixed Workflow IDs, reconciliation, cancellation, recovery and Replay evidence.
+- Shadow request dispatch validates authoritative Deployment state, uses deterministic Payload-bound
+  Workflow IDs, and routes to the tenant high-risk pool; the production Shadow Runtime remains
+  deliberately unconfigured until its sandbox is implemented.
 - Candidate evaluation now fails closed without a real Evaluator. Fixed-Subject Harness and Grader
   logic are unit-tested, but production Worker wiring and the end-to-end release path remain pending.
