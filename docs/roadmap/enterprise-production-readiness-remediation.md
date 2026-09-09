@@ -625,12 +625,12 @@ Tenant Authority 的初始化使用独立管理连接，不参与任何隔离断
 
 ### P2-04 容量、性能与混沌验证
 
-- [ ] 定义 Goal、Run、Action 和 Tenant 级容量模型；
-- [ ] 对 PostgreSQL RLS、Outbox、Temporal Queue 和 Gateway 进行压测；
-- [ ] 测量审批积压、Unknown 激增和 Provider 故障时的退化行为；
-- [ ] 注入 Worker Crash、DB Failover、网络分区、对象存储错误和消息重复；
-- [ ] 验证预算、并发限制、速率限制和 Kill Switch 在压力下仍生效；
-- [ ] 建立容量基线、扩容阈值和成本模型。
+- [x] 定义 Goal、Run、Action 和 Tenant 级容量模型；
+- [x] 对 PostgreSQL RLS、Outbox、Temporal Queue 和 Gateway 进行压测；
+- [x] 测量审批积压、Unknown 激增和 Provider 故障时的退化行为；
+- [x] 注入 Worker Crash、DB Failover、网络分区、对象存储错误和消息重复；
+- [x] 验证预算、并发限制、速率限制和 Kill Switch 在压力下仍生效；
+- [x] 建立容量基线、扩容阈值和成本模型。
 
 ### P2-05 运营与客户交付准备
 
