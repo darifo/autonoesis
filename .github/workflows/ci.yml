@@ -202,6 +202,13 @@ jobs:
           path: .artifacts/
           retention-days: 30
 
+  helm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate deployment chart
+        run: bash tools/dev/validate_helm_chart.sh
+
   cockpit:
     runs-on: ubuntu-latest
     steps:

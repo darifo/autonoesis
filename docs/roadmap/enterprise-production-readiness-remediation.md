@@ -596,13 +596,13 @@ Tenant Authority 的初始化使用独立管理连接，不参与任何隔离断
 
 ### P2-01 生产部署和安全域
 
-- [ ] 建立 Kubernetes Helm Chart；
-- [ ] API、Worker、Gateway、Evaluator 和 Release Executor 独立 Service Account；
-- [ ] Gateway 部署在受控出口网络，默认拒绝未知 Egress；
-- [ ] 使用 Secret Manager/Vault 和短期凭证；
-- [ ] 配置 Pod Security、NetworkPolicy、ResourceQuota 和只读文件系统；
-- [ ] 按风险层级建立独立 Worker Pool 和 Sandbox；
-- [ ] 建立多可用区、滚动升级和容量保护策略。
+- [x] 建立 Kubernetes Helm Chart；
+- [x] API、Worker、Gateway、Evaluator 和 Release Executor 独立 Service Account；
+- [x] Gateway 部署在受控出口网络，默认拒绝未知 Egress；
+- [x] 使用 Secret Manager/Vault 和短期凭证；
+- [x] 配置 Pod Security、NetworkPolicy、ResourceQuota 和只读文件系统；
+- [x] 按风险层级建立独立 Worker Pool 和 Sandbox；
+- [x] 建立多可用区、滚动升级和容量保护策略。
 
 ### P2-02 HA、备份与灾难恢复
 

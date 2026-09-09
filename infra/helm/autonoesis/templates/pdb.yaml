@@ -1,0 +1,19 @@
+{{- if .Values.podDisruptionBudget.enabled }}
+{{- range $pool, $config := .Values.workerPools }}
+{{- if $config.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: autonoesis-worker-{{ $pool }}
+  labels:
+    app.kubernetes.io/name: autonoesis
+spec:
+  minAvailable: {{ $.Values.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: autonoesis
+      app.kubernetes.io/component: worker-{{ $pool }}
+---
+{{- end }}
+{{- end }}
+{{- end }}

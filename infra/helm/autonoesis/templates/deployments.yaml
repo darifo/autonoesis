@@ -1,7 +1,18 @@
-{{- $deps := .Values.dependencies -}}
-{{- $workloads := list (dict "name" "api" "values" .Values.api "port" .Values.api.service.port) (dict "name" "worker" "values" .Values.worker "port" nil) (dict "name" "cockpit" "values" .Values.cockpit "port" .Values.cockpit.service.port) -}}
+{{- $root := . -}}
+{{- $workloads := list
+      (dict "name" "api" "cfg" .Values.api "port" .Values.api.service.port "sa" "autonoesis-api" "db" true "env" .Values.api.env)
+      (dict "name" "cockpit" "cfg" .Values.cockpit "port" .Values.cockpit.service.port "sa" "autonoesis-cockpit" "db" false "env" dict) -}}
+{{- range $pool, $config := .Values.workerPools }}
+{{- $workloads = append $workloads (dict
+      "name" (printf "worker-%s" $pool)
+      "cfg" $config
+      "port" nil
+      "sa" (printf "autonoesis-worker-%s" $pool)
+      "db" true
+      "env" (dict "AUTONOESIS_TEMPORAL_TASK_QUEUE" $config.taskQueue "AUTONOESIS_WORKER_RISK_POOL" $config.riskPool)) -}}
+{{- end }}
 {{- range $workload := $workloads }}
-{{- if $workload.values.enabled }}
+{{- if $workload.cfg.enabled }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -10,7 +21,13 @@ metadata:
     app.kubernetes.io/name: autonoesis
     app.kubernetes.io/component: {{ $workload.name }}
 spec:
-  replicas: {{ $workload.values.replicas }}
+  replicas: {{ $workload.cfg.replicas }}
+  # Rolling upgrades never drop capacity (P2-01): surge first, then retire.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: {{ $root.Values.global.rollingUpdate.maxUnavailable }}
+      maxSurge: {{ $root.Values.global.rollingUpdate.maxSurge }}
   selector:
     matchLabels:
       app.kubernetes.io/name: autonoesis
@@ -21,9 +38,8 @@ spec:
         app.kubernetes.io/name: autonoesis
         app.kubernetes.io/component: {{ $workload.name }}
     spec:
-      serviceAccountName: autonoesis-{{ $workload.name }}
-      {{- if $.Values.global.availabilityZones }}
-      # Spread replicas across the configured availability zones (P2-01).
+      serviceAccountName: {{ $workload.sa }}
+      {{- if $root.Values.global.availabilityZones }}
       topologySpreadConstraints:
         - maxSkew: 1
           topologyKey: topology.kubernetes.io/zone
@@ -35,11 +51,19 @@ spec:
       {{- end }}
       containers:
         - name: {{ $workload.name }}
-          image: "{{ $.Values.global.imageRegistry }}/{{ $workload.values.image }}:{{ $workload.values.tag }}"
-          imagePullPolicy: {{ $.Values.global.imagePullPolicy }}
-          {{- include "autonoesis.containerSecurityContext" $ | nindent 10 }}
+          image: "{{ $root.Values.global.imageRegistry }}/{{ $workload.cfg.image }}:{{ $workload.cfg.tag }}"
+          imagePullPolicy: {{ $root.Values.global.imagePullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            privileged: false
+            readOnlyRootFilesystem: {{ $root.Values.podSecurity.readOnlyRootFilesystem }}
+            capabilities:
+              drop:
+{{- range $root.Values.podSecurity.dropCapabilities }}
+              - {{ . }}
+{{- end }}
           resources:
-            {{- toYaml $workload.values.resources | nindent 12 }}
+{{ toYaml $workload.cfg.resources | indent 12 }}
           {{- if $workload.port }}
           ports:
             - name: http
@@ -47,15 +71,21 @@ spec:
           {{- end }}
           env:
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: "http://{{ $deps.otelCollectorHost }}:{{ $deps.otelCollectorHttpPort }}"
-          {{- if ne $workload.name "cockpit" }}
-            # The console holds no platform credentials: it reaches the API
-            # same-origin through the ingress and runs credential-free.
+              value: "http://{{ $root.Values.dependencies.otelCollectorHost }}:{{ $root.Values.dependencies.otelCollectorHttpPort }}"
+          {{- range $key, $value := $workload.env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+          {{- end }}
+          {{- if $workload.db }}
+            # Only control-plane and worker duties hold platform credentials;
+            # the console runs credential-free behind the ingress.
             - name: AUTONOESIS_DATABASE_URL
               valueFrom:
-                secretKeyRef: { name: {{ $.Values.secretRefs.database }}, key: url }
+                secretKeyRef:
+                  name: {{ $root.Values.secretRefs.database }}
+                  key: url
             - name: AUTONOESIS_TEMPORAL_TARGET
-              value: "{{ $deps.temporalHost }}:{{ $deps.temporalPort }}"
+              value: "{{ $root.Values.dependencies.temporalHost }}:{{ $root.Values.dependencies.temporalPort }}"
           {{- end }}
 ---
 {{- end }}

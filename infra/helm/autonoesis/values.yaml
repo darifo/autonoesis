@@ -3,15 +3,17 @@
 # SECURITY POSTURE (P2-01): every workload runs as a dedicated non-root
 # ServiceAccount, with a read-only root filesystem, dropped capabilities,
 # seccomp RuntimeDefault, and default-deny egress restricted to the explicit
-# dependencies below. Override per environment; production must provision
-# credentials through a secret manager (externalSecrets), never plain values.
+# dependencies below. Production must provision credentials through a secret
+# manager (externalSecrets), never plain values.
 
 global:
   imageRegistry: ""            # e.g. ghcr.io/darifo
   imagePullPolicy: IfNotPresent
-  # Rollout strategy: production should run >=3 replicas across availability
-  # zones with podAntiAffinity (topologyKey: topology.kubernetes.io/zone).
+  # Rollout: production should run >=3 replicas across availability zones.
   availabilityZones: []        # ["eu-central-1a", "eu-central-1b", "eu-central-1c"]
+  rollingUpdate:
+    maxUnavailable: 0          # never drop capacity mid-rollout
+    maxSurge: 1
 
 api:
   enabled: true
@@ -23,19 +25,9 @@ api:
     limits: { cpu: "2", memory: 2Gi }
   env:
     AUTONOESIS_TEMPORAL_START: "true"
-    OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector.observability:4318"
   service:
     type: ClusterIP
     port: 8000
-
-worker:
-  enabled: true
-  image: autonoesis-worker
-  tag: "0.1.0"
-  replicas: 2
-  resources:
-    requests: { cpu: 250m, memory: 512Mi }
-    limits: { cpu: "2", memory: 2Gi }
 
 cockpit:
   enabled: true
@@ -45,6 +37,56 @@ cockpit:
   service:
     type: ClusterIP
     port: 80
+
+# Risk-tiered worker pools (P2-01): each pool is a separate Deployment with a
+# dedicated ServiceAccount, its own Temporal task queue and namespace-bound
+# risk pool, and its own resource envelope. The worker process selects the
+# pool via AUTONOESIS_WORKER_RISK_POOL / AUTONOESIS_WORKER_TENANT_ID
+# (per-tenant isolation reuses the same mechanism with tenantScoped pools).
+workerPools:
+  general:
+    enabled: true
+    image: autonoesis-worker
+    tag: "0.1.0"
+    replicas: 2
+    taskQueue: autonoesis
+    riskPool: read
+    resources:
+      requests: { cpu: 250m, memory: 512Mi }
+      limits: { cpu: "2", memory: 2Gi }
+  high-risk:
+    # Tenant HIGH_RISK pool: governed writes, shadow pairs, release execution.
+    enabled: true
+    image: autonoesis-worker
+    tag: "0.1.0"
+    replicas: 2
+    taskQueue: autonoesis-high-risk
+    riskPool: high-risk
+    resources:
+      requests: { cpu: 500m, memory: 1Gi }
+      limits: { cpu: "4", memory: 4Gi }
+  evaluator:
+    # Candidate evaluation harness: executes pack subjects in the sandbox.
+    enabled: true
+    image: autonoesis-worker
+    tag: "0.1.0"
+    replicas: 1
+    taskQueue: autonoesis-evaluation
+    riskPool: write
+    resources:
+      requests: { cpu: 500m, memory: 1Gi }
+      limits: { cpu: "4", memory: 4Gi }
+  release-executor:
+    # Independent Release Executor duties (ADR-0034).
+    enabled: true
+    image: autonoesis-worker
+    tag: "0.1.0"
+    replicas: 1
+    taskQueue: autonoesis-release
+    riskPool: high-risk
+    resources:
+      requests: { cpu: 250m, memory: 512Mi }
+      limits: { cpu: "2", memory: 2Gi }
 
 # External dependencies (used by NetworkPolicy allowlists and env wiring).
 dependencies:
@@ -57,16 +99,30 @@ dependencies:
   objectStoreEndpoint: http://minio.data.svc.cluster.local:9000
   opaHost: opa.policy.svc.cluster.local
   opaPort: 8181
-  # DNS egress is required for service discovery in the allowlist policy.
-  dnsServer: kube-system.kube-dns
 
 # Credentials are referenced from externally provisioned secrets
 # (P2-01: Secret Manager / Vault ownership; the chart never sets raw values).
+# Set externalSecrets.enabled=true to render ExternalSecret manifests that
+# sync these references from a secret manager instead of hand-created secrets.
 secretRefs:
   database: autonoesis-database
   temporal: autonoesis-temporal
   objectStore: autonoesis-object-store
   packSigning: autonoesis-pack-signing
+
+externalSecrets:
+  enabled: false
+  # secretStore: e.g. cluster-secret-store referencing Vault / AWS Secrets Manager
+  secretStore: ""
+  refreshInterval: 1h
+  databaseRemoteKey: production/autonoesis/database
+  temporalRemoteKey: production/autonoesis/temporal
+  objectStoreRemoteKey: production/autonoesis/object-store
+  packSigningRemoteKey: production/autonoesis/pack-signing
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
 
 networkPolicy:
   enabled: true
