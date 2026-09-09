@@ -1,0 +1,24 @@
+# Automated dependency upgrades (P2-03): grouped weekly PRs; rollback is a
+# lockfile revert (uv.lock / pnpm-lock.yaml) validated by the same CI gates.
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: "/"
+    schedule: { interval: weekly }
+    groups:
+      python-production:
+        applies-to: version-updates
+        patterns: ["*"]
+  - package-ecosystem: npm
+    directory: "/apps/cockpit"
+    schedule: { interval: weekly }
+    groups:
+      cockpit-production:
+        applies-to: version-updates
+        patterns: ["*"]
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule: { interval: weekly }
+  - package-ecosystem: docker
+    directory: "/"
+    schedule: { interval: weekly }

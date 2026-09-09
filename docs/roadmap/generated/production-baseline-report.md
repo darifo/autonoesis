@@ -13,7 +13,7 @@
 | `package.json` | `50cb64a759a95e84c47f1cf5fe1cafa0167aa030bf0d5c806bda00eb48cfbf8a` |
 | `pnpm-lock.yaml` | `929ae26bb7e72d59b69b08d5d55c355a963004622e28fdcac443298b7a7bca30` |
 | `versions.lock` | `2eba0942a897865d9933b07445a45e030682b03c200c041cc159d6d753e08644` |
-| `infra/compose/docker-compose.yml` | `2937d87a635f91c5ce31eb75b43bad6b1bf427be548fbea815879d1ffe9ba9f2` |
+| `infra/compose/docker-compose.yml` | `c9990faadd4d13b66239902ff65b4ac840bf02f0d240cd0aa5221657a80d731e` |
 
 Configured Compose images (configuration inventory only; not integration evidence):
 

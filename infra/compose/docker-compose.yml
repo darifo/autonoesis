@@ -114,6 +114,8 @@ services:
     build:
       context: ../..
       dockerfile: Dockerfile
+      args:
+        AUTONOESIS_PACKAGE: autonoesis-worker
     command: ["python", "-m", "autonoesis_worker.main"]
     depends_on:
       temporal: {condition: service_started}

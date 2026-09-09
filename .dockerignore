@@ -1,0 +1,24 @@
+# Production image purity (P2-03): development dependencies never enter the
+# image (uv --no-dev), and neither do repository history, caches, tests,
+# documentation, local infra state, or the development signing key. The
+# committed dev PUBLIC key and allowlist stay: verification needs them.
+.git
+.github
+.artifacts
+.venv
+.mypy_cache
+.pytest_cache
+.ruff_cache
+.pnpm-store
+.playwright-cli
+.zcode
+node_modules
+**/node_modules
+**/__pycache__
+**/*.pyc
+tests
+docs
+infra/supply-chain/dev-signing-private-key.txt
+.env*
+*.md
+docker-compose*

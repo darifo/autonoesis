@@ -616,12 +616,12 @@ Tenant Authority 的初始化使用独立管理连接，不参与任何隔离断
 
 ### P2-03 软件与能力供应链
 
-- [ ] 生成 Python/Node/Image/Capability Pack SBOM；
-- [ ] 执行 SAST、SCA、Secret、Container 和 IaC 扫描；
-- [ ] 镜像和 Artifact 使用签名与 Provenance Attestation；
-- [ ] 依赖升级使用自动 PR、兼容测试和回滚策略；
-- [ ] Release 产物不可变并可追溯到 Commit、CI 和测试证据；
-- [ ] 禁止开发依赖、测试凭证和原始客户数据进入生产镜像。
+- [x] 生成 Python/Node/Image/Capability Pack SBOM；
+- [x] 执行 SAST、SCA、Secret、Container 和 IaC 扫描；
+- [x] 镜像和 Artifact 使用签名与 Provenance Attestation；
+- [x] 依赖升级使用自动 PR、兼容测试和回滚策略；
+- [x] Release 产物不可变并可追溯到 Commit、CI 和测试证据；
+- [x] 禁止开发依赖、测试凭证和原始客户数据进入生产镜像。
 
 ### P2-04 容量、性能与混沌验证
 
