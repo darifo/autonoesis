@@ -606,13 +606,13 @@ Tenant Authority 的初始化使用独立管理连接，不参与任何隔离断
 
 ### P2-02 HA、备份与灾难恢复
 
-- [ ] PostgreSQL 配置 PITR 和定期恢复验证；
-- [ ] Temporal 使用生产级持久化和备份策略；
-- [ ] Object Store 配置版本、复制、对象锁和生命周期；
-- [ ] Stable Pointer、Policy、Capability Artifact 和 Secret 有独立备份；
-- [ ] 建立 RTO/RPO 并进行季度完整恢复演练；
-- [ ] 验证恢复后未完成 Run 可继续且不重复副作用；
-- [ ] 验证 Tenant 级恢复不会污染其他租户。
+- [x] PostgreSQL 配置 PITR 和定期恢复验证；
+- [x] Temporal 使用生产级持久化和备份策略；
+- [x] Object Store 配置版本、复制、对象锁和生命周期；
+- [x] Stable Pointer、Policy、Capability Artifact 和 Secret 有独立备份；
+- [x] 建立 RTO/RPO 并进行季度完整恢复演练；
+- [x] 验证恢复后未完成 Run 可继续且不重复副作用；
+- [x] 验证 Tenant 级恢复不会污染其他租户。
 
 ### P2-03 软件与能力供应链
 
