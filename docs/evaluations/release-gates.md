@@ -1,12 +1,13 @@
 # Release Gates
 
-> Status: partially unit-tested · Last reviewed: 2026-08-16
+> Status: partially unit-tested · Last reviewed: 2026-09-09
 
 ## Current implementation boundary
 
 - Gate 1 has fixed Subject execution, complete Trial records, ordered independent Grader stages,
   weighted/gating semantics, four-state failure closing, protected Suite access, and repeated-Trial
-  Wilson confidence gating at unit level.
+  Wilson two-sided confidence gating (upper bound must fall below the threshold to reject,
+  ADR-0024 amendment) at unit level with real Temporal + PostgreSQL component evidence.
 - Gate 2 has generator/grader/approver separation. Candidates carry immutable artifact digests,
   fixed Suite references and generator identity (ADR-0025), and promotion to Awaiting Approval is
   driven only by persisted Trials through a persisted `CandidateEvaluation` evidence record with
@@ -18,7 +19,10 @@
   tenant high-risk pools and fails closed without a Dispatcher. The production Shadow Runtime and
   Candidate sandbox are not assembled yet.
 - Gate 4 enforces persisted observation windows, minimum samples, required metrics, and targeted
-  guardrail rollback. Auditable Canary routing and the independent Release Executor are absent.
+  guardrail rollback. Canary entry binds a deterministic, auditable TrafficAllocation rule
+  (persisted with the Deployment, replayable per request, ADR-0033), and the independent
+  ReleaseExecutionWorkflow is the only executor of Canary entry, Stable promotion, and rollback
+  (ADR-0034); the API dispatches (202) and fails closed at 503 without an Executor.
 - No gate is production-proven, and the full Draft → Stable chain is not integrated end to end.
 
 ## Gate Overview

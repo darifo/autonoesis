@@ -69,6 +69,13 @@ class TenantNamespaces:
             f"tenant-{self.tenant_token}-shadow-{deployment_id}-{request_id}-{payload_digest[:16]}"
         )
 
+    def release_workflow_id(self, action: str, target_id: UUID, command_digest: str) -> str:
+        if re.fullmatch(r"[a-z][a-z0-9_]{0,31}", action) is None:
+            raise ValueError("release action must be a bounded snake_case label")
+        if re.fullmatch(r"[0-9a-f]{64}", command_digest) is None:
+            raise ValueError("release command digest must be lowercase sha256 hex")
+        return f"tenant-{self.tenant_token}-release-{action}-{target_id}-{command_digest[:16]}"
+
     def worker_pool(self, risk_pool: IsolationRiskPool) -> str:
         return f"{self.prefix}/tenant/{self.tenant_id}/{risk_pool.value}"
 

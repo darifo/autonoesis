@@ -19,10 +19,13 @@ from autonoesis_domain import (
     Release,
     ShadowComparison,
     ShadowMeasurements,
+    TrafficAllocation,
+    TrafficRoute,
     Trial,
     require_improvement_target_allowed,
 )
 from autonoesis_evaluation import (
+    ConfidenceDecision,
     RepeatedTrialPolicy,
     TrialConfidenceAssessment,
     TrialConfidenceGate,
@@ -296,10 +299,11 @@ class CandidateLifecycleService:
         await self._repository.add_evaluation_record(record)
         if assessment.met:
             target = CandidateStatus.AWAITING_APPROVAL
-        elif assessment.policy.min_valid_trials > assessment.valid_trials:
-            raise ValueError(f"candidate evaluation evidence is incomplete: {assessment.rationale}")
-        else:
+        elif assessment.decision is ConfidenceDecision.NOT_MET:
             target = CandidateStatus.REJECTED
+        else:
+            # Straddling or short samples stay evaluating; callers may add Trials.
+            raise ValueError(f"candidate evaluation evidence is incomplete: {assessment.rationale}")
         candidate = candidate.record_evaluation(target, grader_principal_id=identity.principal_id)
         await self._repository.save_candidate(candidate)
         return candidate, record
@@ -409,15 +413,45 @@ class CandidateLifecycleService:
         self,
         identity: IdentityContext,
         deployment_id: UUID,
+        allocation: TrafficAllocation,
     ) -> Deployment:
+        """Bind the auditable traffic rule that governs all live Canary assignment."""
+
         deployment = await self._repository.get_deployment(identity.tenant_id, deployment_id)
-        deployment = deployment.transition_to(
-            DeploymentStatus.CANARY,
+        candidate = await self._repository.get_candidate(
+            identity.tenant_id, deployment.candidate_id
+        )
+        if str(identity.principal_id) in {
+            candidate.generator_id,
+            candidate.grader_principal_id,
+            candidate.approver_principal_id,
+        }:
+            raise PermissionError("release execution requires an independent principal")
+        deployment = deployment.enter_canary(
+            allocation,
             actor_id=identity.actor_id,
-            reason="shadow gate passed",
+            reason=(
+                "canary entered with "
+                f"{allocation.candidate_percent}% deterministic candidate traffic"
+            ),
         )
         await self._repository.save_deployment(deployment)
         return deployment
+
+    async def resolve_request_route(
+        self,
+        identity: IdentityContext,
+        deployment_id: UUID,
+        request_id: UUID,
+    ) -> tuple[TrafficRoute, TrafficAllocation]:
+        """Replay the persisted rule to explain which version serves a request."""
+
+        deployment = await self._repository.get_deployment(identity.tenant_id, deployment_id)
+        allocation = deployment.traffic_allocation
+        route = deployment.assign_request(request_id)
+        if allocation is None:  # pragma: no cover - assign_request already guards this
+            raise ValueError("canary deployment carries no traffic allocation rule")
+        return route, allocation
 
     async def release_stable(
         self,

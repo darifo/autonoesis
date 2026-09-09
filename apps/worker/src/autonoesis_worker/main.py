@@ -25,6 +25,7 @@ from autonoesis_worker.activities import (
     cancel_run,
     evaluate_candidate,
     evaluate_run,
+    execute_release_command,
     execute_run,
     execute_shadow_pair,
     load_approval,
@@ -43,6 +44,7 @@ from autonoesis_worker.contracts import (
     PrepareRunInput,
     PromoteCandidateInput,
     RejectRunInput,
+    ReleaseCommandInput,
     ShadowPairInput,
     TakeOverRunInput,
 )
@@ -56,6 +58,7 @@ from autonoesis_worker.dispatcher import (
 from autonoesis_worker.workflows import (
     CandidateLifecycleWorkflow,
     GoalRunWorkflow,
+    ReleaseExecutionWorkflow,
     ShadowPairWorkflow,
 )
 
@@ -136,6 +139,11 @@ async def _execute_shadow_pair(input: ShadowPairInput) -> str:
     return await execute_shadow_pair(input, _get_dependencies())
 
 
+@activity.defn(name="execute_release_command")
+async def _execute_release_command(input: ReleaseCommandInput) -> str:
+    return await execute_release_command(input, _get_dependencies())
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Autonoesis durable execution worker")
     parser.add_argument("--check", action="store_true", help="validate workflow registration")
@@ -175,7 +183,12 @@ async def run_worker() -> None:
     worker = Worker(
         client,
         task_queue=task_queue,
-        workflows=[GoalRunWorkflow, CandidateLifecycleWorkflow, ShadowPairWorkflow],
+        workflows=[
+            GoalRunWorkflow,
+            CandidateLifecycleWorkflow,
+            ReleaseExecutionWorkflow,
+            ShadowPairWorkflow,
+        ],
         workflow_runner=SandboxedWorkflowRunner(),
         activities=[
             _prepare,
@@ -188,6 +201,7 @@ async def run_worker() -> None:
             _evaluate_candidate,
             _promote,
             _execute_shadow_pair,
+            _execute_release_command,
         ],
     )
     try:
@@ -207,7 +221,7 @@ def main() -> int:
     if args.check:
         print(
             "autonoesis-worker workflows: GoalRunWorkflow, CandidateLifecycleWorkflow, "
-            "ShadowPairWorkflow"
+            "ReleaseExecutionWorkflow, ShadowPairWorkflow"
         )
         return 0
     asyncio.run(run_worker())

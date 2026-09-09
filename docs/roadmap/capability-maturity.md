@@ -1,6 +1,6 @@
 # 能力成熟度矩阵
 
-> 基线日期：2026-08-16
+> 基线日期：2026-09-09
 > 产品状态：架构原型 / 工程预览
 > 状态定义：以[企业级生产就绪整改路线](enterprise-production-readiness-remediation.md#36-以运行证据定义完成)为准
 
@@ -15,8 +15,9 @@
 
 当前 P0 参考纵向切片、PostgreSQL 权威存储、HTTP/Application 用例、Governed Tool Gateway、
 Temporal 耐久编排、Evidence/Outcome/Audit 可信链，以及 P1-01～03 的多租户、身份和可信
-Context/Memory 达到 `integrated`。P1-04 Evaluation 九个实施项全部完成，仍为 `unit-tested`；
-没有任何能力达到 `production-proven`。
+Context/Memory 达到 `integrated`。P1-04 Evaluation 九项与 P1-05 Shadow/Canary/Rollback 十项
+实施项全部完成（Evaluation 与 Release Executor 组件测试经真实 Temporal + PostgreSQL 验证），
+整体仍为 `unit-tested`；没有任何能力达到 `production-proven`。
 
 ## 当前矩阵
 
@@ -32,8 +33,8 @@ Context/Memory 达到 `integrated`。P1-04 Evaluation 九个实施项全部完�
 | Identity/Policy/Approval | `integrated` | P1-02 进程级 JWKS、严格 OIDC Claims、PostgreSQL 即时委托撤销、双 Principal 高风险审批、进化职责分离和 Break-glass 临时授权/告警/复核；真实 OPA Worker 决策 | 生产企业 IdP/SCIM、密钥轮换与故障、工作负载身份联邦和 SOC 告警演练 |
 | Evidence/Outcome/Audit | `integrated` | CI PostgreSQL 17 + KMS MinIO：预写入准入、Version/Object Lock、Saga 恢复、权威回读 Outcome、并发摘要审计链、真实 Audit Ref 和删除墓碑/证明 | 生产 KMS/跨区复制、真实业务 Authority、WORM 导出、保留/删除长期演练 |
 | Context/Environment/Memory | `integrated` | P1-03 多维 Context ACL、可复现 Snapshot 摘要、冲突/Injection 信号、Memory Write Gate；PostgreSQL Ledger、递归删除传播和向量投影清理 | 生产来源 Connector/DLP、规模化索引重建和数据主体删除演练 |
-| Evaluation | `unit-tested` | Harness 执行固定 Subject Version；Trial 完整保存固定条件与结果；五级 Grader 严格顺序/独立身份/短路门禁；隐藏与生产回放 Case Catalog 隔离；权威 JSON 无损持久化；重复 Trial 以 Wilson 置信下界统计门禁；Candidate 固定引用与禁止目标双层拒绝；CandidateEvaluation 证据记录持久化并绑定晋升，caller 决策路径已移除；Suite Catalog 持久化，Pack 声明式 Subject（进程内）+ 独立规则 Grader 后端经真实 Temporal 工作流与 PostgreSQL 组件测试驱动重复 Trial 至置信晋升 | Pack 代码沙箱隔离、Outcome/LLM/Human Grader 后端和长期攻击测试 |
-| Shadow/Canary/Rollback | `unit-tested` | 持久化 Deployment/Release、Active Stable 唯一约束与乐观版本 CAS；每 (租户,部署,阶段,指标) Guardrail 观测计数器；Canary 观察窗口/最小样本/指标缺失拒绝晋升；Guardrail 越界自动回滚目标部署；并发晋升唯一胜出组件测试；Shadow 写抑制（Run 绑定部署 + 执行时拒绝 L2+ 写）；Application Stable/Candidate 并发成对执行端口与逐请求对比证据；Worker 注册 ShadowPair Workflow/Activity；API 使用 Payload-bound 固定 ID Dispatch 到租户 high-risk Pool，缺少 Dispatcher/Runtime 时失败封闭 | 生产 Shadow Runtime、Candidate 沙箱、Shadow Outbox/Reconciler、Canary 分流规则和独立 Release Executor |
+| Evaluation | `unit-tested` | Harness 执行固定 Subject Version；Trial 完整保存固定条件与结果；五级 Grader 严格顺序/独立身份/短路门禁；隐藏与生产回放 Case Catalog 隔离；权威 JSON 无损持久化；重复 Trial 以 Wilson 双侧置信区间门禁（下界达标=MET，上界低于阈值=NOT_MET，跨阈值区间继续采样，ADR-0024 修正）；Candidate 固定引用与禁止目标双层拒绝；CandidateEvaluation 证据记录持久化并绑定晋升，caller 决策路径已移除；Suite Catalog 持久化，Pack 声明式 Subject（进程内）+ 独立规则 Grader 后端经真实 Temporal 工作流与 PostgreSQL 组件测试驱动重复 Trial 至置信晋升 | Pack 代码沙箱隔离、Outcome/LLM/Human Grader 后端和长期攻击测试 |
+| Shadow/Canary/Rollback | `unit-tested` | 持久化 Deployment/Release、Active Stable 唯一约束与乐观版本 CAS；每 (租户,部署,阶段,指标) Guardrail 观测计数器；Canary 观察窗口/最小样本/指标缺失拒绝晋升；Guardrail 越界自动回滚目标部署；并发晋升唯一胜出组件测试；Shadow 写抑制（Run 绑定部署 + 执行时拒绝 L2+ 写）；Application Stable/Candidate 并发成对执行端口与逐请求对比证据；Worker 注册 ShadowPair Workflow/Activity；API 使用 Payload-bound 固定 ID Dispatch 到租户 high-risk Pool；Canary 进入绑定确定性可审计 TrafficAllocation（SHA-256 salt+request 分桶，持久化于 Deployment definition，可按 request 重放路由）；独立 ReleaseExecutionWorkflow 以 per-tenant executor/grader 分离身份执行 Canary/Stable/Rollback，API 仅 Dispatch 并在无 Executor 时 503 失败封闭；真实 Temporal + PostgreSQL 组件测试驱动 Shadow→Canary 规则绑定 | 生产 Shadow Runtime、Candidate 沙箱、Shadow/Release Outbox 对账、Goal/Run 创建实时绑定路由和长期攻防演练 |
 | Cockpit | `unit-tested` | CI Vitest/typecheck/build/Playwright；静态样例和成熟度防误报测试 | 真实 API 数据、权限操作和生成 Client 接入 |
 | 可观测性/FinOps/SLO | `modeled` / 部分 `unit-tested` | 配置骨架和纯计算测试 | 真实 Trace/Metric/Ledger、告警和运行演练 |
 | 多租户隔离 | `integrated` | P1-01 双租户真实 API/PostgreSQL/MinIO/Temporal/Telemetry/Memory/Release 攻击矩阵；独立 Break-glass 审计 | 生产 Bucket Policy、Temporal Namespace 预配、外部 Search/Vector/Telemetry 后端和长期攻防演练 |

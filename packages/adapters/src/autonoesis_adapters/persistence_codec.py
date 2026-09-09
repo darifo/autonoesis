@@ -55,6 +55,7 @@ from autonoesis_domain import (
     SubjectRef,
     Task,
     TaskStatus,
+    TrafficAllocation,
     Trial,
     TrialCaseResult,
     TrialStatus,
@@ -698,8 +699,27 @@ def evaluation_from_row(row: dict[str, Any]) -> CandidateEvaluation:
     )
 
 
+def traffic_allocation_payload(item: TrafficAllocation) -> dict[str, Any]:
+    return {"salt": item.salt, "candidate_percent": item.candidate_percent}
+
+
+def _traffic_allocation_from(definition: dict[str, Any]) -> TrafficAllocation | None:
+    allocation = definition.get("traffic_allocation")
+    if allocation is None:
+        return None
+    return TrafficAllocation(
+        salt=allocation["salt"],
+        candidate_percent=allocation["candidate_percent"],
+    )
+
+
 def deployment_payload(item: Deployment) -> dict[str, Any]:
-    return {"transitions": [transition_payload(value) for value in item.transitions]}
+    payload: dict[str, Any] = {
+        "transitions": [transition_payload(value) for value in item.transitions]
+    }
+    if item.traffic_allocation is not None:
+        payload["traffic_allocation"] = traffic_allocation_payload(item.traffic_allocation)
+    return payload
 
 
 def deployment_from_row(row: dict[str, Any]) -> Deployment:
@@ -710,6 +730,7 @@ def deployment_from_row(row: dict[str, Any]) -> Deployment:
         deployment_id=UUID(row["id"]),
         optimistic_version=row["optimistic_version"],
         transitions=transitions_from(row["definition"].get("transitions")),
+        traffic_allocation=_traffic_allocation_from(row["definition"]),
     )
 
 

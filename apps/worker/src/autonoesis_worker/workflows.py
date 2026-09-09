@@ -17,6 +17,7 @@ from autonoesis_worker.contracts import (
     PrepareRunInput,
     PromoteCandidateInput,
     RejectRunInput,
+    ReleaseCommandInput,
     ShadowPairInput,
     TakeOverRunInput,
 )
@@ -323,11 +324,45 @@ class ShadowPairWorkflow:
         return comparison_id
 
 
+@workflow.defn
+class ReleaseExecutionWorkflow:
+    """Independently governed Release Executor for release and rollback transitions.
+
+    Canary entry, Stable promotion, and rollback are executed only here, under a
+    dedicated executor identity, so no API caller can mutate release state directly.
+    """
+
+    def __init__(self) -> None:
+        self._phase = "pending"
+
+    @workflow.query
+    def current_phase(self) -> str:
+        return self._phase
+
+    @workflow.run
+    async def run(self, command: ReleaseCommandInput) -> str:
+        self._phase = "executing"
+        outcome: str = await workflow.execute_activity(
+            "execute_release_command",
+            command,
+            result_type=str,
+            start_to_close_timeout=timedelta(minutes=2),
+            heartbeat_timeout=timedelta(seconds=30),
+            # The Deployment state machine is the idempotency fence: a replayed
+            # command either finds the transition already applied or fails.
+            retry_policy=_WRITE_NO_RETRY,
+        )
+        self._phase = "executed"
+        return outcome
+
+
 __all__ = [
     "CandidateLifecycleInput",
     "CandidateLifecycleWorkflow",
     "GoalRunInput",
     "GoalRunWorkflow",
+    "ReleaseCommandInput",
+    "ReleaseExecutionWorkflow",
     "ShadowPairInput",
     "ShadowPairWorkflow",
 ]

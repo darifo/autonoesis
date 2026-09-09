@@ -504,12 +504,15 @@ async def test_shadow_pair_runs_concurrently_and_persists_comparison_metrics() -
 @pytest.mark.asyncio
 async def test_shadow_pair_refuses_non_shadow_deployment() -> None:
     from autonoesis_application import ExecuteShadowPair
+    from autonoesis_domain import TrafficAllocation
 
     repository = FakeEvolutionRepository()
     service = CandidateLifecycleService(repository)
     deployment = await _shadow_deployment(service, repository)
     executor = IdentityContext(UUID(int=1), uuid4(), uuid4(), frozenset({"release_executor"}))
-    await service.promote_to_canary(executor, deployment.deployment_id)
+    await service.promote_to_canary(
+        executor, deployment.deployment_id, TrafficAllocation("salt-a", 10)
+    )
 
     with pytest.raises(ValueError, match="requires a shadow deployment"):
         await service.execute_shadow_pair(
@@ -522,6 +525,7 @@ async def test_shadow_pair_refuses_non_shadow_deployment() -> None:
 @pytest.mark.asyncio
 async def test_release_stable_requires_canary_observations() -> None:
     from autonoesis_application import PromotionPolicy
+    from autonoesis_domain import TrafficAllocation
 
     repository = FakeEvolutionRepository()
     service = CandidateLifecycleService(repository)
@@ -529,6 +533,7 @@ async def test_release_stable_requires_canary_observations() -> None:
     canary = await service.promote_to_canary(
         IdentityContext(UUID(int=1), uuid4(), uuid4(), frozenset({"release_executor"})),
         deployment.deployment_id,
+        TrafficAllocation("salt-a", 10),
     )
     with pytest.raises(ValueError, match="missing evidence"):
         await service.release_stable(
@@ -542,13 +547,15 @@ async def test_release_stable_requires_canary_observations() -> None:
 @pytest.mark.asyncio
 async def test_release_stable_promotes_once_observations_satisfy_gate() -> None:
     from autonoesis_application import PromotionPolicy, RecordObservation
-    from autonoesis_domain import DeploymentStatus
+    from autonoesis_domain import DeploymentStatus, TrafficAllocation
 
     repository = FakeEvolutionRepository()
     service = CandidateLifecycleService(repository)
     deployment = await _shadow_deployment(service, repository)
     executor = IdentityContext(UUID(int=1), uuid4(), uuid4(), frozenset({"release_executor"}))
-    canary = await service.promote_to_canary(executor, deployment.deployment_id)
+    canary = await service.promote_to_canary(
+        executor, deployment.deployment_id, TrafficAllocation("salt-a", 10)
+    )
     for _ in range(3):
         await service.record_observation(
             executor,
@@ -567,14 +574,16 @@ async def test_release_stable_promotes_once_observations_satisfy_gate() -> None:
 @pytest.mark.asyncio
 async def test_guardrail_breach_rolls_back_only_target_deployment() -> None:
     from autonoesis_application import RecordObservation
-    from autonoesis_domain import DeploymentStatus, GuardrailOperator
+    from autonoesis_domain import DeploymentStatus, GuardrailOperator, TrafficAllocation
 
     repository = FakeEvolutionRepository()
     service = CandidateLifecycleService(repository)
     executor = IdentityContext(UUID(int=1), uuid4(), uuid4(), frozenset({"release_executor"}))
     first = await _shadow_deployment(service, repository)
     second = await _shadow_deployment(service, repository)
-    canary_first = await service.promote_to_canary(executor, first.deployment_id)
+    canary_first = await service.promote_to_canary(
+        executor, first.deployment_id, TrafficAllocation("salt-a", 10)
+    )
     for _ in range(3):
         await service.record_observation(
             executor,
@@ -608,4 +617,101 @@ async def test_observation_stage_must_match_deployment() -> None:
         await service.record_observation(
             executor,
             RecordObservation(deployment.deployment_id, DeploymentStatus.CANARY, "m", 1.0),
+        )
+
+
+@pytest.mark.asyncio
+async def test_canary_entry_binds_and_replays_a_deterministic_traffic_rule() -> None:
+    from autonoesis_domain import DeploymentStatus, TrafficAllocation, TrafficRoute
+
+    repository = FakeEvolutionRepository()
+    service = CandidateLifecycleService(repository)
+    deployment = await _shadow_deployment(service, repository)
+    executor = IdentityContext(UUID(int=1), uuid4(), uuid4(), frozenset({"release_executor"}))
+
+    canary = await service.promote_to_canary(
+        executor, deployment.deployment_id, TrafficAllocation("salt-a", 10)
+    )
+
+    assert canary.status is DeploymentStatus.CANARY
+    assert repository.deployments[canary.deployment_id].traffic_allocation == TrafficAllocation(
+        "salt-a", 10
+    )
+    request_id = uuid4()
+    first, allocation = await service.resolve_request_route(
+        executor, canary.deployment_id, request_id
+    )
+    second, _ = await service.resolve_request_route(executor, canary.deployment_id, request_id)
+    assert first is second
+    assert first in {TrafficRoute.CANDIDATE, TrafficRoute.STABLE}
+    assert allocation == TrafficAllocation("salt-a", 10)
+
+
+@pytest.mark.asyncio
+async def test_traffic_rule_splits_requests_and_is_skewed_by_percent() -> None:
+    from autonoesis_domain import TrafficAllocation, TrafficRoute
+
+    narrow = TrafficAllocation("salt-a", 1)
+    wide = TrafficAllocation("salt-a", 99)
+    requests = [uuid4() for _ in range(400)]
+    narrow_candidate = sum(narrow.assign(request) is TrafficRoute.CANDIDATE for request in requests)
+    wide_candidate = sum(wide.assign(request) is TrafficRoute.CANDIDATE for request in requests)
+    assert narrow_candidate < 40
+    assert wide_candidate > 300
+
+
+@pytest.mark.asyncio
+async def test_traffic_rule_rejects_invalid_allocations() -> None:
+    from autonoesis_domain import TrafficAllocation
+
+    with pytest.raises(ValueError, match="salt"):
+        TrafficAllocation("   ", 10)
+    with pytest.raises(ValueError, match="percent"):
+        TrafficAllocation("salt-a", 0)
+    with pytest.raises(ValueError, match="percent"):
+        TrafficAllocation("salt-a", 101)
+
+
+@pytest.mark.asyncio
+async def test_route_resolution_requires_an_allocatable_canary_deployment() -> None:
+    from autonoesis_domain import TrafficAllocation
+
+    repository = FakeEvolutionRepository()
+    service = CandidateLifecycleService(repository)
+    deployment = await _shadow_deployment(service, repository)
+    executor = IdentityContext(UUID(int=1), uuid4(), uuid4(), frozenset({"release_executor"}))
+    with pytest.raises(ValueError, match="requires a canary deployment"):
+        await service.resolve_request_route(executor, deployment.deployment_id, uuid4())
+
+    canary = await service.promote_to_canary(
+        executor, deployment.deployment_id, TrafficAllocation("salt-a", 10)
+    )
+    # A legacy canary row persisted without a rule fails closed on assignment.
+    from dataclasses import replace as dataclass_replace
+
+    repository.deployments[canary.deployment_id] = dataclass_replace(
+        repository.deployments[canary.deployment_id], traffic_allocation=None
+    )
+    with pytest.raises(ValueError, match="no traffic allocation rule"):
+        await service.resolve_request_route(executor, canary.deployment_id, uuid4())
+
+
+@pytest.mark.asyncio
+async def test_canary_entry_requires_an_independent_release_principal() -> None:
+    from autonoesis_domain import TrafficAllocation
+
+    repository = FakeEvolutionRepository()
+    service = CandidateLifecycleService(repository)
+    candidate_id = await _approved_candidate(service, repository)
+    generator_principal = repository.candidates[candidate_id].generator_id
+    deployment = await service.begin_shadow(
+        IdentityContext(UUID(int=1), uuid4(), uuid4(), frozenset({"release_executor"})),
+        candidate_id,
+    )
+    generator = IdentityContext(
+        UUID(int=1), uuid4(), UUID(generator_principal), frozenset({"release_executor"})
+    )
+    with pytest.raises(PermissionError, match="independent principal"):
+        await service.promote_to_canary(
+            generator, deployment.deployment_id, TrafficAllocation("salt-a", 10)
         )

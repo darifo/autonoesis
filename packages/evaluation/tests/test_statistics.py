@@ -95,7 +95,7 @@ class TestTrialConfidenceGate:
     def test_fixed_run_count_is_not_a_substitute_for_confidence(self) -> None:
         policy = RepeatedTrialPolicy(pass_threshold=0.8, min_valid_trials=3)
         assessment = TrialConfidenceGate(policy).assess(trials(*[TrialStatus.PASSED] * 3))
-        assert assessment.decision is ConfidenceDecision.NOT_MET
+        assert assessment.decision is ConfidenceDecision.INSUFFICIENT_SAMPLE
         assert assessment.lower_bound is not None and assessment.lower_bound < 0.5
         assert not assessment.met
 
@@ -104,10 +104,25 @@ class TestTrialConfidenceGate:
         gate = TrialConfidenceGate(policy)
         below = gate.assess(trials(*[TrialStatus.PASSED] * 15))
         above = gate.assess(trials(*[TrialStatus.PASSED] * 16))
-        assert below.decision is ConfidenceDecision.NOT_MET
+        assert below.decision is ConfidenceDecision.INSUFFICIENT_SAMPLE
         assert above.decision is ConfidenceDecision.MET
         assert above.pass_rate == 1.0
         assert above.passed_trials == 16
+
+    def test_straddling_interval_keeps_sampling_instead_of_rejecting(self) -> None:
+        policy = RepeatedTrialPolicy(pass_threshold=0.9, min_valid_trials=10)
+        gate = TrialConfidenceGate(policy)
+        straddling = gate.assess(trials(*[TrialStatus.PASSED] * 8 + [TrialStatus.FAILED] * 2))
+        assert straddling.decision is ConfidenceDecision.INSUFFICIENT_SAMPLE
+        assert straddling.lower_bound is not None and straddling.lower_bound < 0.9
+        assert straddling.upper_bound is not None and straddling.upper_bound >= 0.9
+
+    def test_conclusive_failure_requires_the_upper_bound_below_threshold(self) -> None:
+        policy = RepeatedTrialPolicy(pass_threshold=0.8, min_valid_trials=10)
+        gate = TrialConfidenceGate(policy)
+        assessment = gate.assess(trials(*[TrialStatus.PASSED] * 2 + [TrialStatus.FAILED] * 28))
+        assert assessment.decision is ConfidenceDecision.NOT_MET
+        assert assessment.upper_bound is not None and assessment.upper_bound < 0.8
 
     def test_large_mixed_sample_can_meet_threshold(self) -> None:
         policy = RepeatedTrialPolicy(pass_threshold=0.7, min_valid_trials=30)

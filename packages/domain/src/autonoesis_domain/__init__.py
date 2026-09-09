@@ -83,6 +83,8 @@ from autonoesis_domain.improvement import (
     Release,
     ShadowComparison,
     ShadowMeasurements,
+    TrafficAllocation,
+    TrafficRoute,
     require_improvement_target_allowed,
 )
 from autonoesis_domain.transitions import InvalidStateTransition, StateTransition
@@ -172,6 +174,8 @@ __all__ = [
     "TaskStatus",
     "TemporaryAuthorization",
     "ToolDefinition",
+    "TrafficAllocation",
+    "TrafficRoute",
     "Trial",
     "TrialCaseResult",
     "TrialStatus",

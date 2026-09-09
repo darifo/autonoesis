@@ -11,6 +11,7 @@ from autonoesis_domain import (
     RiskLevel,
     Run,
     RunStatus,
+    TrafficAllocation,
 )
 
 _WRITE_ACTION_KWARGS = {
@@ -140,7 +141,9 @@ async def test_read_action_and_non_shadow_deployments_pass() -> None:
     candidate_id = await _approved_candidate(store, tenant_id)
     executor = IdentityContext(tenant_id, uuid4(), uuid4(), frozenset({"release_executor"}))
     deployment = await evolution.begin_shadow(executor, candidate_id)
-    canary = await evolution.promote_to_canary(executor, deployment.deployment_id)
+    canary = await evolution.promote_to_canary(
+        executor, deployment.deployment_id, TrafficAllocation("salt-a", 10)
+    )
 
     guard = SqlShadowWriteGuard(store)
     # Run not bound to any deployment passes.
@@ -174,3 +177,49 @@ async def test_run_persists_deployment_link_round_trip() -> None:
     }
     restored = run_from_row(row)
     assert restored.deployment_id == deployment_id
+
+
+@pytest.mark.asyncio
+async def test_deployment_persists_traffic_allocation_round_trip() -> None:
+    from autonoesis_adapters.persistence_codec import deployment_from_row, deployment_payload
+    from autonoesis_domain import DeploymentStatus
+
+    tenant_id = uuid4()
+    store = InMemoryPlatformStore()
+    evolution = CandidateLifecycleService(store)
+    candidate_id = await _approved_candidate(store, tenant_id)
+    executor = IdentityContext(tenant_id, uuid4(), uuid4(), frozenset({"release_executor"}))
+    deployment = await evolution.begin_shadow(executor, candidate_id)
+    canary = await evolution.promote_to_canary(
+        executor, deployment.deployment_id, TrafficAllocation("audit-salt", 25)
+    )
+
+    payload = deployment_payload(canary)
+    assert payload["traffic_allocation"] == {"salt": "audit-salt", "candidate_percent": 25}
+    restored = deployment_from_row(
+        {
+            "id": str(canary.deployment_id),
+            "tenant_id": str(tenant_id),
+            "candidate_id": str(canary.candidate_id),
+            "status": DeploymentStatus.CANARY.value,
+            "optimistic_version": canary.optimistic_version,
+            "definition": payload,
+        }
+    )
+    assert restored.traffic_allocation == TrafficAllocation("audit-salt", 25)
+    assert restored.assign_request(uuid4()) in {"stable", "candidate"}
+    # Shadow deployments never carry a rule, and legacy rows stay loadable.
+    assert "traffic_allocation" not in deployment_payload(deployment)
+    assert (
+        deployment_from_row(
+            {
+                "id": str(deployment.deployment_id),
+                "tenant_id": str(tenant_id),
+                "candidate_id": str(deployment.candidate_id),
+                "status": DeploymentStatus.SHADOW.value,
+                "optimistic_version": deployment.optimistic_version,
+                "definition": deployment_payload(deployment),
+            }
+        ).traffic_allocation
+        is None
+    )

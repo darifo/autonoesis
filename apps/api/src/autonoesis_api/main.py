@@ -33,7 +33,6 @@ from autonoesis_application import (
     GoalExecutionApplication,
     IdentityContext,
     ImprovementTargetPolicy,
-    PromotionPolicy,
     ProposeImprovement,
     RecordNotFound,
     RecordObservation,
@@ -73,6 +72,10 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from temporalio.client import Client
 
+from autonoesis_api.release_dispatch import (
+    ReleaseCommandDispatcher,
+    TemporalReleaseCommandDispatcher,
+)
 from autonoesis_api.shadow_dispatch import (
     ShadowWorkflowDispatcher,
     TemporalShadowWorkflowDispatcher,
@@ -189,6 +192,11 @@ class PromotionRequest(StrictRequest):
     required_metrics: tuple[str, ...] = ()
 
 
+class CanaryRequest(StrictRequest):
+    candidate_percent: int = Field(ge=1, le=100)
+    salt: str = Field(min_length=1, max_length=200)
+
+
 class ObservationRequest(StrictRequest):
     deployment_id: UUID
     stage: DeploymentStatus
@@ -238,6 +246,7 @@ def build_app(
     improvement_policy: ImprovementTargetPolicy | None = None,
     evaluation_policy: RepeatedTrialPolicy | None = None,
     shadow_dispatcher: ShadowWorkflowDispatcher | None = None,
+    release_dispatcher: ReleaseCommandDispatcher | None = None,
 ) -> FastAPI:
     platform_store = store or InMemoryPlatformStore()
     breakglass_engine = None
@@ -321,6 +330,34 @@ def build_app(
             == "true",
             shared_namespace=os.getenv("AUTONOESIS_TEMPORAL_NAMESPACE", "default"),
             shared_task_queue=os.getenv("AUTONOESIS_TEMPORAL_TASK_QUEUE", "autonoesis"),
+        )
+    resolved_release_dispatcher = release_dispatcher
+    if (
+        resolved_release_dispatcher is None
+        and os.getenv("AUTONOESIS_TEMPORAL_START", "false").lower() == "true"
+    ):
+        resolved_release_dispatcher = TemporalReleaseCommandDispatcher(
+            os.getenv("AUTONOESIS_TEMPORAL_TARGET", "localhost:7233"),
+            tenant_isolated=os.getenv("AUTONOESIS_TENANT_ISOLATED_WORKFLOWS", "true").lower()
+            == "true",
+            shared_namespace=os.getenv("AUTONOESIS_TEMPORAL_NAMESPACE", "default"),
+            shared_task_queue=os.getenv("AUTONOESIS_TEMPORAL_TASK_QUEUE", "autonoesis"),
+        )
+
+    async def dispatch_release_command(
+        *,
+        action: str,
+        target_id: UUID,
+        command: dict[str, object],
+        context: IdentityContext,
+    ) -> str:
+        if resolved_release_dispatcher is None:
+            raise HTTPException(503, "Release executor dispatch is not configured")
+        return await resolved_release_dispatcher.dispatch(
+            tenant_id=context.tenant_id,
+            action=action,
+            command=command,
+            target_id=target_id,
         )
 
     @app.exception_handler(RecordNotFound)
@@ -1069,13 +1106,29 @@ def build_app(
             "status": deployment.status,
         }
 
-    @app.post("/v1/deployments/{deployment_id}/canary", tags=["improvement"])
+    @app.post("/v1/deployments/{deployment_id}/canary", status_code=202, tags=["improvement"])
     async def promote_deployment_to_canary(
-        deployment_id: UUID, context: Identity, _: WriteKey
+        deployment_id: UUID, body: CanaryRequest, context: Identity, _: WriteKey
     ) -> dict[str, Any]:
         require_role(context, {"release_executor"})
-        deployment = await evolution.promote_to_canary(context, deployment_id)
-        return {"deployment_id": deployment.deployment_id, "status": deployment.status}
+        deployment = await platform_store.get_deployment(context.tenant_id, deployment_id)
+        if deployment.status is not DeploymentStatus.SHADOW:
+            raise HTTPException(409, "canary entry requires a shadow deployment")
+        workflow_id = await dispatch_release_command(
+            action="enter_canary",
+            target_id=deployment_id,
+            command={
+                "deployment_id": str(deployment_id),
+                "candidate_percent": body.candidate_percent,
+                "salt": body.salt,
+            },
+            context=context,
+        )
+        return {
+            "deployment_id": deployment_id,
+            "workflow_id": workflow_id,
+            "status": "dispatched",
+        }
 
     @app.post(
         "/v1/deployments/{deployment_id}/shadow-requests",
@@ -1107,22 +1160,51 @@ def build_app(
             "status": "dispatched",
         }
 
-    @app.post("/v1/deployments/{deployment_id}/stable", tags=["improvement"])
+    @app.post("/v1/deployments/{deployment_id}/stable", status_code=202, tags=["improvement"])
     async def promote_deployment_to_stable(
         deployment_id: UUID, body: PromotionRequest, context: Identity, _: WriteKey
     ) -> dict[str, Any]:
         require_role(context, {"release_executor"})
-        release = await evolution.release_stable(
-            context,
-            deployment_id,
-            body.stable_version_id,
-            PromotionPolicy(body.min_samples, body.observation_seconds, body.required_metrics),
+        deployment = await platform_store.get_deployment(context.tenant_id, deployment_id)
+        if deployment.status is not DeploymentStatus.CANARY:
+            raise HTTPException(409, "stable release requires a canary deployment")
+        workflow_id = await dispatch_release_command(
+            action="release_stable",
+            target_id=deployment_id,
+            command={
+                "deployment_id": str(deployment_id),
+                "stable_version_id": str(body.stable_version_id),
+                "min_samples": body.min_samples,
+                "observation_seconds": body.observation_seconds,
+                "required_metrics": list(body.required_metrics),
+            },
+            context=context,
         )
         return {
-            "release_id": release.release_id,
-            "deployment_id": release.deployment_id,
-            "stable_version_id": release.stable_version_id,
-            "previous_stable_version_id": release.previous_stable_version_id,
+            "deployment_id": deployment_id,
+            "workflow_id": workflow_id,
+            "status": "dispatched",
+        }
+
+    @app.get("/v1/deployments/{deployment_id}/route", tags=["improvement"])
+    async def resolve_route(
+        deployment_id: UUID, request_id: UUID, context: Identity
+    ) -> dict[str, Any]:
+        """Replay the persisted allocation rule to explain a request's route."""
+        deployment = await platform_store.get_deployment(context.tenant_id, deployment_id)
+        if deployment.status is not DeploymentStatus.CANARY or (
+            deployment.traffic_allocation is None
+        ):
+            raise HTTPException(409, "route resolution requires a canary deployment with a rule")
+        route, allocation = await evolution.resolve_request_route(
+            context, deployment_id, request_id
+        )
+        return {
+            "deployment_id": deployment_id,
+            "request_id": request_id,
+            "route": route.value,
+            "candidate_percent": allocation.candidate_percent,
+            "salt": allocation.salt,
         }
 
     @app.post("/v1/deployments/observations", status_code=201, tags=["improvement"])
@@ -1149,14 +1231,20 @@ def build_app(
             "breach_count": observation.breach_count,
         }
 
-    @app.post("/v1/releases/{release_id}/rollback", tags=["improvement"])
+    @app.post("/v1/releases/{release_id}/rollback", status_code=202, tags=["improvement"])
     async def rollback_release(release_id: UUID, context: Identity, _: WriteKey) -> dict[str, Any]:
         require_role(context, {"release_executor"})
-        release = await evolution.rollback(context, release_id)
+        await platform_store.get_active_release(context.tenant_id, release_id)
+        workflow_id = await dispatch_release_command(
+            action="rollback_release",
+            target_id=release_id,
+            command={"release_id": str(release_id)},
+            context=context,
+        )
         return {
-            "release_id": release.release_id,
-            "stable_version_id": release.stable_version_id,
-            "rollback_of": release_id,
+            "release_id": release_id,
+            "workflow_id": workflow_id,
+            "status": "dispatched",
         }
 
     @app.get("/v1/releases", tags=["improvement"])

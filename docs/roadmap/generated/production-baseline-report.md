@@ -36,9 +36,9 @@ Configured Compose images (configuration inventory only; not integration evidenc
 
 - Application contract version: `0.1.0`
 - OpenAPI dialect: `3.1.x`; frozen consumer contract: `openapi-v1`
-- Frozen OpenAPI digest: `sha256:f76733f6116a66a9eab74f15778bd16b23aa6073ea4527fb557e28964f80861a`
-- Route source digest: `sha256:e7d485516fd477d1f51529ca865e133c72813314fe52484b7a989fa418bbdbef`
-- Declared operations (46):
+- Frozen OpenAPI digest: `sha256:e6a52af86bfdaf8a55daac5fee9531dc5ceba945992acfc768f892dd3f48e2ad`
+- Route source digest: `sha256:8f62786328e5eff59db26aed73533f150c18f2473871c1fffc24f9a715f8b3cd`
+- Declared operations (47):
 
   - `DELETE /v1/kill-switches`
   - `DELETE /v1/platform/break-glass/kill-switch`
@@ -49,6 +49,7 @@ Configured Compose images (configuration inventory only; not integration evidenc
   - `GET /v1/audit-events`
   - `GET /v1/budgets`
   - `GET /v1/capability-packs`
+  - `GET /v1/deployments/{deployment_id}/route`
   - `GET /v1/evaluation-suites`
   - `GET /v1/evidence`
   - `GET /v1/goals`
@@ -89,8 +90,8 @@ Configured Compose images (configuration inventory only; not integration evidenc
 
 ## Workflow Type Baseline
 
-- Workflow source digest: `sha256:b51ab942168ad73f2086db77fe51fa89729b66d0d2cacb56361cc70f82e93299`
-- Declared Workflow types (3): `CandidateLifecycleWorkflow`, `GoalRunWorkflow`, `ShadowPairWorkflow`
+- Workflow source digest: `sha256:7f36134234ddf737a55bd8f2b9441fdabafb315d7fd222b9f9ae20bbcc258ae0`
+- Declared Workflow types (4): `CandidateLifecycleWorkflow`, `GoalRunWorkflow`, `ReleaseExecutionWorkflow`, `ShadowPairWorkflow`
 - Workflow patch/version markers: `p0-06-approval-id-signal`
 - Replay evidence: CI real-Temporal history replay test.
 

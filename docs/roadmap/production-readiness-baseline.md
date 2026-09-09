@@ -1,6 +1,6 @@
 # 生产就绪基线与限制
 
-> 评审日期：2026-08-16
+> 评审日期：2026-09-09
 > 适用版本：0.1.x
 > 判定：架构原型 / 工程预览，不可用于生产或高风险真实写操作
 
@@ -36,21 +36,27 @@ P1-02 企业身份治理、P1-03 可信 Context/Memory 的 `integrated` 声明�
   Search/Vector/Telemetry 后端、生产 Bucket Policy 与长期攻防演练仍未完成；
 - Evaluation Harness 已在单元层执行固定 Subject Version、记录完整 Trial 条件并对缺失执行、
   基础设施错误和不确定评分失败关闭；五级 Grader 按治理顺序、独立身份和短路门禁执行，
-  隐藏/生产回放 Case 不向 Generator 暴露；重复 Trial 以 Wilson 置信下界统计门禁，Invalid
+  隐藏/生产回放 Case 不向 Generator 暴露；重复 Trial 以 Wilson 双侧置信区间门禁——下界达标即
+  MET，上界低于阈值才 NOT_MET，跨阈值区间保持采样而非误判拒绝（ADR-0024 修正），Invalid
   Trial 不计入绿色率也不折抵最小样本；Candidate 必须携带不可变 Artifact Digest、固定 Suite
   与 Generator 身份，禁止改进目标在 Application 与 OPA 策略层双重拒绝；Candidate 晋升只能
   由持久化 Trial 的置信评估记录（candidate_evaluations）驱动，caller 决策路径已移除，
   审批必须携带理由；Suite Catalog 已持久化，Pack 声明式 Subject（进程内执行）与独立规则 Grader 后端经真实
-  Temporal 工作流和 PostgreSQL 组件测试驱动重复 Trial 至置信晋升，生产 Worker 已装配评估器；
-  Pack 代码沙箱隔离与 Outcome/LLM/Human Grader 后端仍未完成；
+  Temporal 工作流和 PostgreSQL 组件测试驱动重复 Trial 至置信晋升，生产 Worker 已装配评估器，
+  Grader 与 Release Executor 使用 per-tenant 确定性分离身份；Pack 代码沙箱隔离与
+  Outcome/LLM/Human Grader 后端仍未完成；
 - Candidate/Shadow/Canary 已持久化 Deployment/Release、Active Stable 唯一约束与乐观版本 CAS；
   Canary 晋升受观察窗口、最小样本和指标缺失拒绝门禁约束，Guardrail 越界自动回滚且按
   (租户, 部署, 阶段, 指标) 隔离，并发晋升唯一胜出有组件测试；Shadow 写抑制已落地——Run 可选
   绑定部署，执行时对 L2+ 写操作失败封闭拒绝，读取仍放行；Application 已具备 Stable/Candidate
   并发成对执行端口，并持久化 Outcome、成本、延迟、安全和人工修正的逐请求对比证据；生产
   Worker 已注册逐请求 `ShadowPairWorkflow`/Activity 合约，API 以 Payload-bound 固定 Workflow ID
-  Dispatch 到租户 high-risk Pool，缺少 Dispatcher 或 Shadow Runtime 时失败封闭；生产 Shadow Runtime、
-  Candidate 沙箱、Canary 分流规则、Shadow Outbox/Reconciler 和独立 Release Executor 仍未完成；
+  Dispatch 到租户 high-risk Pool；Canary 进入绑定确定性 TrafficAllocation 规则（SHA-256
+  salt+request 分桶，持久化于 Deployment definition 并可按 request 重放路由）；独立
+  `ReleaseExecutionWorkflow` 是 Canary/Stable/Rollback 的唯一执行路径——API 仅做状态预检与
+  Dispatch（202 + Workflow ID），未配置 Executor 时 503 失败封闭，真实 Temporal + PostgreSQL
+  组件测试验证 Shadow→Canary 规则绑定；生产 Shadow Runtime、Candidate 沙箱、Shadow/Release
+  Outbox 对账和 Goal/Run 创建实时路由绑定仍未完成；
 - Cockpit 使用静态演示数据，不从公共 API 获取运营指标；
 - Compose 含本地默认凭证和公开测试 KMS key；MinIO 镜像已固定摘要，但配置不满足生产
   Secret/KMS 与供应链要求；

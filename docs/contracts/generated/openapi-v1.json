@@ -132,6 +132,29 @@
         "title": "BudgetUnit",
         "type": "string"
       },
+      "CanaryRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "candidate_percent": {
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Candidate Percent",
+            "type": "integer"
+          },
+          "salt": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Salt",
+            "type": "string"
+          }
+        },
+        "required": [
+          "candidate_percent",
+          "salt"
+        ],
+        "title": "CanaryRequest",
+        "type": "object"
+      },
       "CandidateDecisionRequest": {
         "additionalProperties": false,
         "properties": {
@@ -2523,8 +2546,18 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CanaryRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
-          "200": {
+          "202": {
             "content": {
               "application/json": {
                 "schema": {
@@ -2608,6 +2641,122 @@
           }
         },
         "summary": "Promote Deployment To Canary",
+        "tags": [
+          "improvement"
+        ]
+      }
+    },
+    "/v1/deployments/{deployment_id}/route": {
+      "get": {
+        "description": "Replay the persisted allocation rule to explain a request's route.",
+        "operationId": "resolve_route_v1_deployments__deployment_id__route_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "deployment_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Deployment Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "request_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Request Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Resolve Route V1 Deployments  Deployment Id  Route Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Common tenant-safe error envelope"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Common tenant-safe error envelope"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Common tenant-safe error envelope"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Common tenant-safe error envelope"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Common tenant-safe error envelope"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Common tenant-safe error envelope"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Common tenant-safe error envelope"
+          }
+        },
+        "summary": "Resolve Route",
         "tags": [
           "improvement"
         ]
@@ -2772,7 +2921,7 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "202": {
             "content": {
               "application/json": {
                 "schema": {
@@ -4942,7 +5091,7 @@
           }
         ],
         "responses": {
-          "200": {
+          "202": {
             "content": {
               "application/json": {
                 "schema": {

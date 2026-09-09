@@ -1,5 +1,6 @@
 import asyncio
 from datetime import UTC, datetime, timedelta
+from typing import Any
 from uuid import UUID, uuid4
 
 from autonoesis_adapters import InMemoryPlatformStore
@@ -16,6 +17,59 @@ class RecordingShadowDispatcher:
     async def dispatch(self, **command: object) -> str:
         self.calls.append(command)
         return f"shadow-workflow-{command['request_id']}"
+
+
+class RecordingReleaseDispatcher:
+    """Test double mirroring the real executor: records and applies transitions."""
+
+    def __init__(self, store: InMemoryPlatformStore) -> None:
+        from autonoesis_application import (
+            CandidateLifecycleService,
+            IdentityContext,
+            PromotionPolicy,
+        )
+        from autonoesis_domain import TrafficAllocation
+
+        self.calls: list[dict[str, object]] = []
+        self._TrafficAllocation = TrafficAllocation
+        self._PromotionPolicy = PromotionPolicy
+        self._IdentityContext = IdentityContext
+        self._evolution = CandidateLifecycleService(store)
+
+    async def dispatch(self, **command: object) -> str:
+        from typing import cast
+
+        self.calls.append(command)
+        action = str(command["action"])
+        identity = self._IdentityContext(
+            UUID(str(command["tenant_id"])), uuid4(), uuid4(), frozenset({"release_executor"})
+        )
+        payload = cast(dict[str, object], command["command"])
+        if action == "enter_canary":
+            deployment = await self._evolution.promote_to_canary(
+                identity,
+                UUID(str(payload["deployment_id"])),
+                self._TrafficAllocation(
+                    str(payload["salt"]), int(str(payload["candidate_percent"]))
+                ),
+            )
+            return f"release-workflow-canary-{deployment.deployment_id}"
+        if action == "release_stable":
+            release = await self._evolution.release_stable(
+                identity,
+                UUID(str(payload["deployment_id"])),
+                UUID(str(payload["stable_version_id"])),
+                self._PromotionPolicy(
+                    int(str(payload["min_samples"])),
+                    int(str(payload["observation_seconds"])),
+                    tuple(
+                        str(metric) for metric in cast(list[object], payload["required_metrics"])
+                    ),
+                ),
+            )
+            return f"release-workflow-stable-{release.release_id}"
+        release = await self._evolution.rollback(identity, UUID(str(payload["release_id"])))
+        return f"release-workflow-rollback-{release.release_id}"
 
 
 def headers(tenant_id: UUID, actor_id: UUID, key: str | None = None) -> dict[str, str]:
@@ -63,7 +117,14 @@ def test_generic_goal_run_and_evolution_api() -> None:
     tenant_id, actor_id = uuid4(), uuid4()
     store = InMemoryPlatformStore()
     shadow_dispatcher = RecordingShadowDispatcher()
-    client = TestClient(build_app(store, shadow_dispatcher=shadow_dispatcher))
+    release_dispatcher = RecordingReleaseDispatcher(store)
+    client = TestClient(
+        build_app(
+            store,
+            shadow_dispatcher=shadow_dispatcher,
+            release_dispatcher=release_dispatcher,
+        )
+    )
     identity = headers(tenant_id, actor_id)
 
     pack = client.post(
@@ -222,22 +283,63 @@ def test_generic_goal_run_and_evolution_api() -> None:
         headers={**identity, "Idempotency-Key": "shadow-request-unconfigured"},
     )
     assert unavailable.status_code == 503
+    unconfigured_release = TestClient(build_app(store)).post(
+        f"/v1/deployments/{shadow.json()['deployment_id']}/canary",
+        json={"candidate_percent": 10, "salt": "audit-salt"},
+        headers={**identity, "Idempotency-Key": "canary-unconfigured"},
+    )
+    assert unconfigured_release.status_code == 503
     canary = client.post(
         f"/v1/deployments/{shadow.json()['deployment_id']}/canary",
+        json={"candidate_percent": 10, "salt": "audit-salt"},
         headers={**identity, "Idempotency-Key": "canary-1"},
     )
-    assert canary.json()["status"] == "canary"
-    release = client.post(
+    assert canary.status_code == 202
+    assert canary.json()["status"] == "dispatched"
+    stable_version_id = uuid4()
+    release_command = client.post(
         f"/v1/deployments/{shadow.json()['deployment_id']}/stable",
-        json={"stable_version_id": str(uuid4())},
+        json={"stable_version_id": str(stable_version_id)},
         headers={**identity, "Idempotency-Key": "stable-1"},
     )
-    assert release.status_code == 200
+    assert release_command.status_code == 202
+    assert release_command.json()["status"] == "dispatched"
+    assert release_dispatcher.calls == [
+        {
+            "tenant_id": tenant_id,
+            "action": "enter_canary",
+            "command": {
+                "deployment_id": shadow.json()["deployment_id"],
+                "candidate_percent": 10,
+                "salt": "audit-salt",
+            },
+            "target_id": UUID(shadow.json()["deployment_id"]),
+        },
+        {
+            "tenant_id": tenant_id,
+            "action": "release_stable",
+            "command": {
+                "deployment_id": shadow.json()["deployment_id"],
+                "stable_version_id": str(stable_version_id),
+                "min_samples": 1,
+                "observation_seconds": 0,
+                "required_metrics": [],
+            },
+            "target_id": UUID(shadow.json()["deployment_id"]),
+        },
+    ]
+    # Only the dispatched executor transitions moved release state.
+    assert store.deployments[UUID(shadow.json()["deployment_id"])].status.value == "stable"
+    stable_release_id = release_command.json()["workflow_id"].removeprefix(
+        "release-workflow-stable-"
+    )
     rolled_back = client.post(
-        f"/v1/releases/{release.json()['release_id']}/rollback",
+        f"/v1/releases/{stable_release_id}/rollback",
         headers={**identity, "Idempotency-Key": "rollback-1"},
     )
-    assert rolled_back.status_code == 200
+    assert rolled_back.status_code == 202
+    assert rolled_back.json()["status"] == "dispatched"
+    assert store.deployments[UUID(shadow.json()["deployment_id"])].status.value == "rolled_back"
 
 
 def test_cross_tenant_goal_is_hidden() -> None:
@@ -251,6 +353,178 @@ def test_cross_tenant_goal_is_hidden() -> None:
     assert store.audits[-1].event_type == "security.tenant_scope_lookup_denied"
     assert store.audits[-1].tenant_id == tenant_id
     assert str(response.request.url.path) not in store.audits[-1].object_id
+
+
+async def _stable_release_in_store() -> tuple[InMemoryPlatformStore, UUID, UUID, UUID]:
+    """Leave one deployment in Canary and release a second one to Stable."""
+    from autonoesis_application import (
+        CandidateLifecycleService,
+        IdentityContext,
+        PromotionPolicy,
+        ProposeImprovement,
+        RecordObservation,
+        RegisterCandidate,
+    )
+    from autonoesis_domain import DeploymentStatus, TrafficAllocation
+
+    store = InMemoryPlatformStore()
+    evolution = CandidateLifecycleService(store)
+    tenant_id = uuid4()
+
+    async def _canary_deployment() -> Any:
+        generator = IdentityContext(tenant_id, uuid4(), uuid4(), frozenset({"candidate_generator"}))
+        proposal = await evolution.propose_improvement(
+            generator,
+            ProposeImprovement(
+                target="agent_instruction",
+                target_version_id=uuid4(),
+                evidence_refs=("evidence://run/1",),
+                diagnosis="Instruction misses a recovery condition",
+                proposed_change="Add recovery condition",
+                validation_suite_id="delivery-suite",
+                rollback_plan="Restore previous stable version",
+            ),
+        )
+        candidate = await evolution.register_candidate(
+            generator,
+            RegisterCandidate(
+                proposal_id=proposal.proposal_id,
+                baseline_version_id=uuid4(),
+                artifact_ref="artifact://agent/v2",
+                artifact_digest="d" * 64,
+                suite_id="delivery-suite",
+                suite_version="1",
+            ),
+        )
+        await evolution.submit_for_evaluation(tenant_id, candidate.candidate_id)
+        executed = TrialCaseResult(
+            case_id="c1",
+            input_payload={},
+            output_payload={"answer": 42},
+            subject_executed=True,
+            executor_id="subject-runtime",
+            evidence_refs=("evidence://execution/1",),
+            environment_ref="environment://fixture/1",
+        )
+        for _ in range(16):
+            await store.add_trial(
+                Trial(
+                    tenant_id=tenant_id,
+                    suite_id="delivery-suite",
+                    suite_version="1",
+                    subject_version_id=candidate.candidate_id,
+                    harness_version="2",
+                    status=TrialStatus.PASSED,
+                    case_results=(executed,),
+                    candidate_id=candidate.candidate_id,
+                )
+            )
+        from autonoesis_evaluation import RepeatedTrialPolicy
+
+        grader = IdentityContext(tenant_id, uuid4(), uuid4(), frozenset({"grader"}))
+        await evolution.complete_evaluation(
+            grader, candidate.candidate_id, RepeatedTrialPolicy(pass_threshold=0.8)
+        )
+        await evolution.decide(
+            IdentityContext(tenant_id, uuid4(), uuid4(), frozenset({"approver"})),
+            candidate.candidate_id,
+            True,
+            "independent review passed",
+        )
+        executor = IdentityContext(tenant_id, uuid4(), uuid4(), frozenset({"release_executor"}))
+        deployment = await evolution.begin_shadow(executor, candidate.candidate_id)
+        return await evolution.promote_to_canary(
+            executor, deployment.deployment_id, TrafficAllocation("audit-salt", 25)
+        )
+
+    remaining_canary = await _canary_deployment()
+    released = await _canary_deployment()
+    executor = IdentityContext(tenant_id, uuid4(), uuid4(), frozenset({"release_executor"}))
+    for _ in range(2):
+        await evolution.record_observation(
+            executor,
+            RecordObservation(
+                released.deployment_id, DeploymentStatus.CANARY, "outcome_rate", 0.99
+            ),
+        )
+    release = await evolution.release_stable(
+        executor,
+        released.deployment_id,
+        uuid4(),
+        PromotionPolicy(min_samples=2, required_metrics=("outcome_rate",)),
+    )
+    return store, tenant_id, remaining_canary.deployment_id, release.release_id
+
+
+def test_release_route_and_rollback_dispatch() -> None:
+    from autonoesis_domain import TrafficAllocation
+
+    store, tenant_id, deployment_id, release_id = asyncio.run(_stable_release_in_store())
+    release_dispatcher = RecordingReleaseDispatcher(store)
+    client = TestClient(build_app(store, release_dispatcher=release_dispatcher))
+    identity = headers(tenant_id, uuid4())
+
+    request_id = uuid4()
+    route = client.get(
+        f"/v1/deployments/{deployment_id}/route",
+        params={"request_id": str(request_id)},
+        headers=identity,
+    )
+    assert route.status_code == 200
+    resolved = route.json()
+    expected_route = TrafficAllocation("audit-salt", 25).assign(request_id).value
+    assert resolved["route"] == expected_route
+    assert resolved["candidate_percent"] == 25
+    assert resolved["salt"] == "audit-salt"
+
+    rolled_back = client.post(
+        f"/v1/releases/{release_id}/rollback",
+        headers={**identity, "Idempotency-Key": "rollback-1"},
+    )
+    assert rolled_back.status_code == 202
+    assert rolled_back.json()["status"] == "dispatched"
+    assert release_dispatcher.calls == [
+        {
+            "tenant_id": tenant_id,
+            "action": "rollback_release",
+            "command": {"release_id": str(release_id)},
+            "target_id": release_id,
+        }
+    ]
+
+    missing = client.post(
+        f"/v1/releases/{uuid4()}/rollback",
+        headers={**identity, "Idempotency-Key": "rollback-unknown"},
+    )
+    assert missing.status_code == 404
+    unconfigured = TestClient(build_app(store)).post(
+        f"/v1/releases/{release_id}/rollback",
+        headers={**identity, "Idempotency-Key": "rollback-unconfigured"},
+    )
+    assert unconfigured.status_code == 503
+
+
+def test_route_resolution_requires_allocatable_canary() -> None:
+    store, tenant_id, canary_id, _ = asyncio.run(_stable_release_in_store())
+    client = TestClient(build_app(store))
+    identity = headers(tenant_id, uuid4())
+    stable_id = next(
+        item.deployment_id for item in store.deployments.values() if item.status.value == "stable"
+    )
+    # A stable deployment no longer routes live traffic through a rule.
+    refused = client.get(
+        f"/v1/deployments/{stable_id}/route",
+        params={"request_id": str(uuid4())},
+        headers=identity,
+    )
+    assert refused.status_code == 409
+    # The canary deployment keeps replaying its persisted rule.
+    allowed = client.get(
+        f"/v1/deployments/{canary_id}/route",
+        params={"request_id": str(uuid4())},
+        headers=identity,
+    )
+    assert allowed.status_code == 200
 
 
 def test_tenant_admin_cannot_target_another_tenants_kill_switch() -> None:

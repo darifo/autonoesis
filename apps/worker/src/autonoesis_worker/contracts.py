@@ -98,3 +98,19 @@ class ShadowPairInput:
     deployment_id: str
     request_ref: str
     input_payload: dict[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class ReleaseCommandInput:
+    """One governed release transition owned by the independent Release Executor."""
+
+    tenant_id: str
+    action: str
+    deployment_id: str = ""
+    release_id: str = ""
+    stable_version_id: str = ""
+    candidate_percent: int = 0
+    salt: str = ""
+    min_samples: int = 1
+    observation_seconds: int = 0
+    required_metrics: tuple[str, ...] = ()

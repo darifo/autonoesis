@@ -3,6 +3,7 @@
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from enum import StrEnum
+from hashlib import sha256
 from math import isfinite
 from typing import Any
 from uuid import UUID, uuid4
@@ -260,6 +261,7 @@ class Deployment:
     deployment_id: UUID = field(default_factory=uuid4)
     optimistic_version: int = 1
     transitions: tuple[StateTransition, ...] = ()
+    traffic_allocation: "TrafficAllocation | None" = None
 
     def __post_init__(self) -> None:
         if self.optimistic_version < 1:
@@ -288,11 +290,67 @@ class Deployment:
             transitions=(*self.transitions, transition),
         )
 
+    def enter_canary(
+        self,
+        allocation: "TrafficAllocation",
+        *,
+        actor_id: UUID,
+        reason: str,
+        occurred_at: datetime | None = None,
+    ) -> "Deployment":
+        """Enter Canary bound to the traffic rule that will govern live assignment."""
+        promoted = self.transition_to(
+            DeploymentStatus.CANARY,
+            actor_id=actor_id,
+            reason=reason,
+            occurred_at=occurred_at,
+        )
+        return replace(promoted, traffic_allocation=allocation)
+
+    def assign_request(self, request_id: UUID | str) -> "TrafficRoute":
+        if self.status is not DeploymentStatus.CANARY:
+            raise ValueError("traffic assignment requires a canary deployment")
+        if self.traffic_allocation is None:
+            raise ValueError("canary deployment carries no traffic allocation rule")
+        return self.traffic_allocation.assign(request_id)
+
     def entered_at(self, status: DeploymentStatus) -> datetime | None:
         for transition in self.transitions:
             if transition.to_status == status.value:
                 return transition.occurred_at
         return None
+
+
+class TrafficRoute(StrEnum):
+    STABLE = "stable"
+    CANDIDATE = "candidate"
+
+
+@dataclass(frozen=True, slots=True)
+class TrafficAllocation:
+    """Deterministic, auditable Canary traffic split bound to one Deployment.
+
+    Assignment hashes the allocation salt with the request identifier, so the
+    same request always serves the same version while replaying the persisted
+    rule reproduces every decision. The salt is an audit input, not a secret.
+    """
+
+    salt: str
+    candidate_percent: int
+
+    def __post_init__(self) -> None:
+        if not self.salt.strip():
+            raise ValueError("traffic allocation salt is required")
+        if not 1 <= self.candidate_percent <= 100:
+            raise ValueError("traffic allocation percent must be within 1..100")
+
+    def assign(self, request_id: UUID | str) -> TrafficRoute:
+        key = str(request_id)
+        digest = sha256(f"canary:{self.salt}:{key}".encode()).digest()
+        percentile = int.from_bytes(digest[:8], "big") % 10_000
+        if percentile < self.candidate_percent * 100:
+            return TrafficRoute.CANDIDATE
+        return TrafficRoute.STABLE
 
 
 @dataclass(frozen=True, slots=True)

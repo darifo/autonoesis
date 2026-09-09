@@ -30,12 +30,13 @@ from autonoesis_application import (
     GoalExecutionApplication,
     IdentityContext,
     PrepareRunContext,
+    PromotionPolicy,
     SatisfyOrFailGoal,
     ShadowSubjectRuntime,
     StartTask,
     TaskDefinition,
 )
-from autonoesis_domain import Task, Trial
+from autonoesis_domain import Task, TrafficAllocation, Trial
 from autonoesis_evaluation import RepeatedTrialPolicy
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
@@ -50,6 +51,7 @@ from autonoesis_worker.contracts import (
     PrepareRunInput,
     PromoteCandidateInput,
     RejectRunInput,
+    ReleaseCommandInput,
     ShadowPairInput,
     TakeOverRunInput,
 )
@@ -149,6 +151,13 @@ def _context(tenant_id: str, run_id: str, operation: str) -> CommandContext:
         f"temporal:{operation}:{run_id}",
         sha256(f"{operation}\n{run_id}".encode()).hexdigest(),
     )
+
+
+def _worker_principal(duty: str, tenant_id: str) -> UUID:
+    """Deterministic per-duty principal so separated duties never share identity."""
+    from uuid import uuid5
+
+    return uuid5(UUID(int=0), f"{duty}:{tenant_id}")
 
 
 @activity.defn
@@ -333,7 +342,13 @@ async def evaluate_candidate(
     max_attempts = policy.min_valid_trials * 2
     _heartbeat("evaluate_candidate")
     await evolution.submit_for_evaluation(tenant_id, candidate_id)
-    grader = _context(input.tenant_id, input.candidate_id, "evaluate-candidate").identity
+    # The grader principal must stay distinct from the release executor's so the
+    # domain's separation-of-duties gate can never observe them colliding.
+    grader = replace(
+        _context(input.tenant_id, input.candidate_id, "evaluate-candidate").identity,
+        principal_id=_worker_principal("grader", input.tenant_id),
+        roles=frozenset({"grader"}),
+    )
     last_incompleteness = "no trial executed"
     for _attempt in range(max_attempts):
         _heartbeat("evaluate_candidate")
@@ -367,8 +382,9 @@ async def promote_candidate(
         identity = IdentityContext(
             tenant_id=UUID(input.tenant_id),
             actor_id=UUID(int=0),
-            principal_id=UUID(int=0),
+            principal_id=_worker_principal("release-executor", input.tenant_id),
             roles=frozenset({"platform_admin"}),
+            agent_id="temporal-release-executor",
         )
         await evolution.begin_shadow(identity, UUID(input.candidate_id))
         return "shadow"
@@ -413,3 +429,59 @@ async def execute_shadow_pair(
     )
     _heartbeat(f"shadow_comparison_persisted:{comparison.comparison_id}")
     return str(comparison.comparison_id)
+
+
+_RELEASE_COMMAND_ACTIONS = frozenset({"enter_canary", "release_stable", "rollback_release"})
+
+
+@activity.defn
+async def execute_release_command(
+    input: ReleaseCommandInput,
+    dependencies: ActivityDependencies,
+) -> str:
+    """Apply one release transition under the independent executor identity."""
+
+    evolution = dependencies.evolution
+    if evolution is None:
+        raise ApplicationError(
+            "release execution service is not configured; refusing synthetic release",
+            non_retryable=True,
+        )
+    if input.action not in _RELEASE_COMMAND_ACTIONS:
+        raise ApplicationError(
+            f"unknown release command action: {input.action}",
+            non_retryable=True,
+        )
+    _heartbeat(f"release_command:{input.action}")
+    executor = _worker_principal("release-executor", input.tenant_id)
+    identity = IdentityContext(
+        tenant_id=UUID(input.tenant_id),
+        actor_id=UUID(int=0),
+        principal_id=executor,
+        roles=frozenset({"release_executor"}),
+        agent_id="temporal-release-executor",
+    )
+    if input.action == "enter_canary":
+        deployment = await evolution.promote_to_canary(
+            identity,
+            UUID(input.deployment_id),
+            TrafficAllocation(input.salt, input.candidate_percent),
+        )
+        _heartbeat(f"canary_entered:{deployment.deployment_id}")
+        return f"canary:{deployment.deployment_id}"
+    if input.action == "release_stable":
+        release = await evolution.release_stable(
+            identity,
+            UUID(input.deployment_id),
+            UUID(input.stable_version_id),
+            PromotionPolicy(
+                input.min_samples,
+                input.observation_seconds,
+                tuple(input.required_metrics),
+            ),
+        )
+        _heartbeat(f"stable_released:{release.release_id}")
+        return f"stable:{release.release_id}"
+    release = await evolution.rollback(identity, UUID(input.release_id))
+    _heartbeat(f"release_rolled_back:{release.release_id}")
+    return f"rolled_back:{release.release_id}"

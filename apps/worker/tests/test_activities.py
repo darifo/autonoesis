@@ -11,6 +11,7 @@ from autonoesis_application import (
     CreateGoal,
     CreateGoalHandler,
     IdentityContext,
+    PromotionPolicy,
     StartGoalRun,
     StartGoalRunHandler,
 )
@@ -25,12 +26,14 @@ from autonoesis_domain import (
     ShadowMeasurements,
     SubjectRef,
     SuccessCriterion,
+    TrafficAllocation,
 )
 from autonoesis_worker.activities import (
     build_activity_dependencies,
     cancel_run,
     evaluate_candidate,
     evaluate_run,
+    execute_release_command,
     execute_run,
     execute_shadow_pair,
     load_approval,
@@ -48,6 +51,7 @@ from autonoesis_worker.contracts import (
     PrepareRunInput,
     PromoteCandidateInput,
     RejectRunInput,
+    ReleaseCommandInput,
     ShadowPairInput,
     TakeOverRunInput,
 )
@@ -83,6 +87,198 @@ async def test_candidate_promotion_fails_closed_without_release_service() -> Non
             PromoteCandidateInput(tenant_id, candidate_id, candidate_id),
             build_activity_dependencies(store),
         )
+
+
+@pytest.mark.asyncio
+async def test_release_command_fails_closed_without_release_service() -> None:
+    store, _, tenant_id = _setup_store()
+    with pytest.raises(ApplicationError, match="refusing synthetic release"):
+        await execute_release_command(
+            ReleaseCommandInput(tenant_id, "enter_canary", deployment_id=str(uuid4())),
+            build_activity_dependencies(store),
+        )
+
+
+@pytest.mark.asyncio
+async def test_release_command_rejects_unknown_actions() -> None:
+    store, _, tenant_id = _setup_store()
+    evolution = AsyncMock()
+    with pytest.raises(ApplicationError, match="unknown release command action"):
+        await execute_release_command(
+            ReleaseCommandInput(tenant_id, "declare_stable_directly"),
+            build_activity_dependencies(store, evolution=evolution),
+        )
+    evolution.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_release_command_enters_canary_with_rule_and_executor_identity() -> None:
+    store, _, tenant_id = _setup_store()
+    evolution = AsyncMock()
+    deployment_id = uuid4()
+    evolution.promote_to_canary.return_value = SimpleNamespace(deployment_id=deployment_id)
+    dependencies = build_activity_dependencies(store, evolution=evolution)
+
+    result = await execute_release_command(
+        ReleaseCommandInput(
+            tenant_id,
+            "enter_canary",
+            deployment_id=str(deployment_id),
+            candidate_percent=15,
+            salt="audit-salt",
+        ),
+        dependencies,
+    )
+
+    assert result == f"canary:{deployment_id}"
+    identity, commanded_id, allocation = evolution.promote_to_canary.await_args.args
+    assert commanded_id == deployment_id
+    assert allocation == TrafficAllocation("audit-salt", 15)
+    assert identity.tenant_id == UUID(tenant_id)
+    assert "release_executor" in identity.roles
+    assert identity.agent_id == "temporal-release-executor"
+
+
+@pytest.mark.asyncio
+async def test_release_command_releases_stable_with_the_requested_gate() -> None:
+    store, _, tenant_id = _setup_store()
+    evolution = AsyncMock()
+    deployment_id, stable_version_id, release_id = uuid4(), uuid4(), uuid4()
+    evolution.release_stable.return_value = SimpleNamespace(release_id=release_id)
+    dependencies = build_activity_dependencies(store, evolution=evolution)
+
+    result = await execute_release_command(
+        ReleaseCommandInput(
+            tenant_id,
+            "release_stable",
+            deployment_id=str(deployment_id),
+            stable_version_id=str(stable_version_id),
+            min_samples=3,
+            observation_seconds=120,
+            required_metrics=("outcome_rate",),
+        ),
+        dependencies,
+    )
+
+    assert result == f"stable:{release_id}"
+    identity, commanded_id, commanded_version, policy = evolution.release_stable.await_args.args
+    assert commanded_id == deployment_id
+    assert commanded_version == stable_version_id
+    assert policy == PromotionPolicy(3, 120, ("outcome_rate",))
+    assert "release_executor" in identity.roles
+
+
+@pytest.mark.asyncio
+async def test_release_command_rolls_back_through_the_executor() -> None:
+    store, _, tenant_id = _setup_store()
+    evolution = AsyncMock()
+    release_id, rollback_id = uuid4(), uuid4()
+    evolution.rollback.return_value = SimpleNamespace(release_id=rollback_id)
+    dependencies = build_activity_dependencies(store, evolution=evolution)
+
+    result = await execute_release_command(
+        ReleaseCommandInput(tenant_id, "rollback_release", release_id=str(release_id)),
+        dependencies,
+    )
+
+    assert result == f"rolled_back:{rollback_id}"
+    identity, commanded_release = evolution.rollback.await_args.args
+    assert commanded_release == release_id
+    assert "release_executor" in identity.roles
+
+
+@pytest.mark.asyncio
+async def test_release_command_persists_canary_rule_through_real_service() -> None:
+    from autonoesis_application import (
+        CandidateLifecycleService,
+        ProposeImprovement,
+        RegisterCandidate,
+    )
+    from autonoesis_domain import DeploymentStatus, Trial, TrialCaseResult, TrialStatus
+
+    store, identity, tenant_id = _setup_store()
+    evolution = CandidateLifecycleService(store)
+    dependencies = build_activity_dependencies(store, evolution=evolution)
+    generator = IdentityContext(identity.tenant_id, uuid4(), uuid4(), frozenset({"generator"}))
+    proposal = await evolution.propose_improvement(
+        generator,
+        ProposeImprovement(
+            target="agent_instruction",
+            target_version_id=uuid4(),
+            evidence_refs=("evidence://run/1",),
+            diagnosis="misses recovery",
+            proposed_change="add recovery",
+            validation_suite_id="test-suite",
+            rollback_plan="restore",
+        ),
+    )
+    candidate = await evolution.register_candidate(
+        generator,
+        RegisterCandidate(
+            proposal_id=proposal.proposal_id,
+            baseline_version_id=uuid4(),
+            artifact_ref="artifact://agent/v2",
+            artifact_digest="d" * 64,
+            suite_id="test-suite",
+            suite_version="1",
+        ),
+    )
+    await evolution.submit_for_evaluation(identity.tenant_id, candidate.candidate_id)
+    executed = TrialCaseResult(
+        case_id="c1",
+        input_payload={},
+        output_payload={"answer": 1},
+        subject_executed=True,
+        executor_id="subject-runtime",
+        evidence_refs=("evidence://execution/1",),
+        environment_ref="environment://fixture/1",
+    )
+    from autonoesis_evaluation import RepeatedTrialPolicy
+
+    for _ in range(16):
+        await store.add_trial(
+            Trial(
+                tenant_id=identity.tenant_id,
+                suite_id="test-suite",
+                suite_version="1",
+                subject_version_id=candidate.candidate_id,
+                harness_version="2",
+                status=TrialStatus.PASSED,
+                case_results=(executed,),
+                candidate_id=candidate.candidate_id,
+            )
+        )
+    grader = IdentityContext(identity.tenant_id, uuid4(), uuid4(), frozenset({"grader"}))
+    await evolution.complete_evaluation(
+        grader, candidate.candidate_id, RepeatedTrialPolicy(pass_threshold=0.8)
+    )
+    await evolution.decide(
+        IdentityContext(identity.tenant_id, uuid4(), uuid4(), frozenset({"approver"})),
+        candidate.candidate_id,
+        True,
+        "independent approval",
+    )
+    await evolution.begin_shadow(
+        IdentityContext(identity.tenant_id, uuid4(), uuid4(), frozenset({"release_executor"})),
+        candidate.candidate_id,
+    )
+    deployment = next(iter(store.deployments.values()))
+
+    result = await execute_release_command(
+        ReleaseCommandInput(
+            tenant_id,
+            "enter_canary",
+            deployment_id=str(deployment.deployment_id),
+            candidate_percent=25,
+            salt="executor-salt",
+        ),
+        dependencies,
+    )
+
+    assert result == f"canary:{deployment.deployment_id}"
+    persisted = await store.get_deployment(identity.tenant_id, deployment.deployment_id)
+    assert persisted.status is DeploymentStatus.CANARY
+    assert persisted.traffic_allocation == TrafficAllocation("executor-salt", 25)
 
 
 @pytest.mark.asyncio

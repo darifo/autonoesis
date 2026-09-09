@@ -33,6 +33,13 @@ count at Evaluation Gate 1.
 6. Every decision is recorded as a `TrialConfidenceAssessment` carrying the policy, counts,
    point estimate, interval bounds, and rationale so downstream Candidate gates and Evidence
    chains can cite the exact statistical claim.
+7. Amendment (2026-09-09): rejection is symmetric with acceptance. A sample is `not_met` only
+   when the Wilson **upper** bound is below the threshold; an interval that straddles the
+   threshold is `insufficient_sample` and keeps accumulating Trials. The earlier rule treated
+   any sample at or above the minimum with a lower bound below the threshold as `not_met`, which
+   rejected perfect all-pass samples at exactly the minimum and prevented the retry loop from
+   ever reaching confidence. The Application layer keeps such candidates evaluating instead of
+   rejecting them.
 
 ## Consequences
 

@@ -22,6 +22,7 @@ from autonoesis_domain import (
     EvaluationSuite,
     GuardrailOperator,
     ShadowMeasurements,
+    TrafficAllocation,
 )
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
@@ -154,7 +155,9 @@ async def test_promotion_gate_and_guardrail_isolation() -> None:
             "outcome_score_delta",
         )
         assert outcome_delta is not None and outcome_delta.last_value == pytest.approx(0.1)
-        canary = await evolution.promote_to_canary(executor, deployment.deployment_id)
+        canary = await evolution.promote_to_canary(
+            executor, deployment.deployment_id, TrafficAllocation("component-salt", 10)
+        )
 
         # Insufficient sample refuses promotion (metric missing blocks, never silent).
         with pytest.raises(ValueError, match="missing evidence"):
@@ -168,7 +171,9 @@ async def test_promotion_gate_and_guardrail_isolation() -> None:
         # Record observations for two deployments and verify four-way isolation.
         candidate_two = await _approved_candidate(store, tenant_id, 2)
         deployment_two = await evolution.begin_shadow(executor, candidate_two)
-        canary_two = await evolution.promote_to_canary(executor, deployment_two.deployment_id)
+        canary_two = await evolution.promote_to_canary(
+            executor, deployment_two.deployment_id, TrafficAllocation("component-salt", 20)
+        )
 
         for _ in range(3):
             await evolution.record_observation(
@@ -237,7 +242,9 @@ async def test_concurrent_promotion_only_one_wins_stable_slot() -> None:
     try:
         candidate_id = await _approved_candidate(store, tenant_id, 3)
         deployment = await evolution.begin_shadow(executor, candidate_id)
-        canary = await evolution.promote_to_canary(executor, deployment.deployment_id)
+        canary = await evolution.promote_to_canary(
+            executor, deployment.deployment_id, TrafficAllocation("component-salt", 10)
+        )
         await evolution.record_observation(
             executor,
             RecordObservation(canary.deployment_id, DeploymentStatus.CANARY, "outcome_rate", 1.0),

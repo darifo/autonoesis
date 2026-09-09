@@ -135,11 +135,20 @@ class TrialConfidenceGate:
                 f"pass rate {rate:.4f} holds a {confidence:.0%} lower bound of "
                 f"{lower:.4f} at or above threshold {threshold}"
             )
-        else:
+        elif upper < threshold:
             decision = ConfidenceDecision.NOT_MET
             rationale = (
-                f"pass rate {rate:.4f} only holds a {confidence:.0%} lower bound of "
-                f"{lower:.4f} below threshold {threshold}"
+                f"pass rate {rate:.4f} holds a {confidence:.0%} upper bound of "
+                f"{upper:.4f} below threshold {threshold}"
+            )
+        else:
+            # The interval straddles the threshold: the sample is large enough to
+            # count but cannot yet decide in either direction. Keep sampling
+            # instead of turning an inconclusive run into a rejection.
+            decision = ConfidenceDecision.INSUFFICIENT_SAMPLE
+            rationale = (
+                f"pass rate {rate:.4f} with {confidence:.0%} bounds "
+                f"[{lower:.4f}, {upper:.4f}] straddles threshold {threshold}"
             )
         return TrialConfidenceAssessment(
             policy=self._policy,
