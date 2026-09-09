@@ -553,13 +553,13 @@ Tenant Authority 的初始化使用独立管理连接，不参与任何隔离断
 
 #### 实施任务
 
-- [ ] Capability Pack 使用签名 Artifact、固定 Digest 和 SBOM；
-- [ ] 安装前验证来源允许列表、签名、依赖、漏洞和兼容性；
-- [ ] 禁止未经隔离的第三方 Entry Point 在 API 控制面直接执行；
-- [ ] 将复杂 Pack 行为放入受限 Worker/Sandbox；
-- [ ] Pack 注册只允许声明 Capability，不允许直接写权威状态；
-- [ ] Pack 版本、启用状态和 Stable Channel 按租户管理；
-- [ ] Pack 升级、降级、撤销和依赖冲突均有事务与审计。
+- [x] Capability Pack 使用签名 Artifact、固定 Digest 和 SBOM；
+- [x] 安装前验证来源允许列表、签名、依赖、漏洞和兼容性；
+- [x] 禁止未经隔离的第三方 Entry Point 在 API 控制面直接执行；
+- [x] 将复杂 Pack 行为放入受限 Worker/Sandbox；
+- [x] Pack 注册只允许声明 Capability，不允许直接写权威状态；
+- [x] Pack 版本、启用状态和 Stable Channel 按租户管理；
+- [x] Pack 升级、降级、撤销和依赖冲突均有事务与审计。
 
 #### 验收
 

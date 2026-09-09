@@ -21,7 +21,7 @@ def test_field_service_manifest_has_ten_evaluation_cases() -> None:
 
 
 def test_manifest_rejects_unknown_fields_and_invalid_payload() -> None:
-    with pytest.raises(ManifestError, match="exactly"):
+    with pytest.raises(ManifestError, match="subset of"):
         parse_manifest({"api_version": "autonoesis/v1alpha1", "unexpected": True})
     root = Path(__file__).resolve().parents[3]
     manifest = load_manifest(root / "examples/field-service/capability-pack.yaml")
@@ -72,3 +72,114 @@ def test_manifest_rejects_unowned_or_unversioned_entry_points() -> None:
     )
     with pytest.raises(ManifestError, match="installed distribution"):
         validate_discovered_plugin(manifest, DiscoveredPlugin(manifest.pack_id, entry_point))
+
+
+class TestSupplyChainFields:
+    def _raw(self, **overrides: object) -> dict[str, object]:
+        raw: dict[str, object] = {
+            "api_version": "autonoesis/v1alpha1",
+            "pack_id": "supply-demo",
+            "version": "1.2.3",
+            "python_entry_point": "supply_demo.plugin:create",
+            "goal_types": [
+                {
+                    "goal_type": "supply-demo.run",
+                    "input_schema": {"type": "object"},
+                    "agent": "demo-agent",
+                    "evaluation_suite": "demo-suite",
+                    "default_policy": "demo-policy",
+                    "default_budget": 10,
+                }
+            ],
+            "skills": [],
+            "tools": [],
+            "policies": ["demo-policy"],
+            "evaluation_suites": ["demo-suite"],
+        }
+        raw.update(overrides)
+        return raw
+
+    def test_supply_chain_fields_round_trip(self) -> None:
+        from autonoesis_capability import manifest_content_digest, manifest_payload, parse_manifest
+
+        raw = self._raw(
+            artifact_uri="artifact://packs/supply-demo/1.2.3",
+            artifact_digest="a" * 64,
+            signature="b" * 128,
+            sbom_ref="sbom://packs/supply-demo/cyclonedx",
+            sbom_digest="c" * 64,
+            dependencies=[{"pack_id": "other-pack", "version_spec": ">=1.0.0"}],
+        )
+        manifest = parse_manifest(raw)
+        assert manifest.artifact_digest == "a" * 64
+        assert manifest.dependencies[0].pack_id == "other-pack"
+        rebuilt = parse_manifest(manifest_payload(manifest))
+        assert rebuilt == manifest
+        assert manifest_content_digest(rebuilt) == manifest_content_digest(manifest)
+
+    def test_malformed_supply_chain_fields_are_rejected(self) -> None:
+        from autonoesis_capability import parse_manifest
+
+        with pytest.raises(ManifestError, match="artifact_uri"):
+            parse_manifest(self._raw(artifact_uri="not a uri"))
+        with pytest.raises(ManifestError, match="artifact_digest"):
+            parse_manifest(self._raw(artifact_digest="XYZ"))
+        with pytest.raises(ManifestError, match="signature"):
+            parse_manifest(self._raw(signature="a" * 64))
+        with pytest.raises(ManifestError, match="sbom_ref"):
+            parse_manifest(self._raw(sbom_ref=""))
+        with pytest.raises(ManifestError, match="version spec"):
+            parse_manifest(self._raw(dependencies=[{"pack_id": "other", "version_spec": "latest"}]))
+
+    def test_content_digest_is_stable_across_metadata_attachment(self) -> None:
+        from dataclasses import replace
+
+        from autonoesis_capability import manifest_content_digest, parse_manifest
+        from autonoesis_capability.signing import supply_chain_fields
+
+        manifest = parse_manifest(self._raw())
+        signed = supply_chain_fields(
+            manifest,
+            private_key_hex=_dev_key(),
+            sbom_ref="sbom://packs/supply-demo/cyclonedx",
+            sbom_digest="d" * 64,
+        )
+        assert manifest_content_digest(signed) == manifest_content_digest(manifest)
+        assert replace(signed, artifact_uri="artifact://elsewhere/1") is not None
+        assert manifest_content_digest(
+            replace(signed, artifact_uri="artifact://elsewhere/1")
+        ) == manifest_content_digest(manifest)
+
+
+def _dev_key() -> str:
+    from autonoesis_capability.signing import generate_signing_key
+
+    return generate_signing_key()
+
+
+class TestVersionSpecs:
+    @pytest.mark.parametrize(
+        ("spec", "version", "expected"),
+        [
+            ("1.2.3", "1.2.3", True),
+            ("=1.2.3", "1.2.4", False),
+            (">=1.0.0", "1.9.9", True),
+            (">=2.0.0", "1.9.9", False),
+            ("<2.0.0", "1.9.9", True),
+            ("<2.0.0", "2.0.0", False),
+            (">0.1.0", "0.1.0", False),
+            ("*", "0.0.1", True),
+            (">=1.0.0", "2.0.0-rc.1", True),
+        ],
+    )
+    def test_version_satisfies(self, spec: str, version: str, expected: bool) -> None:
+        from autonoesis_capability import version_satisfies
+
+        assert version_satisfies(spec, version) is expected
+
+    def test_prerelease_sorts_before_release(self) -> None:
+        from autonoesis_capability import compare_versions
+
+        assert compare_versions("1.0.0-rc.1", "1.0.0") == -1
+        assert compare_versions("1.0.0", "0.9.9") == 1
+        assert compare_versions("1.0.0", "1.0.0") == 0

@@ -9,6 +9,7 @@ from autonoesis_adapters import (
     HarnessCandidateEvaluator,
     PackSubjectRuntime,
     PostgreSQLPlatformStore,
+    SandboxedPackSubjectRuntime,
 )
 from autonoesis_application import CandidateLifecycleService
 from autonoesis_evaluation import RepeatedTrialPolicy
@@ -80,10 +81,19 @@ def _get_dependencies() -> ActivityDependencies:
     if _process_dependencies is None:
         database_url = os.environ["AUTONOESIS_DATABASE_URL"]
         store = PostgreSQLPlatformStore.from_url(database_url)
+        # P1-06: pack subjects execute in a disposable subprocess sandbox, not
+        # in the worker process. In-process execution remains available only
+        # through an explicit development escape hatch.
+        sandbox_mode = os.getenv("AUTONOESIS_PACK_SANDBOX", "process").strip().lower()
+        subject_runtime = (
+            SandboxedPackSubjectRuntime(store)
+            if sandbox_mode != "inprocess"
+            else PackSubjectRuntime(store)
+        )
         _process_dependencies = build_activity_dependencies(
             store,
             CandidateLifecycleService(store),
-            candidate_evaluator=HarnessCandidateEvaluator(store, PackSubjectRuntime(store)),
+            candidate_evaluator=HarnessCandidateEvaluator(store, subject_runtime),
             evaluation_policy=_configured_evaluation_policy(),
         )
     return _process_dependencies

@@ -258,12 +258,14 @@ name = "autonoesis-capability"
 version = "0.1.0"
 source = { editable = "packages/capability" }
 dependencies = [
+    { name = "cryptography" },
     { name = "jsonschema" },
     { name = "pyyaml" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "cryptography", specifier = ">=44.0" },
     { name = "jsonschema", specifier = ">=4.25" },
     { name = "pyyaml", specifier = ">=6.0" },
 ]

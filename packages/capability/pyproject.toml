@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Capability Pack manifest and plugin contracts for Autonoesis"
 requires-python = ">=3.12"
 dependencies = [
+  "cryptography>=44.0",
   "jsonschema>=4.25",
   "pyyaml>=6.0",
 ]

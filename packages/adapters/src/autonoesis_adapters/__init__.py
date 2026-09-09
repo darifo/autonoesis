@@ -9,6 +9,7 @@ from autonoesis_adapters.evaluation_runtime import (
     HarnessCandidateEvaluator,
     InProcessSubjectRuntime,
     PackSubjectRuntime,
+    SandboxedPackSubjectRuntime,
     SubjectRuntime,
 )
 from autonoesis_adapters.evidence_store import (
@@ -58,6 +59,10 @@ from autonoesis_adapters.persistence import (
 from autonoesis_adapters.platform_store import PostgreSQLPlatformStore
 from autonoesis_adapters.readback import HttpAuthoritativeReadback, ReadbackEndpoint
 from autonoesis_adapters.shadow_write_guard import SqlShadowWriteGuard
+from autonoesis_adapters.supply_chain import (
+    StrictSupplyChainVerifier,
+    SupplyChainVerificationError,
+)
 
 __all__ = [
     "AnthropicMessagesAdapter",
@@ -98,12 +103,15 @@ __all__ = [
     "PostgreSQLTemporaryAuthorizationStore",
     "ReadbackEndpoint",
     "RegistryControlledEgress",
+    "SandboxedPackSubjectRuntime",
     "SqlAlchemyPlatformRepository",
     "SqlKillSwitchStore",
     "SqlPlatformKillSwitchStore",
     "SqlShadowWriteGuard",
     "StaticToolCatalog",
+    "StrictSupplyChainVerifier",
     "SubjectRuntime",
+    "SupplyChainVerificationError",
     "cached_oidc_validator",
     "create_repository",
     "metadata",

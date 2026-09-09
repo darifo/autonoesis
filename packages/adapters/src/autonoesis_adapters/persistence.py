@@ -16,7 +16,13 @@ from autonoesis_application import (
     EvidenceDeletionStatus,
     RecordNotFound,
 )
-from autonoesis_capability import CapabilityPackManifest, GoalTypeManifest, parse_manifest
+from autonoesis_capability import (
+    CapabilityPackManifest,
+    GoalTypeManifest,
+    compare_versions,
+    manifest_payload,
+    parse_manifest,
+)
 from autonoesis_domain import (
     Action,
     ActionAttempt,
@@ -114,6 +120,7 @@ from autonoesis_adapters.persistence_schema import (
     budgets,
     candidate_evaluations,
     candidates,
+    capability_pack_channels,
     capability_packs,
     context_snapshots,
     deployment_observations,
@@ -215,59 +222,277 @@ class SqlAlchemyPlatformRepository:
         if self._uses_postgresql:
             await session.execute(select(func.set_config("app.tenant_id", str(tenant_id), True)))
 
-    async def add_capability_pack(self, tenant_id: UUID, manifest: CapabilityPackManifest) -> None:
+    async def install_pack(
+        self,
+        tenant_id: UUID,
+        manifest: CapabilityPackManifest,
+        *,
+        actor_id: UUID | None = None,
+    ) -> None:
+        """Persist a content-addressed pack row; same version with different
+        content is a supply-chain conflict, not an idempotent re-install."""
         now = datetime.now(UTC)
         record_id = uuid4()
+        payload = manifest_payload(manifest)
         async with self._sessions.begin() as session:
             await self._scope_tenant(session, tenant_id)
-            existing = await session.scalar(
-                select(capability_packs.c.id).where(
-                    capability_packs.c.tenant_id == str(tenant_id),
-                    capability_packs.c.pack_id == manifest.pack_id,
-                    capability_packs.c.version == manifest.version,
+            existing = (
+                (
+                    await session.execute(
+                        select(capability_packs.c.id, capability_packs.c.manifest).where(
+                            capability_packs.c.tenant_id == str(tenant_id),
+                            capability_packs.c.pack_id == manifest.pack_id,
+                            capability_packs.c.version == manifest.version,
+                        )
+                    )
+                )
+                .mappings()
+                .first()
+            )
+            if existing is not None:
+                if dict(existing)["manifest"] != payload:
+                    raise ValueError(
+                        "capability pack content conflict: "
+                        f"{manifest.pack_id}@{manifest.version} is already installed "
+                        "with different signed content"
+                    )
+                return
+            await session.execute(
+                insert(capability_packs).values(
+                    id=str(record_id),
+                    tenant_id=str(tenant_id),
+                    pack_id=manifest.pack_id,
+                    version=manifest.version,
+                    manifest=payload,
+                    enabled=True,
+                    artifact_digest=manifest.artifact_digest,
+                    signature=manifest.signature,
+                    sbom_ref=manifest.sbom_ref,
+                    sbom_digest=manifest.sbom_digest,
+                    optimistic_version=1,
+                    created_at=now,
                 )
             )
-            if existing is None:
-                await session.execute(
-                    insert(capability_packs).values(
-                        id=str(record_id),
-                        tenant_id=str(tenant_id),
-                        pack_id=manifest.pack_id,
-                        version=manifest.version,
-                        manifest=self._manifest_payload(manifest),
-                        enabled=True,
-                        optimistic_version=1,
-                        created_at=now,
-                    )
-                )
-                await self._record_fact(
-                    session,
-                    tenant_id,
-                    "capability_pack.installed",
-                    "capability_pack",
-                    record_id,
-                    1,
-                    now,
-                )
+            await self._record_fact(
+                session,
+                tenant_id,
+                "capability_pack.installed",
+                "capability_pack",
+                record_id,
+                1,
+                now,
+                actor_id=actor_id,
+                details={
+                    "digest": manifest.artifact_digest,
+                    "pack_id": manifest.pack_id,
+                    "version": manifest.version,
+                },
+            )
 
-    async def list_capability_packs(self, tenant_id: UUID) -> tuple[CapabilityPackManifest, ...]:
+    # Historical name kept for existing callers; installs now carry the actor.
+    add_capability_pack = install_pack
+
+    async def list_capability_packs(
+        self, tenant_id: UUID, *, include_disabled: bool = False
+    ) -> tuple[CapabilityPackManifest, ...]:
         async with self._sessions() as session:
             await self._scope_tenant(session, tenant_id)
-            rows = (
-                await session.execute(
-                    select(capability_packs).where(
-                        capability_packs.c.tenant_id == str(tenant_id),
-                        capability_packs.c.enabled.is_(True),
-                    )
-                )
-            ).mappings()
+            query = select(capability_packs).where(
+                capability_packs.c.tenant_id == str(tenant_id),
+                capability_packs.c.revoked.is_(False),
+            )
+            if not include_disabled:
+                query = query.where(capability_packs.c.enabled.is_(True))
+            rows = (await session.execute(query.order_by(capability_packs.c.pack_id))).mappings()
             return tuple(parse_manifest(dict(row)["manifest"]) for row in rows)
 
+    async def get_installed_pack(
+        self, tenant_id: UUID, pack_id: str, version: str
+    ) -> CapabilityPackManifest | None:
+        async with self._sessions() as session:
+            await self._scope_tenant(session, tenant_id)
+            row = (
+                (
+                    await session.execute(
+                        select(capability_packs).where(
+                            capability_packs.c.tenant_id == str(tenant_id),
+                            capability_packs.c.pack_id == pack_id,
+                            capability_packs.c.version == version,
+                        )
+                    )
+                )
+                .mappings()
+                .first()
+            )
+        if row is None:
+            return None
+        return parse_manifest(dict(row)["manifest"])
+
+    async def is_pack_revoked(self, tenant_id: UUID, pack_id: str, version: str) -> bool:
+        async with self._sessions() as session:
+            await self._scope_tenant(session, tenant_id)
+            revoked = await session.scalar(
+                select(capability_packs.c.revoked).where(
+                    capability_packs.c.tenant_id == str(tenant_id),
+                    capability_packs.c.pack_id == pack_id,
+                    capability_packs.c.version == version,
+                )
+            )
+        return bool(revoked)
+
+    async def _pack_record_id(
+        self, session: AsyncSession, tenant_id: UUID, pack_id: str, version: str
+    ) -> UUID:
+        row = (
+            (
+                await session.execute(
+                    select(
+                        capability_packs.c.id,
+                        capability_packs.c.optimistic_version,
+                    ).where(
+                        capability_packs.c.tenant_id == str(tenant_id),
+                        capability_packs.c.pack_id == pack_id,
+                        capability_packs.c.version == version,
+                    )
+                )
+            )
+            .mappings()
+            .first()
+        )
+        if row is None:
+            raise RecordNotFound(f"capability pack {pack_id}@{version} was not found")
+        return UUID(row["id"])
+
+    async def set_pack_enabled(
+        self,
+        tenant_id: UUID,
+        pack_id: str,
+        version: str,
+        enabled: bool,
+        *,
+        actor_id: UUID,
+        reason: str,
+    ) -> None:
+        now = datetime.now(UTC)
+        async with self._sessions.begin() as session:
+            await self._scope_tenant(session, tenant_id)
+            record_id = await self._pack_record_id(session, tenant_id, pack_id, version)
+            await session.execute(
+                update(capability_packs)
+                .where(capability_packs.c.id == str(record_id))
+                .values(enabled=enabled, updated_at=now)
+            )
+            await self._record_fact(
+                session,
+                tenant_id,
+                "capability_pack.enabled" if enabled else "capability_pack.disabled",
+                "capability_pack",
+                record_id,
+                1,
+                now,
+                actor_id=actor_id,
+                details={"pack_id": pack_id, "version": version, "reason": reason},
+            )
+
+    async def revoke_pack(
+        self,
+        tenant_id: UUID,
+        pack_id: str,
+        version: str,
+        *,
+        actor_id: UUID,
+        reason: str,
+    ) -> None:
+        now = datetime.now(UTC)
+        async with self._sessions.begin() as session:
+            await self._scope_tenant(session, tenant_id)
+            record_id = await self._pack_record_id(session, tenant_id, pack_id, version)
+            await session.execute(
+                update(capability_packs)
+                .where(capability_packs.c.id == str(record_id))
+                .values(enabled=False, revoked=True, revoked_reason=reason, updated_at=now)
+            )
+            await self._record_fact(
+                session,
+                tenant_id,
+                "capability_pack.revoked",
+                "capability_pack",
+                record_id,
+                1,
+                now,
+                actor_id=actor_id,
+                details={"pack_id": pack_id, "version": version, "reason": reason},
+            )
+
+    async def set_stable_channel(
+        self, tenant_id: UUID, pack_id: str, version: str, *, actor_id: UUID
+    ) -> None:
+        now = datetime.now(UTC)
+        async with self._sessions.begin() as session:
+            await self._scope_tenant(session, tenant_id)
+            await session.execute(
+                delete(capability_pack_channels).where(
+                    capability_pack_channels.c.tenant_id == str(tenant_id),
+                    capability_pack_channels.c.pack_id == pack_id,
+                )
+            )
+            record_id = uuid4()
+            await session.execute(
+                insert(capability_pack_channels).values(
+                    id=str(record_id),
+                    tenant_id=str(tenant_id),
+                    pack_id=pack_id,
+                    stable_version=version,
+                    updated_by=str(actor_id),
+                    updated_at=now,
+                )
+            )
+            await self._record_fact(
+                session,
+                tenant_id,
+                "capability_pack.channel_updated",
+                "capability_pack_channel",
+                record_id,
+                1,
+                now,
+                actor_id=actor_id,
+                details={"pack_id": pack_id, "stable_version": version},
+            )
+
+    async def get_stable_channel(self, tenant_id: UUID, pack_id: str) -> str | None:
+        async with self._sessions() as session:
+            await self._scope_tenant(session, tenant_id)
+            stable_version = await session.scalar(
+                select(capability_pack_channels.c.stable_version).where(
+                    capability_pack_channels.c.tenant_id == str(tenant_id),
+                    capability_pack_channels.c.pack_id == pack_id,
+                )
+            )
+        return str(stable_version) if stable_version is not None else None
+
     async def get_goal_type(self, tenant_id: UUID, goal_type: str) -> GoalTypeManifest:
-        for manifest in await self.list_capability_packs(tenant_id):
-            for item in manifest.goal_types:
-                if item.goal_type == goal_type:
-                    return item
+        """Resolve deterministically: tenant channel pin, else newest enabled version."""
+        manifests = await self.list_capability_packs(tenant_id)
+        by_pack: dict[str, list[CapabilityPackManifest]] = {}
+        for manifest in manifests:
+            by_pack.setdefault(manifest.pack_id, []).append(manifest)
+        for pack_id in sorted(by_pack):
+            pinned = await self.get_stable_channel(tenant_id, pack_id)
+            candidates = by_pack[pack_id]
+            if pinned is not None:
+                pinned_manifests = [item for item in candidates if item.version == pinned]
+                if pinned_manifests:
+                    candidates = pinned_manifests
+                else:
+                    continue
+            else:
+                candidates = sorted(
+                    candidates, key=lambda item: compare_versions(item.version, "0.0.0")
+                )
+            for item in candidates:
+                for goal in item.goal_types:
+                    if goal.goal_type == goal_type:
+                        return goal
         raise RecordNotFound(f"goal type {goal_type} was not found")
 
     async def add_agent(self, name: str, version: AgentVersion) -> None:
@@ -2027,16 +2252,20 @@ class SqlAlchemyPlatformRepository:
         object_id: UUID,
         version: int,
         created_at: datetime,
+        *,
+        actor_id: UUID | None = None,
+        details: dict[str, Any] | None = None,
     ) -> None:
+        actor = actor_id or UUID(int=0)
         audit = AuditEvent(
             tenant_id=tenant_id,
-            actor_id=UUID(int=0),
-            principal_id=UUID(int=0),
+            actor_id=actor,
+            principal_id=actor,
             event_type=event_type,
             object_type=object_type,
             object_id=str(object_id),
             correlation_id=uuid4(),
-            details={"version": version},
+            details=details if details is not None else {"version": version},
         )
         await self._add_audit_and_outbox(session, audit, created_at)
 
@@ -2114,30 +2343,6 @@ class SqlAlchemyPlatformRepository:
                 created_at=created_at,
             )
         )
-
-    @staticmethod
-    def _manifest_payload(manifest: CapabilityPackManifest) -> dict[str, Any]:
-        return {
-            "api_version": manifest.api_version,
-            "pack_id": manifest.pack_id,
-            "version": manifest.version,
-            "python_entry_point": manifest.python_entry_point,
-            "goal_types": [
-                {
-                    "goal_type": item.goal_type,
-                    "input_schema": item.input_schema,
-                    "agent": item.agent,
-                    "evaluation_suite": item.evaluation_suite,
-                    "default_policy": item.default_policy,
-                    "default_budget": item.default_budget,
-                }
-                for item in manifest.goal_types
-            ],
-            "skills": list(manifest.skills),
-            "tools": list(manifest.tools),
-            "policies": list(manifest.policies),
-            "evaluation_suites": list(manifest.evaluation_suites),
-        }
 
     @staticmethod
     def _agent_payload(version: AgentVersion) -> dict[str, Any]:

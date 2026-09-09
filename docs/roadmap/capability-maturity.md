@@ -15,7 +15,7 @@
 
 当前 P0 参考纵向切片、PostgreSQL 权威存储、HTTP/Application 用例、Governed Tool Gateway、
 Temporal 耐久编排、Evidence/Outcome/Audit 可信链，以及 P1-01～03 的多租户、身份和可信
-Context/Memory 达到 `integrated`。P1-04 Evaluation 九项与 P1-05 Shadow/Canary/Rollback 十项
+Context/Memory 达到 `integrated`。P1-04 Evaluation 九项、P1-05 Shadow/Canary/Rollback 十项与 P1-06 Pack 供应链七项
 实施项全部完成（Evaluation 与 Release Executor 组件测试经真实 Temporal + PostgreSQL 验证），
 整体仍为 `unit-tested`；没有任何能力达到 `production-proven`。
 
@@ -24,7 +24,7 @@ Context/Memory 达到 `integrated`。P1-04 Evaluation 九项与 P1-05 Shadow/Can
 | 能力 | 当前成熟度 | 已有证据 | 达到下一等级仍缺少 |
 |---|---|---|---|
 | 领域语言与基础状态机 | `integrated` | P0-02 冻结契约；CI 参考 E2E 真实推进 Goal/Run/Task/Action/Evidence/Outcome | 属性测试、长期兼容与生产异常状态演练 |
-| Capability Pack Manifest | `integrated` | Field Service Pack 经真实 API 安装、Schema 验证、Agent 绑定并驱动参考 E2E | 签名、SBOM、隔离安装和真实供应链测试 |
+| Capability Pack Manifest | `integrated` | Field Service Pack（签名+Digest+SBOM）经真实 API 安装并驱动参考 E2E；来源允许列表/ed25519 签名/内容寻址/同版本内容冲突拒绝/租户 enable-disable-revoke 与 Stable Channel（迁移 0015，事务+审计+Outbox）；API 控制面禁止执行 Pack 代码（架构测试）；Worker 默认子进程沙箱执行 Subject | 生产密钥流水线、漏洞/SBOM 扫描、OS 级沙箱（容器/seccomp）与真实供应链演练 |
 | Goal/Run Application 用例 | `integrated` | PostgreSQL 事务/恢复组件测试；真实 Temporal/Tool/OPA/Evidence 参考 E2E | 真实第三方系统、网络故障和多进程容量演练 |
 | HTTP API/SDK | `integrated` | 冻结 OpenAPI 3.1、Consumer Contract、统一错误 Envelope；参考 E2E 从真实 ASGI API 发起 | 生成 SDK、多副本 API、OIDC 与外部 Consumer 验证 |
 | PostgreSQL 权威存储 | `integrated` | CI PostgreSQL 17；Alembic `0001 → 0009`；全租户表强制 RLS 与双租户攻击矩阵 | 备份恢复、故障注入、容量/升级演练和长期运行证据 |

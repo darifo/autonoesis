@@ -135,7 +135,20 @@ capability_packs = tenant_table(
     Column("version", String(64), nullable=False),
     Column("manifest", JSON, nullable=False),
     Column("enabled", Boolean, nullable=False, default=True),
+    Column("artifact_digest", String(64), nullable=True),
+    Column("signature", Text, nullable=True),
+    Column("sbom_ref", String(500), nullable=True),
+    Column("sbom_digest", String(64), nullable=True),
+    Column("revoked", Boolean, nullable=False, default=False),
+    Column("revoked_reason", String(1000), nullable=True),
     UniqueConstraint("tenant_id", "pack_id", "version", name="uq_capability_pack_version"),
+)
+capability_pack_channels = tenant_table(
+    "capability_pack_channels",
+    Column("pack_id", String(200), nullable=False),
+    Column("stable_version", String(64), nullable=False),
+    Column("updated_by", String(36), nullable=False),
+    UniqueConstraint("tenant_id", "pack_id", name="uq_capability_pack_channel"),
 )
 agent_versions = tenant_table(
     "agent_versions",

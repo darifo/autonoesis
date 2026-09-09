@@ -72,6 +72,40 @@ class RecordingReleaseDispatcher:
         return f"release-workflow-rollback-{release.release_id}"
 
 
+class DevPackVerifier:
+    """Test double mirroring StrictSupplyChainVerifier with an ephemeral key."""
+
+    def __init__(self) -> None:
+        from autonoesis_capability.signing import generate_signing_key, public_key_hex
+
+        self.private_key = generate_signing_key()
+        self.public_key = public_key_hex(self.private_key)
+
+    async def verify_install(self, manifest: Any) -> None:
+        from autonoesis_adapters import StrictSupplyChainVerifier
+        from autonoesis_capability import CapabilityPackManifest
+
+        assert isinstance(manifest, CapabilityPackManifest)
+        verifier = StrictSupplyChainVerifier(
+            allowed_sources=("artifact://packs/",),
+            public_keys_hex=(self.public_key,),
+        )
+        await verifier.verify_install(manifest)
+
+    def signed(self, raw_manifest: dict[str, object]) -> dict[str, object]:
+        from autonoesis_capability import manifest_payload, parse_manifest
+        from autonoesis_capability.signing import supply_chain_fields
+
+        manifest = parse_manifest(dict(raw_manifest))
+        signed = supply_chain_fields(
+            manifest,
+            private_key_hex=self.private_key,
+            sbom_ref="sbom://packs/test/cyclonedx",
+            sbom_digest="e" * 64,
+        )
+        return manifest_payload(signed)
+
+
 def headers(tenant_id: UUID, actor_id: UUID, key: str | None = None) -> dict[str, str]:
     result = {
         "X-Tenant-ID": str(tenant_id),
@@ -118,21 +152,39 @@ def test_generic_goal_run_and_evolution_api() -> None:
     store = InMemoryPlatformStore()
     shadow_dispatcher = RecordingShadowDispatcher()
     release_dispatcher = RecordingReleaseDispatcher(store)
+    pack_verifier = DevPackVerifier()
     client = TestClient(
         build_app(
             store,
             shadow_dispatcher=shadow_dispatcher,
             release_dispatcher=release_dispatcher,
+            pack_verifier=pack_verifier,
         )
     )
     identity = headers(tenant_id, actor_id)
 
-    pack = client.post(
+    unsigned = TestClient(build_app(store))
+    refused = unsigned.post(
         "/v1/capability-packs",
         json={"manifest": manifest()},
+        headers={**identity, "Idempotency-Key": "pack-unconfigured"},
+    )
+    assert refused.status_code == 503
+    pack = client.post(
+        "/v1/capability-packs",
+        json={"manifest": pack_verifier.signed(manifest())},
         headers={**identity, "Idempotency-Key": "pack-1"},
     )
     assert pack.status_code == 201
+    assert pack.json()["artifact_digest"]
+    tampered = manifest()
+    tampered["skills"] = ["extra-skill"]
+    conflict = client.post(
+        "/v1/capability-packs",
+        json={"manifest": tampered},
+        headers={**identity, "Idempotency-Key": "pack-tampered"},
+    )
+    assert conflict.status_code == 400
     agent = client.post(
         "/v1/agents",
         json={

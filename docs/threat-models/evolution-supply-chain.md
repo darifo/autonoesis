@@ -98,6 +98,9 @@ The evolution pipeline (ImprovementProposal → Candidate → Evaluation → App
   replayable and cannot be steered per request.
 - Release and rollback transitions execute only in the independent ReleaseExecutionWorkflow
   under a per-tenant executor identity distinct from generator/grader/approver principals.
+- Capability Pack installs require allowlisted sources, content-addressed digests,
+  allowlisted ed25519 signatures, and attached SBOMs; same-version content swaps are
+  rejected, and pack subjects execute only in a disposable subprocess sandbox.
 - Shadow environment has same data access controls as production.
 - Canary traffic is limited to a percentage; automatic rollback on guardrail breach.
 - All Shadow/Canary execution is audited and subject to the same data policies as Stable.

@@ -44,11 +44,67 @@ class PostgreSQLPlatformStore:
     async def close(self) -> None:
         await self.engine.dispose()
 
-    async def add_capability_pack(self, tenant_id: UUID, manifest: CapabilityPackManifest) -> None:
-        await self.repository.add_capability_pack(tenant_id, manifest)
+    async def install_pack(
+        self,
+        tenant_id: UUID,
+        manifest: CapabilityPackManifest,
+        *,
+        actor_id: UUID | None = None,
+    ) -> None:
+        await self.repository.install_pack(tenant_id, manifest, actor_id=actor_id)
 
-    async def list_capability_packs(self, tenant_id: UUID) -> tuple[CapabilityPackManifest, ...]:
-        return await self.repository.list_capability_packs(tenant_id)
+    async def add_capability_pack(self, tenant_id: UUID, manifest: CapabilityPackManifest) -> None:
+        await self.repository.install_pack(tenant_id, manifest)
+
+    async def list_capability_packs(
+        self, tenant_id: UUID, *, include_disabled: bool = False
+    ) -> tuple[CapabilityPackManifest, ...]:
+        return await self.repository.list_capability_packs(
+            tenant_id, include_disabled=include_disabled
+        )
+
+    async def get_installed_pack(
+        self, tenant_id: UUID, pack_id: str, version: str
+    ) -> CapabilityPackManifest | None:
+        return await self.repository.get_installed_pack(tenant_id, pack_id, version)
+
+    async def is_pack_revoked(self, tenant_id: UUID, pack_id: str, version: str) -> bool:
+        return await self.repository.is_pack_revoked(tenant_id, pack_id, version)
+
+    async def set_pack_enabled(
+        self,
+        tenant_id: UUID,
+        pack_id: str,
+        version: str,
+        enabled: bool,
+        *,
+        actor_id: UUID,
+        reason: str,
+    ) -> None:
+        await self.repository.set_pack_enabled(
+            tenant_id, pack_id, version, enabled, actor_id=actor_id, reason=reason
+        )
+
+    async def revoke_pack(
+        self,
+        tenant_id: UUID,
+        pack_id: str,
+        version: str,
+        *,
+        actor_id: UUID,
+        reason: str,
+    ) -> None:
+        await self.repository.revoke_pack(
+            tenant_id, pack_id, version, actor_id=actor_id, reason=reason
+        )
+
+    async def set_stable_channel(
+        self, tenant_id: UUID, pack_id: str, version: str, *, actor_id: UUID
+    ) -> None:
+        await self.repository.set_stable_channel(tenant_id, pack_id, version, actor_id=actor_id)
+
+    async def get_stable_channel(self, tenant_id: UUID, pack_id: str) -> str | None:
+        return await self.repository.get_stable_channel(tenant_id, pack_id)
 
     async def get_goal_type(self, tenant_id: UUID, goal_type: str) -> GoalTypeManifest:
         return await self.repository.get_goal_type(tenant_id, goal_type)

@@ -63,6 +63,15 @@ P1-02 企业身份治理、P1-03 可信 Context/Memory 的 `integrated` 声明�
 - 完整 Goal → Plan → Task → Action → Evidence → Verified Outcome → Satisfied Goal 已在
   Field Service 参考 E2E 中连接真实 API、PostgreSQL、Temporal、OPA、Tool Gateway 和 MinIO；
   外部业务系统仍是确定性受控模拟器，不能替代真实第三方、网络分区和生产凭证演练；
+- Capability Pack 安装已要求来源允许列表、内容寻址 Digest、ed25519 签名与 SBOM 附带
+  （StrictSupplyChainVerifier，未配置时 503 失败封闭），同版本不同签名内容拒绝安装；
+  租户级 enable/disable/revoke（撤销不可逆）与 Stable Channel 指针持久化（迁移 0015，
+  每次变更单事务+哈希审计+Outbox），Goal Type 解析按 Channel 指针→最新启用版本确定性
+  解析且指向禁用版本时失败封闭；依赖声明以复合 semver 范围在安装与升降级时复核；
+  API 控制面以架构测试禁止加载/执行 Pack 代码，Worker 默认以一次性子进程沙箱
+  （JSON IPC + 超时 + 无凭证）执行 Pack Subject；参考 e2e 以仓库内开发密钥
+  （infra/supply-chain，仅测试）安装签名 Field Service Pack。生产签名流水线、漏洞/SBOM
+  扫描、OS 级沙箱（容器隔离/seccomp）与真实供应链演练仍未完成；
 - Python/npm 依赖审计和精确 Secret 基线已成为 CI 门禁，但尚无签名制品、SBOM、镜像扫描、
   Provenance 或生产发布供应链证明。
 

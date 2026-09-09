@@ -41,6 +41,13 @@ from autonoesis_application.execution import (
     TaskDefinition,
     VerifyOutcome,
 )
+from autonoesis_application.packs import (
+    CapabilityPackService,
+    CapabilityPackStore,
+    PackArtifactVerifier,
+    PackLifecycleCommand,
+    pack_content_digest,
+)
 from autonoesis_application.platform import (
     AuditEvent,
     CapabilityCatalog,
@@ -90,6 +97,8 @@ __all__ = [
     "CancelRun",
     "CandidateLifecycleService",
     "CapabilityCatalog",
+    "CapabilityPackService",
+    "CapabilityPackStore",
     "CaptureAuthoritativeEvidence",
     "CommandContext",
     "CompleteRun",
@@ -118,6 +127,8 @@ __all__ = [
     "GovernedActionExecution",
     "IdentityContext",
     "ImprovementTargetPolicy",
+    "PackArtifactVerifier",
+    "PackLifecycleCommand",
     "PlatformRepository",
     "PrepareRunContext",
     "PromotionPolicy",
@@ -145,5 +156,6 @@ __all__ = [
     "VerificationRepository",
     "VerifyOutcome",
     "assessment_payload",
+    "pack_content_digest",
     "verify_audit_chain",
 ]

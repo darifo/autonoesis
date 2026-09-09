@@ -191,11 +191,15 @@ P1-05 has completed all 10 implementation items at `unit-tested`: persisted Depl
 paired Shadow execution with write suppression, persisted Stable/Candidate comparisons, guardrail
 observations with automatic targeted rollback, deterministic auditable Canary traffic allocation,
 and an independent Release Executor workflow owning Canary entry, Stable promotion, and rollback.
+P1-06 has completed all 7 implementation items: signed content-addressed packs with SBOMs,
+fail-closed install verification, a control-plane execution boundary, subprocess sandboxed
+subjects, declarative-only registration, tenant-scoped enablement/revocation/stable channels,
+and transactional dependency-checked lifecycle operations.
 
 | Remediation Stage | Checklist Progress | Current Boundary |
 |---|---:|---|
 | **P0** | 146 / 146 | Integrated controlled-execution reference slice |
-| **P1** | 45 / 68 | Governance foundation integrated; evaluation gates, canary routing, and independent release execution persisted |
+| **P1** | 52 / 68 | Governance foundation integrated; evaluation gates, canary routing, and independent release execution persisted |
 | **P2** | 0 / 38 | Production operations and scale work not started |
 
 Checklist progress is an implementation indicator, not a production-readiness percentage.
@@ -204,7 +208,7 @@ Checklist progress is an implementation indicator, not a production-readiness pe
 |---|---|---|
 | **Phase 0** | Reference execution slice `integrated` | Frozen contracts and the Field Service reference Pack reach a Verified Goal through real PostgreSQL, Temporal, OPA and MinIO with a controlled authority simulator. |
 | **Phase 1** | PostgreSQL, Temporal, HTTP/Application, identity and tenant governance slices `integrated` | Frozen OpenAPI and CI consumer tests exist; multi-replica API, production IdP/SCIM and capacity evidence do not. |
-| **Phase 2** | Tool Gateway and Evidence chain `integrated`; otherwise partial `unit-tested` | The reference E2E is archived in CI; a real third-party system, production credentials/KMS and network failure drills remain. |
+| **Phase 2** | Tool Gateway, Evidence chain and Capability Pack supply chain `integrated`; otherwise partial `unit-tested` | The reference E2E is archived in CI; a real third-party system, production credentials/KMS and network failure drills remain. |
 | **Phase 3** | Evaluation and Deployment/Release `unit-tested` | Production Shadow Runtime and Candidate sandbox, Shadow/Release outbox reconciliation, live Run-level routing, and Outcome/LLM/Human Grader backends remain. |
 | **Phase 4** | `specified` | Production operations and hardening are planned only. |
 

@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import importlib
 import inspect
+import json
 import secrets
+import sys
 from collections.abc import Callable
 from typing import Any, Protocol
 from uuid import UUID
@@ -150,6 +153,98 @@ class PackSubjectRuntime:
         return resolved
 
 
+class SandboxedPackSubjectRuntime:
+    """Execute pack subjects in a disposable subprocess with a hard timeout.
+
+    Pack code never runs in the platform process: each execution spawns
+    `python -m autonoesis_adapters.pack_subject_worker`, communicates over JSON
+    on stdin/stdout only, and is killed on timeout. The child holds no tenant
+    credentials, repository access, or Tool Gateway reach (ADR-0035). Failures
+    — nonzero exit, timeout, malformed output — fail closed like every other
+    subject runtime.
+    """
+
+    def __init__(
+        self,
+        store: PlatformStore,
+        *,
+        python_executable: str | None = None,
+        timeout_seconds: float = 30.0,
+    ) -> None:
+        self._store = store
+        self._python = python_executable or sys.executable
+        self._timeout = timeout_seconds
+
+    async def execute_artifact(
+        self,
+        artifact_ref: str,
+        tenant_id: UUID,
+        subject_version_id: UUID,
+        input_payload: dict[str, Any],
+        random_seed: int,
+    ) -> SubjectExecutionResult:
+        entry_point = await self._resolve_subject_entry_point(tenant_id, artifact_ref)
+        module_name, _, function_name = entry_point.partition(":")
+        process = await asyncio.create_subprocess_exec(
+            self._python,
+            "-m",
+            "autonoesis_adapters.pack_subject_worker",
+            module_name,
+            function_name,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        command = json.dumps({"input_payload": input_payload, "random_seed": random_seed})
+        try:
+            stdout, stderr = await asyncio.wait_for(
+                process.communicate(command.encode("utf-8")), timeout=self._timeout
+            )
+        except TimeoutError as exc:
+            process.kill()
+            await process.wait()
+            raise RuntimeError(
+                f"sandboxed subject timed out after {self._timeout}s: {artifact_ref}"
+            ) from exc
+        if process.returncode != 0:
+            detail = stderr.decode("utf-8", errors="replace").strip() or "no stderr"
+            raise RuntimeError(
+                f"sandboxed subject failed for {artifact_ref} (exit {process.returncode}): {detail}"
+            )
+        try:
+            output_payload = json.loads(stdout.decode("utf-8"))
+        except json.JSONDecodeError as exc:
+            raise RuntimeError(f"sandboxed subject output is not JSON: {exc}") from exc
+        if not isinstance(output_payload, dict):
+            raise RuntimeError("sandboxed subject output must be a JSON object")
+        return SubjectExecutionResult(
+            subject_version_id=subject_version_id,
+            output_payload=output_payload,
+            executor_id="sandboxed-pack-subject-runtime@1",
+            evidence_refs=(f"subject://{artifact_ref}/seed/{random_seed}",),
+            environment_ref=f"runtime://pack-sandbox/process/1/exit/{process.returncode}",
+        )
+
+    async def _resolve_subject_entry_point(self, tenant_id: UUID, artifact_ref: str) -> str:
+        parts = artifact_ref.removeprefix("pack://").split("/")
+        if len(parts) != 2 or not all(parts):
+            raise RuntimeError(f"pack artifact reference is malformed: {artifact_ref}")
+        pack_id, version = parts
+        try:
+            manifest = next(
+                item
+                for item in await self._store.list_capability_packs(tenant_id)
+                if item.pack_id == pack_id and item.version == version
+            )
+        except StopIteration as exc:
+            raise RuntimeError(f"capability pack not registered: {artifact_ref}") from exc
+        if manifest.evaluation_subject is None:
+            raise RuntimeError(
+                f"capability pack {pack_id}@{version} declares no evaluation subject"
+            )
+        return manifest.evaluation_subject
+
+
 class ExactMatchGraderBackend(GraderBackend):
     """Independent deterministic rule evaluation over expected outcomes."""
 
@@ -255,5 +350,6 @@ __all__ = [
     "HarnessCandidateEvaluator",
     "InProcessSubjectRuntime",
     "PackSubjectRuntime",
+    "SandboxedPackSubjectRuntime",
     "SubjectRuntime",
 ]

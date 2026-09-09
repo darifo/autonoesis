@@ -9,11 +9,11 @@
 |---|---|
 | `environment.yml` | `217cde3c5f49080c1b35f5a65051770ad2f9952f9cb6aad4a1c1d9a3696c3119` |
 | `pyproject.toml` | `5d38d54e8885bf564eecb9e3978068874c0f52d1a26776273a020624e1fb0e1f` |
-| `uv.lock` | `be26efb181733084deef0b1ae1a277a448e66184b41d08a49cb1cc6a321f9d0b` |
+| `uv.lock` | `fe3762b5c8cceef9bc644672daa38742849b0692981517b0e365e4b7f2a71f87` |
 | `package.json` | `50cb64a759a95e84c47f1cf5fe1cafa0167aa030bf0d5c806bda00eb48cfbf8a` |
 | `pnpm-lock.yaml` | `929ae26bb7e72d59b69b08d5d55c355a963004622e28fdcac443298b7a7bca30` |
 | `versions.lock` | `2eba0942a897865d9933b07445a45e030682b03c200c041cc159d6d753e08644` |
-| `infra/compose/docker-compose.yml` | `791aa3e88dbd4d923882ed468674f95d5a653e9c5f53c48856919175f1c47f79` |
+| `infra/compose/docker-compose.yml` | `2937d87a635f91c5ce31eb75b43bad6b1bf427be548fbea815879d1ffe9ba9f2` |
 
 Configured Compose images (configuration inventory only; not integration evidence):
 
@@ -27,18 +27,18 @@ Configured Compose images (configuration inventory only; not integration evidenc
 
 ## Database Schema Baseline
 
-- Alembic head: `0014_shadow_comparisons`
-- SQLAlchemy metadata digest: `sha256:9014cfd0447b19d4602c4d7d323f29850e10b2f138310f443bf65ace90cccd0e`
-- Declared tables (44): `action_attempts`, `actions`, `agent_versions`, `approvals`, `audit_events`, `breakglass_alerts`, `budget_ledger`, `budgets`, `candidate_evaluations`, `candidates`, `capability_packs`, `context_snapshots`, `deployment_observations`, `deployments`, `environment_facts`, `evaluation_suites`, `evaluation_trials`, `evidence`, `evidence_capture_sagas`, `evidence_deletions`, `goals`, `idempotency_records`, `improvement_proposals`, `inbox`, `kill_switches`, `memory_deletion_edges`, `memory_ledger`, `memory_records`, `outbox`, `outcomes`, `plans`, `platform_audit_events`, `platform_kill_switches`, `policy_versions`, `releases`, `runs`, `shadow_comparisons`, `skill_versions`, `tasks`, `telemetry_records`, `tenant_resource_namespaces`, `tenants`, `tool_versions`, `vector_index_projections`
+- Alembic head: `0015_pack_supply_chain`
+- SQLAlchemy metadata digest: `sha256:d254a09be32d9ee1f21e060028e1a78b9120c96335d937cc05aa36a23b87d0e2`
+- Declared tables (45): `action_attempts`, `actions`, `agent_versions`, `approvals`, `audit_events`, `breakglass_alerts`, `budget_ledger`, `budgets`, `candidate_evaluations`, `candidates`, `capability_pack_channels`, `capability_packs`, `context_snapshots`, `deployment_observations`, `deployments`, `environment_facts`, `evaluation_suites`, `evaluation_trials`, `evidence`, `evidence_capture_sagas`, `evidence_deletions`, `goals`, `idempotency_records`, `improvement_proposals`, `inbox`, `kill_switches`, `memory_deletion_edges`, `memory_ledger`, `memory_records`, `outbox`, `outcomes`, `plans`, `platform_audit_events`, `platform_kill_switches`, `policy_versions`, `releases`, `runs`, `shadow_comparisons`, `skill_versions`, `tasks`, `telemetry_records`, `tenant_resource_namespaces`, `tenants`, `tool_versions`, `vector_index_projections`
 - Evidence level: `integrated`; CI migrates PostgreSQL 17 and runs authority/Application transaction component tests.
 
 ## HTTP API Contract Baseline
 
 - Application contract version: `0.1.0`
 - OpenAPI dialect: `3.1.x`; frozen consumer contract: `openapi-v1`
-- Frozen OpenAPI digest: `sha256:e6a52af86bfdaf8a55daac5fee9531dc5ceba945992acfc768f892dd3f48e2ad`
-- Route source digest: `sha256:8f62786328e5eff59db26aed73533f150c18f2473871c1fffc24f9a715f8b3cd`
-- Declared operations (47):
+- Frozen OpenAPI digest: `sha256:8a5de7dabea91c48b396af88c50797530094b3565867081a75ab3fa23f2ee8ed`
+- Route source digest: `sha256:b3de625c8cd1893ed3502b40347cfe494ee24bcf25bf43d3faab2ecfa9de071d`
+- Declared operations (52):
 
   - `DELETE /v1/kill-switches`
   - `DELETE /v1/platform/break-glass/kill-switch`
@@ -49,6 +49,7 @@ Configured Compose images (configuration inventory only; not integration evidenc
   - `GET /v1/audit-events`
   - `GET /v1/budgets`
   - `GET /v1/capability-packs`
+  - `GET /v1/capability-packs/{pack_id}/stable`
   - `GET /v1/deployments/{deployment_id}/route`
   - `GET /v1/evaluation-suites`
   - `GET /v1/evidence`
@@ -71,6 +72,10 @@ Configured Compose images (configuration inventory only; not integration evidenc
   - `POST /v1/candidates/{candidate_id}/evaluate`
   - `POST /v1/candidates/{candidate_id}/promote`
   - `POST /v1/capability-packs`
+  - `POST /v1/capability-packs/{pack_id}/stable`
+  - `POST /v1/capability-packs/{pack_id}/versions/{version}/disable`
+  - `POST /v1/capability-packs/{pack_id}/versions/{version}/enable`
+  - `POST /v1/capability-packs/{pack_id}/versions/{version}/revoke`
   - `POST /v1/deployments/observations`
   - `POST /v1/deployments/{deployment_id}/canary`
   - `POST /v1/deployments/{deployment_id}/shadow-requests`

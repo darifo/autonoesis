@@ -20,12 +20,14 @@ from autonoesis_adapters import (
     SqlKillSwitchStore,
     SqlPlatformKillSwitchStore,
     SqlShadowWriteGuard,
+    StrictSupplyChainVerifier,
     cached_oidc_validator,
 )
 from autonoesis_application import (
     ActivateGoal,
     AuditEvent,
     CandidateLifecycleService,
+    CapabilityPackService,
     CommandContext,
     ConcurrencyConflict,
     CreateGoal,
@@ -33,6 +35,8 @@ from autonoesis_application import (
     GoalExecutionApplication,
     IdentityContext,
     ImprovementTargetPolicy,
+    PackArtifactVerifier,
+    PackLifecycleCommand,
     ProposeImprovement,
     RecordNotFound,
     RecordObservation,
@@ -114,6 +118,15 @@ class AgentRequest(StrictRequest):
 
 class CapabilityPackRequest(StrictRequest):
     manifest: dict[str, Any]
+
+
+class PackReasonRequest(StrictRequest):
+    reason: str = Field(min_length=8, max_length=1000)
+
+
+class PackStableRequest(StrictRequest):
+    version: str = Field(min_length=5, max_length=64)
+    reason: str = Field(min_length=8, max_length=1000)
 
 
 class ConfigAssetRequest(StrictRequest):
@@ -247,8 +260,11 @@ def build_app(
     evaluation_policy: RepeatedTrialPolicy | None = None,
     shadow_dispatcher: ShadowWorkflowDispatcher | None = None,
     release_dispatcher: ReleaseCommandDispatcher | None = None,
+    pack_verifier: PackArtifactVerifier | None = None,
 ) -> FastAPI:
     platform_store = store or InMemoryPlatformStore()
+    resolved_pack_verifier = pack_verifier or StrictSupplyChainVerifier.from_env()
+    pack_service = CapabilityPackService(platform_store, resolved_pack_verifier)
     breakglass_engine = None
     if platform_kill_switch is None and isinstance(platform_store, PostgreSQLPlatformStore):
         breakglass_url = os.getenv("AUTONOESIS_BREAKGLASS_DATABASE_URL")
@@ -271,8 +287,16 @@ def build_app(
                     raise RuntimeError(
                         "AUTONOESIS_BOOTSTRAP_TENANT_ID is required for a production pack"
                     )
+                # Bootstrap is an operator-controlled file, but PostgreSQL
+                # installs still require supply-chain verification.
+                if resolved_pack_verifier is None:
+                    raise RuntimeError(
+                        "AUTONOESIS_PACK_ALLOWED_SOURCES and AUTONOESIS_PACK_SIGNING_KEYS "
+                        "are required to bootstrap a capability pack"
+                    )
+                await resolved_pack_verifier.verify_install(manifest)
                 tenant_id = UUID(tenant_value)
-                await platform_store.add_capability_pack(tenant_id, manifest)
+                await platform_store.install_pack(tenant_id, manifest)
             else:
                 platform_store.register_pack(manifest)
         yield
@@ -515,9 +539,21 @@ def build_app(
         body: CapabilityPackRequest, context: Identity, _: WriteKey
     ) -> dict[str, Any]:
         require_role(context, {"platform_admin", "tenant_admin", "developer"})
+        if resolved_pack_verifier is None:
+            raise HTTPException(503, "Capability pack verification is not configured")
         manifest = parse_manifest(body.manifest)
-        await platform_store.add_capability_pack(context.tenant_id, manifest)
-        return {"pack_id": manifest.pack_id, "version": manifest.version, "status": "enabled"}
+        try:
+            await pack_service.install_pack(context, manifest)
+        except PermissionError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        return {
+            "pack_id": manifest.pack_id,
+            "version": manifest.version,
+            "artifact_digest": manifest.artifact_digest,
+            "status": "enabled",
+        }
 
     @app.get("/v1/capability-packs", tags=["configuration"])
     async def list_packs(context: Identity) -> list[dict[str, Any]]:
@@ -530,6 +566,71 @@ def build_app(
             }
             for item in await platform_store.list_capability_packs(context.tenant_id)
         ]
+
+    @app.post("/v1/capability-packs/{pack_id}/versions/{version}/disable", tags=["configuration"])
+    async def disable_pack(
+        pack_id: str, version: str, body: PackReasonRequest, context: Identity, _: WriteKey
+    ) -> dict[str, Any]:
+        require_role(context, {"platform_admin", "tenant_admin"})
+        try:
+            await pack_service.disable_pack(
+                context, PackLifecycleCommand(pack_id, version, body.reason)
+            )
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        except RecordNotFound as exc:
+            raise HTTPException(404, str(exc)) from exc
+        return {"pack_id": pack_id, "version": version, "status": "disabled"}
+
+    @app.post("/v1/capability-packs/{pack_id}/versions/{version}/enable", tags=["configuration"])
+    async def enable_pack(
+        pack_id: str, version: str, body: PackReasonRequest, context: Identity, _: WriteKey
+    ) -> dict[str, Any]:
+        require_role(context, {"platform_admin", "tenant_admin"})
+        try:
+            await pack_service.enable_pack(
+                context, PackLifecycleCommand(pack_id, version, body.reason)
+            )
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        except PermissionError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        return {"pack_id": pack_id, "version": version, "status": "enabled"}
+
+    @app.post("/v1/capability-packs/{pack_id}/versions/{version}/revoke", tags=["configuration"])
+    async def revoke_pack(
+        pack_id: str, version: str, body: PackReasonRequest, context: Identity, _: WriteKey
+    ) -> dict[str, Any]:
+        require_role(context, {"platform_admin"})
+        try:
+            await pack_service.revoke_pack(
+                context, PackLifecycleCommand(pack_id, version, body.reason)
+            )
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        return {"pack_id": pack_id, "version": version, "status": "revoked"}
+
+    @app.post("/v1/capability-packs/{pack_id}/stable", tags=["configuration"])
+    async def set_pack_stable(
+        pack_id: str, body: PackStableRequest, context: Identity, _: WriteKey
+    ) -> dict[str, Any]:
+        require_role(context, {"platform_admin", "tenant_admin"})
+        try:
+            await pack_service.set_stable_channel(
+                context, PackLifecycleCommand(pack_id, body.version, body.reason)
+            )
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        except PermissionError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        return {"pack_id": pack_id, "stable_version": body.version}
+
+    @app.get("/v1/capability-packs/{pack_id}/stable", tags=["configuration"])
+    async def get_pack_stable(pack_id: str, context: Identity) -> dict[str, Any]:
+        return {
+            "pack_id": pack_id,
+            "stable_version": await platform_store.get_stable_channel(context.tenant_id, pack_id),
+        }
 
     @app.post("/v1/agents", status_code=201, tags=["configuration"])
     async def create_agent(body: AgentRequest, context: Identity, _: WriteKey) -> dict[str, Any]:

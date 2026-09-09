@@ -26,6 +26,7 @@ from autonoesis_adapters import (
     RegistryControlledEgress,
     SqlKillSwitchStore,
     StaticToolCatalog,
+    StrictSupplyChainVerifier,
 )
 from autonoesis_api.main import build_app
 from autonoesis_application import (
@@ -410,7 +411,14 @@ async def test_field_service_pack_reaches_verified_goal_through_real_components(
     )
     temporal = await Client.connect(os.environ["AUTONOESIS_TEST_TEMPORAL_TARGET"])
     task_queue = f"p008-reference-{uuid4()}"
-    app = build_app(api_store)
+    dev_public_key = (ROOT / "infra/supply-chain/dev-signing-public-key.txt").read_text().strip()
+    app = build_app(
+        api_store,
+        pack_verifier=StrictSupplyChainVerifier(
+            allowed_sources=("artifact://packs/",),
+            public_keys_hex=(dev_public_key,),
+        ),
+    )
     transport = httpx.ASGITransport(app=app)
     try:
         async with httpx.AsyncClient(transport=transport, base_url="http://autonoesis.test") as api:

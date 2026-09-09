@@ -1,0 +1,2 @@
+# Allowed Capability Pack artifact source prefixes (one per line).
+artifact://packs/

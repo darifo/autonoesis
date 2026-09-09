@@ -60,6 +60,8 @@ class InMemoryPlatformStore:
         self.packs: dict[str, CapabilityPackManifest] = {}
         self.tenant_goal_types: dict[tuple[UUID, str], GoalTypeManifest] = {}
         self.tenant_packs: dict[tuple[UUID, str, str], CapabilityPackManifest] = {}
+        self.pack_states: dict[tuple[UUID, str, str], dict[str, bool]] = {}
+        self.pack_channels: dict[tuple[UUID, str], str] = {}
         self.agents: dict[tuple[UUID, str], AgentVersion] = {}
         self.skills: dict[str, dict[str, object]] = {}
         self.tools: dict[str, dict[str, object]] = {}
@@ -125,18 +127,166 @@ class InMemoryPlatformStore:
     def register_agent(self, name: str, version: AgentVersion) -> None:
         self.agents[(version.tenant_id, name)] = version
 
-    async def add_capability_pack(self, tenant_id: UUID, manifest: CapabilityPackManifest) -> None:
-        self.tenant_packs[(tenant_id, manifest.pack_id, manifest.version)] = manifest
-        for goal_type in manifest.goal_types:
-            self.tenant_goal_types[(tenant_id, goal_type.goal_type)] = goal_type
+    async def install_pack(
+        self,
+        tenant_id: UUID,
+        manifest: CapabilityPackManifest,
+        *,
+        actor_id: UUID | None = None,
+    ) -> None:
+        key = (tenant_id, manifest.pack_id, manifest.version)
+        existing = self.tenant_packs.get(key)
+        if existing is not None:
+            from autonoesis_capability import manifest_payload
 
-    async def list_capability_packs(self, tenant_id: UUID) -> tuple[CapabilityPackManifest, ...]:
+            if manifest_payload(existing) != manifest_payload(manifest):
+                raise ValueError(
+                    "capability pack content conflict: "
+                    f"{manifest.pack_id}@{manifest.version} is already installed "
+                    "with different signed content"
+                )
+            return
+        self.tenant_packs[key] = manifest
+        self.pack_states.setdefault(key, {"enabled": True, "revoked": False})
+        self._refresh_tenant_goal_types(tenant_id)
+
+    add_capability_pack = install_pack
+
+    def _refresh_tenant_goal_types(self, tenant_id: UUID) -> None:
+        """Rebuild this tenant's goal-type index from channel-resolved packs."""
+        from autonoesis_capability import compare_versions
+
+        resolved: dict[str, CapabilityPackManifest] = {}
+        for (item_tenant, pack_id, version), item in self.tenant_packs.items():
+            if item_tenant != tenant_id or not self._pack_is_listable(tenant_id, pack_id, version):
+                continue
+            pinned = self.pack_channels.get((tenant_id, pack_id))
+            if pinned is not None and version != pinned:
+                continue
+            current = resolved.get(pack_id)
+            if current is None or (
+                pinned is None and compare_versions(version, current.version) > 0
+            ):
+                resolved[pack_id] = item
+        for goal_key in [key for key in self.tenant_goal_types if key[0] == tenant_id]:
+            del self.tenant_goal_types[goal_key]
+        for pack_id in sorted(resolved):
+            for goal_type in resolved[pack_id].goal_types:
+                self.tenant_goal_types[(tenant_id, goal_type.goal_type)] = goal_type
+
+    def _pack_is_listable(self, tenant_id: UUID, pack_id: str, version: str) -> bool:
+        state = self.pack_states.get(
+            (tenant_id, pack_id, version), {"enabled": True, "revoked": False}
+        )
+        return bool(state.get("enabled")) and not bool(state.get("revoked"))
+
+    async def list_capability_packs(
+        self, tenant_id: UUID, *, include_disabled: bool = False
+    ) -> tuple[CapabilityPackManifest, ...]:
         tenant_items = tuple(
             item
-            for (item_tenant, _, _), item in self.tenant_packs.items()
+            for (item_tenant, pack_id, version), item in sorted(self.tenant_packs.items())
             if item_tenant == tenant_id
+            and (include_disabled or self._pack_is_listable(tenant_id, pack_id, version))
         )
         return tenant_items or tuple(self.packs.values())
+
+    async def get_installed_pack(
+        self, tenant_id: UUID, pack_id: str, version: str
+    ) -> CapabilityPackManifest | None:
+        return self.tenant_packs.get((tenant_id, pack_id, version))
+
+    async def is_pack_revoked(self, tenant_id: UUID, pack_id: str, version: str) -> bool:
+        state = self.pack_states.get((tenant_id, pack_id, version), {})
+        return bool(state.get("revoked"))
+
+    async def set_pack_enabled(
+        self,
+        tenant_id: UUID,
+        pack_id: str,
+        version: str,
+        enabled: bool,
+        *,
+        actor_id: UUID,
+        reason: str,
+    ) -> None:
+        self._require_pack(tenant_id, pack_id, version)
+        self.pack_states.setdefault((tenant_id, pack_id, version), {})
+        self.pack_states[(tenant_id, pack_id, version)]["enabled"] = enabled
+        self._record_pack_fact(
+            tenant_id,
+            "capability_pack.enabled" if enabled else "capability_pack.disabled",
+            pack_id,
+            version,
+            actor_id,
+            reason,
+        )
+        self._refresh_tenant_goal_types(tenant_id)
+
+    async def revoke_pack(
+        self,
+        tenant_id: UUID,
+        pack_id: str,
+        version: str,
+        *,
+        actor_id: UUID,
+        reason: str,
+    ) -> None:
+        self._require_pack(tenant_id, pack_id, version)
+        self.pack_states.setdefault((tenant_id, pack_id, version), {})
+        self.pack_states[(tenant_id, pack_id, version)]["revoked"] = True
+        self.pack_states[(tenant_id, pack_id, version)]["enabled"] = False
+        self._record_pack_fact(
+            tenant_id, "capability_pack.revoked", pack_id, version, actor_id, reason
+        )
+        self._refresh_tenant_goal_types(tenant_id)
+
+    async def set_stable_channel(
+        self, tenant_id: UUID, pack_id: str, version: str, *, actor_id: UUID
+    ) -> None:
+        self._require_pack(tenant_id, pack_id, version)
+        self.pack_channels[(tenant_id, pack_id)] = version
+        self._record_pack_fact(
+            tenant_id,
+            "capability_pack.channel_updated",
+            pack_id,
+            version,
+            actor_id,
+            None,
+        )
+        self._refresh_tenant_goal_types(tenant_id)
+
+    async def get_stable_channel(self, tenant_id: UUID, pack_id: str) -> str | None:
+        return self.pack_channels.get((tenant_id, pack_id))
+
+    def _require_pack(self, tenant_id: UUID, pack_id: str, version: str) -> None:
+        if (tenant_id, pack_id, version) not in self.tenant_packs:
+            raise RecordNotFound(f"capability pack {pack_id}@{version} was not found")
+
+    def _record_pack_fact(
+        self,
+        tenant_id: UUID,
+        event_type: str,
+        pack_id: str,
+        version: str,
+        actor_id: UUID,
+        reason: str | None,
+    ) -> None:
+        details: dict[str, object] = {"pack_id": pack_id, "version": version}
+        if reason:
+            details["reason"] = reason
+        self.audits.append(
+            AuditEvent(
+                tenant_id=tenant_id,
+                actor_id=actor_id,
+                principal_id=actor_id,
+                event_type=event_type,
+                object_type="capability_pack",
+                object_id=f"{pack_id}@{version}",
+                correlation_id=uuid4(),
+                details=details,
+            )
+        )
 
     async def get_goal_type(self, tenant_id: UUID, goal_type: str) -> GoalTypeManifest:
         tenant_item = self.tenant_goal_types.get((tenant_id, goal_type))

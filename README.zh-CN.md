@@ -168,12 +168,15 @@ autonoesis/
 双层禁止的改进目标，以及作为唯一晋升路径的持久化评估证据记录。P1-05 的 10 个实施项已全部
 完成，达到 `unit-tested`：持久化 Deployment/Release、带写抑制的成对 Shadow 执行、
 Stable/Candidate 对比证据、Guardrail 观测与定向自动回滚、确定性可审计的 Canary 流量分配
-规则，以及独占 Canary 进入/Stable 晋升/回滚的独立 Release Executor 工作流。
+规则，以及独占 Canary 进入/Stable 晋升/回滚的独立 Release Executor 工作流。P1-06 的 7 个
+实施项已全部完成：签名内容寻址 Pack 与 SBOM、失败封闭的安装验证、控制面执行边界、
+子进程沙箱 Subject、仅声明式注册、租户级启用/撤销/Stable Channel，以及带依赖复核的
+事务化生命周期操作。
 
 | 整改阶段 | 清单进度 | 当前边界 |
 |---|---:|---|
 | **P0** | 146 / 146 | 受控执行参考纵向切片达到集成级 |
-| **P1** | 45 / 68 | 企业治理基础已集成；评估门禁、Canary 分流规则与独立 Release Executor 已落地 |
+| **P1** | 52 / 68 | 企业治理基础已集成；评估门禁、Canary 分流规则与独立 Release Executor 已落地 |
 | **P2** | 0 / 38 | 生产运维与规模化尚未启动 |
 
 清单进度仅表示实施项完成度，不等于生产就绪百分比。
@@ -182,7 +185,7 @@ Stable/Candidate 对比证据、Guardrail 观测与定向自动回滚、确定�
 |---|---|---|
 | **Phase 0** | 参考执行切片 `integrated` | 冻结契约和 Field Service 参考 Pack 通过真实 PostgreSQL、Temporal、OPA、MinIO 与受控 Authority 模拟器完成 Verified Goal。 |
 | **Phase 1** | PostgreSQL、Temporal、HTTP/Application、身份和租户治理切片 `integrated` | OpenAPI 已冻结并有 Consumer Contract；多副本 API、生产 IdP/SCIM 和容量证据仍缺失。 |
-| **Phase 2** | Tool Gateway 与 Evidence 可信链 `integrated`，其余为部分 `unit-tested` | 参考 E2E 证据进入 CI；真实第三方系统、生产 Credential/KMS 和网络故障演练仍未完成。 |
+| **Phase 2** | Tool Gateway、Evidence 可信链与 Capability Pack 供应链 `integrated`，其余为部分 `unit-tested` | 参考 E2E 证据进入 CI；真实第三方系统、生产 Credential/KMS 和网络故障演练仍未完成。 |
 | **Phase 3** | Evaluation 与 Deployment/Release 为 `unit-tested` | 仍缺生产 Shadow Runtime 与 Candidate 沙箱、Shadow/Release Outbox 对账、Run 级实时路由和 Outcome/LLM/Human Grader 后端。 |
 | **Phase 4** | `specified` | 生产运维和加固仅处于计划状态。 |
 
