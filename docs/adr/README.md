@@ -40,3 +40,4 @@ ADRs record decisions affecting authoritative ownership, process boundaries, pro
 - [ADR-0033: Deterministic Auditable Canary Traffic Allocation](0033-deterministic-canary-traffic-allocation.md)
 - [ADR-0034: Independent Release Executor Owns Release and Rollback](0034-independent-release-executor.md)
 - [ADR-0035: Signed Capability Pack Supply Chain and Sandboxed Execution](0035-signed-pack-supply-chain-and-sandbox.md)
+- [ADR-0036: Real-Signal Observability, Phase Ledger FinOps, and the Live Operations Console](0036-real-signal-observability-and-operations-console.md)

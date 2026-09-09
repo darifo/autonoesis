@@ -71,6 +71,15 @@ class SLORegistry:
         self._measurements[measurement.sli].append(measurement)
 
     async def compute_budget(self, sli: SLI, now: datetime | None = None) -> ErrorBudget:
+        """Compute the sample-weighted error budget for one SLI.
+
+        Each measurement contributes proportionally to its `sample_count`
+        (docs/slo/error-budget-policy.md: budget = (1-SLO) x valid samples).
+        `gte` targets treat shortfalls below the target as consumption; `lte`
+        targets treat excess above it as consumption. Unweighted averages are
+        never used, and an unmeasured SLI reports a full budget rather than a
+        fabricated value.
+        """
         now = now or datetime.now(UTC)
         target = self._targets.get(sli)
         if target is None:
@@ -91,12 +100,21 @@ class SLORegistry:
                 remaining=1.0 - target.target,
             )
 
-        avg = sum(m.value for m in recent) / len(recent)
+        total_samples = sum(max(m.sample_count, 0) for m in recent)
+        if total_samples == 0:
+            # No weighted evidence: fall back to a full budget, never a guess.
+            return ErrorBudget(
+                sli=sli,
+                total_budget=1.0 - target.target,
+                remaining=1.0 - target.target,
+            )
+        weighted_value = sum(m.value * max(m.sample_count, 0) for m in recent) / total_samples
         total_budget = 1.0 - target.target
         if target.operator == "gte":
-            consumed = max(0.0, target.target - avg)
+            shortfall = max(0.0, target.target - weighted_value)
         else:
-            consumed = max(0.0, avg - target.target)
+            shortfall = max(0.0, weighted_value - target.target)
+        consumed = min(shortfall, 1.0)
         remaining = max(0.0, total_budget - consumed)
 
         return ErrorBudget(

@@ -31,6 +31,9 @@ from autonoesis_adapters.persistence_schema import (
     idempotency_records,
     runs,
 )
+from autonoesis_adapters.telemetry import tracer as _gateway_tracer_mod
+
+_gateway_tracer = _gateway_tracer_mod("autonoesis.gateway")
 
 
 class StaticToolCatalog:
@@ -292,6 +295,18 @@ class PostgreSQLAtomicExecutionReservations:
         self._sessions = sessions
 
     async def reserve(self, request: ExecutionReservation) -> ReservationDecision:
+        with _gateway_tracer.start_as_current_span(
+            "autonoesis.gateway.reserve",
+            attributes={
+                "autonoesis.tenant.id": request.tenant_id,
+                "autonoesis.gateway.tool": request.tool_name,
+                "autonoesis.gateway.run.id": request.run_id,
+                "autonoesis.gateway.cost_units": request.cost_units,
+            },
+        ):
+            return await self._reserve(request)
+
+    async def _reserve(self, request: ExecutionReservation) -> ReservationDecision:
         async with self._sessions.begin() as session:
             await session.execute(select(func.set_config("app.tenant_id", request.tenant_id, True)))
             # The authoritative unique constraint is Tenant + Key; the advisory lock must use
@@ -378,7 +393,7 @@ class PostgreSQLAtomicExecutionReservations:
                     id=str(uuid4()),
                     tenant_id=request.tenant_id,
                     run_id=request.run_id,
-                    category="tool_execution",
+                    category="reserve",
                     amount=request.cost_units,
                     unit="cost_units",
                     reference=f"tool-reservation:{reservation_id}",

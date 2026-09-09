@@ -57,7 +57,12 @@ P1-02 企业身份治理、P1-03 可信 Context/Memory 的 `integrated` 声明�
   Dispatch（202 + Workflow ID），未配置 Executor 时 503 失败封闭，真实 Temporal + PostgreSQL
   组件测试验证 Shadow→Canary 规则绑定；生产 Shadow Runtime、Candidate 沙箱、Shadow/Release
   Outbox 对账和 Goal/Run 创建实时路由绑定仍未完成；
-- Cockpit 使用静态演示数据，不从公共 API 获取运营指标；
+- Cockpit 数据页直连真实 API（未配置身份时显式错误状态而非样例回退），运营操作中心
+  覆盖审批/Unknown 对账/Kill Switch/回滚/接管（角色+幂等键+输入目标标识二次确认）；
+  总览页仍为静态演示；控制台身份仍是浏览器本地 dev 头，未接 OIDC；
+- OTel 追踪（API 请求 Span/Worker Temporal 拦截器/权威事实与网关子 Span）、JSON 脱敏
+  日志、审计事件投影的加权 SLO 与四阶段 FinOps 账本均已落地并为 CI 组件测试覆盖；
+  Collector 指标/日志管线、延迟 SLI 事件配对和生产告警演练仍未完成；
 - Compose 含本地默认凭证和公开测试 KMS key；MinIO 镜像已固定摘要，但配置不满足生产
   Secret/KMS 与供应链要求；
 - 完整 Goal → Plan → Task → Action → Evidence → Verified Outcome → Satisfied Goal 已在

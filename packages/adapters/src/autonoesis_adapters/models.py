@@ -6,6 +6,10 @@ from anthropic import AsyncAnthropic
 from autonoesis_runtime import ModelRequest, ModelResponse, ModelUsage
 from openai import AsyncOpenAI
 
+from autonoesis_adapters.telemetry import tracer as _model_tracer_mod
+
+_model_tracer = _model_tracer_mod("autonoesis.models")
+
 
 class FakeModelAdapter:
     provider = "fake"
@@ -34,6 +38,13 @@ class OpenAIResponsesAdapter:
         self._client = client
 
     async def generate(self, model: str, request: ModelRequest) -> ModelResponse:
+        with _model_tracer.start_as_current_span(
+            "autonoesis.model.generate",
+            attributes={"autonoesis.model.name": model},
+        ):
+            return await self._generate(model, request)
+
+    async def _generate(self, model: str, request: ModelRequest) -> ModelResponse:
         response = await self._client.responses.create(
             model=model,
             instructions=request.instruction,

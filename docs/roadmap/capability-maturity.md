@@ -15,8 +15,8 @@
 
 当前 P0 参考纵向切片、PostgreSQL 权威存储、HTTP/Application 用例、Governed Tool Gateway、
 Temporal 耐久编排、Evidence/Outcome/Audit 可信链，以及 P1-01～03 的多租户、身份和可信
-Context/Memory 达到 `integrated`。P1-04 Evaluation 九项、P1-05 Shadow/Canary/Rollback 十项与 P1-06 Pack 供应链七项
-实施项全部完成（Evaluation 与 Release Executor 组件测试经真实 Temporal + PostgreSQL 验证），
+Context/Memory 达到 `integrated`。P1-01～07 全部 68 项实施与退出门槛完成（退出门槛按 CI 组件/安全套件证据等级，
+非 production-proven）（Evaluation 与 Release Executor 组件测试经真实 Temporal + PostgreSQL 验证），
 整体仍为 `unit-tested`；没有任何能力达到 `production-proven`。
 
 ## 当前矩阵
@@ -35,8 +35,8 @@ Context/Memory 达到 `integrated`。P1-04 Evaluation 九项、P1-05 Shadow/Cana
 | Context/Environment/Memory | `integrated` | P1-03 多维 Context ACL、可复现 Snapshot 摘要、冲突/Injection 信号、Memory Write Gate；PostgreSQL Ledger、递归删除传播和向量投影清理 | 生产来源 Connector/DLP、规模化索引重建和数据主体删除演练 |
 | Evaluation | `unit-tested` | Harness 执行固定 Subject Version；Trial 完整保存固定条件与结果；五级 Grader 严格顺序/独立身份/短路门禁；隐藏与生产回放 Case Catalog 隔离；权威 JSON 无损持久化；重复 Trial 以 Wilson 双侧置信区间门禁（下界达标=MET，上界低于阈值=NOT_MET，跨阈值区间继续采样，ADR-0024 修正）；Candidate 固定引用与禁止目标双层拒绝；CandidateEvaluation 证据记录持久化并绑定晋升，caller 决策路径已移除；Suite Catalog 持久化，Pack 声明式 Subject（进程内）+ 独立规则 Grader 后端经真实 Temporal 工作流与 PostgreSQL 组件测试驱动重复 Trial 至置信晋升 | Pack 代码沙箱隔离、Outcome/LLM/Human Grader 后端和长期攻击测试 |
 | Shadow/Canary/Rollback | `unit-tested` | 持久化 Deployment/Release、Active Stable 唯一约束与乐观版本 CAS；每 (租户,部署,阶段,指标) Guardrail 观测计数器；Canary 观察窗口/最小样本/指标缺失拒绝晋升；Guardrail 越界自动回滚目标部署；并发晋升唯一胜出组件测试；Shadow 写抑制（Run 绑定部署 + 执行时拒绝 L2+ 写）；Application Stable/Candidate 并发成对执行端口与逐请求对比证据；Worker 注册 ShadowPair Workflow/Activity；API 使用 Payload-bound 固定 ID Dispatch 到租户 high-risk Pool；Canary 进入绑定确定性可审计 TrafficAllocation（SHA-256 salt+request 分桶，持久化于 Deployment definition，可按 request 重放路由）；独立 ReleaseExecutionWorkflow 以 per-tenant executor/grader 分离身份执行 Canary/Stable/Rollback，API 仅 Dispatch 并在无 Executor 时 503 失败封闭；真实 Temporal + PostgreSQL 组件测试驱动 Shadow→Canary 规则绑定 | 生产 Shadow Runtime、Candidate 沙箱、Shadow/Release Outbox 对账、Goal/Run 创建实时绑定路由和长期攻防演练 |
-| Cockpit | `unit-tested` | CI Vitest/typecheck/build/Playwright；静态样例和成熟度防误报测试 | 真实 API 数据、权限操作和生成 Client 接入 |
-| 可观测性/FinOps/SLO | `modeled` / 部分 `unit-tested` | 配置骨架和纯计算测试 | 真实 Trace/Metric/Ledger、告警和运行演练 |
+| Cockpit | `unit-tested` | CI Vitest/typecheck/build/Playwright；12 个数据页直连真实 API（错误/空状态显式呈现，不回退样例）；运营操作中心覆盖审批/Unknown 对账/Kill Switch/回滚/接管，全部经角色+幂等键+输入目标标识的二次确认 | 生产 OIDC 控制台身份、生成 Client 与真实权限操作演练 |
+| 可观测性/FinOps/SLO | `unit-tested` | OTel SDK 接入 API/Worker/Repository/Gateway/模型适配（OTLP/HTTP，无端点时 no-op）；请求 Span 关联租户/Correlation 并回传 X-Trace-ID，Worker 经 Temporal TracingInterceptor 贯穿；JSON 结构化日志递归脱敏（敏感键+凭证形块）；审计事件投影 SLO 测量（无事件不合成）；SLO 按 sample_count 加权并区分 gte/lte；FinOps 四阶段（预估/预留/结算/重试浪费）经权威 budget_ledger 并按 Run/Goal 汇总 | Collector 指标/日志管线、延迟类 SLI 事件配对、真实告警和生产运行演练 |
 | 多租户隔离 | `integrated` | P1-01 双租户真实 API/PostgreSQL/MinIO/Temporal/Telemetry/Memory/Release 攻击矩阵；独立 Break-glass 审计 | 生产 Bucket Policy、Temporal Namespace 预配、外部 Search/Vector/Telemetry 后端和长期攻防演练 |
 | 生产部署/HA/DR/供应链 | `specified` / 部分 `unit-tested` | 锁文件依赖审计、精确 Secret 基线、CI 哈希证据归档 | P2 部署、签名/SBOM、HA/DR 与长期演练证据 |
 

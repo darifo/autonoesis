@@ -572,25 +572,25 @@ Tenant Authority 的初始化使用独立管理连接，不参与任何隔离断
 
 #### 实施任务
 
-- [ ] API、Worker、Gateway、Repository 和外部 Adapter 接入 OpenTelemetry；
-- [ ] Trace 贯穿 Goal、Run、Task、Action、Approval、Evidence 和 Outcome；
-- [ ] Log 结构化并执行 Secret/PII 脱敏；
-- [ ] Metric 基于真实事件计算，不使用静态或进程内示例数据；
-- [ ] SLO 按 Sample Count 加权并区分 `gte/lte` 目标；
-- [ ] AI FinOps 使用真实账本，区分预估、预留、结算和重试浪费；
-- [ ] Cockpit 通过 API 展示真实状态、版本和审计引用；
-- [ ] 实现 Approval、Unknown Reconciliation、Kill Switch、Rollback 和人工接管操作页；
-- [ ] 所有高风险运营动作要求权限、幂等和二次确认。
+- [x] API、Worker、Gateway、Repository 和外部 Adapter 接入 OpenTelemetry；
+- [x] Trace 贯穿 Goal、Run、Task、Action、Approval、Evidence 和 Outcome；
+- [x] Log 结构化并执行 Secret/PII 脱敏；
+- [x] Metric 基于真实事件计算，不使用静态或进程内示例数据；
+- [x] SLO 按 Sample Count 加权并区分 `gte/lte` 目标；
+- [x] AI FinOps 使用真实账本，区分预估、预留、结算和重试浪费；
+- [x] Cockpit 通过 API 展示真实状态、版本和审计引用；
+- [x] 实现 Approval、Unknown Reconciliation、Kill Switch、Rollback 和人工接管操作页；
+- [x] 所有高风险运营动作要求权限、幂等和二次确认。
 
 #### P1 退出门槛
 
-- [ ] 多租户全链路隔离攻击测试通过；
-- [ ] 企业 OIDC、委托、审批和 Break-glass 流程通过；
-- [ ] Context 与 Memory 不能绕过 ACL/Write Gate；
-- [ ] Candidate 经过真实 Evaluation、Shadow、Canary 后才能 Stable；
-- [ ] Guardrail 越界自动回滚演练通过；
-- [ ] Cockpit 显示和操作真实平台状态；
-- [ ] 每个 Stable Release 都有完整证据链。
+- [x] 多租户全链路隔离攻击测试通过；
+- [x] 企业 OIDC、委托、审批和 Break-glass 流程通过；
+- [x] Context 与 Memory 不能绕过 ACL/Write Gate；
+- [x] Candidate 经过真实 Evaluation、Shadow、Canary 后才能 Stable；
+- [x] Guardrail 越界自动回滚演练通过；
+- [x] Cockpit 显示和操作真实平台状态；
+- [x] 每个 Stable Release 都有完整证据链。
 
 ## 7. P2：生产运维与规模化
 

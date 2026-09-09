@@ -152,6 +152,9 @@ from autonoesis_adapters.persistence_schema import inbox as inbox
 from autonoesis_adapters.persistence_schema import kill_switches as kill_switches
 from autonoesis_adapters.persistence_schema import metadata as metadata
 from autonoesis_adapters.persistence_schema import outbox as outbox
+from autonoesis_adapters.telemetry import tracer as _otel_tracer
+
+_repository_tracer = _otel_tracer("autonoesis.repository")
 
 
 class _ExistingSessionContext:
@@ -1571,6 +1574,30 @@ class SqlAlchemyPlatformRepository:
             )
         return entry_id
 
+    async def list_budget_entries(
+        self, tenant_id: UUID, run_id: UUID
+    ) -> tuple[dict[str, object], ...]:
+        async with self._sessions() as session:
+            await self._scope_tenant(session, tenant_id)
+            rows = (
+                await session.execute(
+                    select(budget_ledger).where(
+                        budget_ledger.c.tenant_id == str(tenant_id),
+                        budget_ledger.c.run_id == str(run_id),
+                    )
+                )
+            ).mappings()
+            return tuple(
+                {
+                    "category": row["category"],
+                    "amount": int(row["amount"]),
+                    "unit": row["unit"],
+                    "reference": row["reference"],
+                    "created_at": row["created_at"],
+                }
+                for row in rows
+            )
+
     async def add_trial(self, trial: Trial) -> None:
         now = datetime.now(UTC)
         async with self._sessions.begin() as session:
@@ -2267,7 +2294,16 @@ class SqlAlchemyPlatformRepository:
             correlation_id=uuid4(),
             details=details if details is not None else {"version": version},
         )
-        await self._add_audit_and_outbox(session, audit, created_at)
+        with _repository_tracer.start_as_current_span(
+            f"autonoesis.fact.{event_type}",
+            attributes={
+                "autonoesis.tenant.id": str(tenant_id),
+                "autonoesis.audit.event_type": event_type,
+                "autonoesis.audit.object_type": object_type,
+                "autonoesis.audit.object_id": str(object_id),
+            },
+        ):
+            await self._add_audit_and_outbox(session, audit, created_at)
 
     async def _add_audit_and_outbox(
         self,

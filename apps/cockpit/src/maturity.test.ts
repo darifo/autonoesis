@@ -18,8 +18,9 @@ describe("runtime maturity presentation", () => {
     });
   });
 
-  it("keeps the static-data disclosure explicit", () => {
-    expect(PROTOTYPE_DISCLOSURE).toContain("静态样例数据");
-    expect(PROTOTYPE_DISCLOSURE).toContain("不代表真实运行状态");
+  it("keeps the live-API and sample-data boundary explicit", () => {
+    expect(PROTOTYPE_DISCLOSURE).toContain("真实平台 API");
+    expect(PROTOTYPE_DISCLOSURE).toContain("错误状态而非样例");
+    expect(PROTOTYPE_DISCLOSURE).toContain("未达生产级");
   });
 });

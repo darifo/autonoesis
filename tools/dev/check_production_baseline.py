@@ -149,9 +149,13 @@ def validate_claim_boundaries() -> list[str]:
             "apps/cockpit/src/main.tsx",
             'data-testid="prototype-banner"',
         ),
-        "Cockpit static-data disclosure": (
+        "Cockpit live-api disclosure": (
             "apps/cockpit/src/maturity.ts",
-            "当前页面使用静态样例数据",
+            "真实平台 API",
+        ),
+        "Cockpit no-sample-fallback disclosure": (
+            "apps/cockpit/src/maturity.ts",
+            "错误状态而非样例",
         ),
         "API engineering-preview phase": (
             "apps/api/src/autonoesis_api/main.py",
@@ -252,7 +256,7 @@ def render_report() -> str:
             "## Maturity Guard Result",
             "",
             "- README engineering-preview disclosure: present.",
-            "- Cockpit Prototype/Demo and static-data disclosure: present.",
+            "- Cockpit Prototype/Demo and live-API/no-sample-fallback disclosure: present.",
             "- Highest allowed current maturity: `integrated` (PostgreSQL authority, "
             "Goal/Run Application use cases, Governed Tool Gateway, Temporal orchestration, "
             "and the Evidence/Outcome/Audit trust chain).",

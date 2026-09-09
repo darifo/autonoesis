@@ -61,6 +61,7 @@ class InMemoryPlatformStore:
         self.tenant_goal_types: dict[tuple[UUID, str], GoalTypeManifest] = {}
         self.tenant_packs: dict[tuple[UUID, str, str], CapabilityPackManifest] = {}
         self.pack_states: dict[tuple[UUID, str, str], dict[str, bool]] = {}
+        self.budget_entries: list[dict[str, object]] = []
         self.pack_channels: dict[tuple[UUID, str], str] = {}
         self.agents: dict[tuple[UUID, str], AgentVersion] = {}
         self.skills: dict[str, dict[str, object]] = {}
@@ -653,8 +654,35 @@ class InMemoryPlatformStore:
         amount: BudgetAmount,
         reference: str,
     ) -> UUID:
-        _ = (tenant_id, run_id, category, amount, reference)
-        return uuid4()
+        entry_id = uuid4()
+        self.budget_entries.append(
+            {
+                "entry_id": entry_id,
+                "tenant_id": tenant_id,
+                "run_id": run_id,
+                "category": category,
+                "amount": amount.amount,
+                "unit": amount.unit.value,
+                "reference": reference,
+                "created_at": datetime.now(UTC),
+            }
+        )
+        return entry_id
+
+    async def list_budget_entries(
+        self, tenant_id: UUID, run_id: UUID
+    ) -> tuple[dict[str, object], ...]:
+        return tuple(
+            {
+                "category": item["category"],
+                "amount": item["amount"],
+                "unit": item["unit"],
+                "reference": item["reference"],
+                "created_at": item["created_at"],
+            }
+            for item in self.budget_entries
+            if item["tenant_id"] == tenant_id and item["run_id"] == run_id
+        )
 
     async def add_trial(self, trial: Trial) -> None:
         self.trials[trial.trial_id] = trial

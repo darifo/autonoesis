@@ -181,11 +181,79 @@ class TestSLO:
                 value=0.92,
                 window_start=now - timedelta(days=1),
                 window_end=now,
+                sample_count=100,
             )
         )
         budget = await registry.compute_budget(SLI.OUTCOME_SUCCESS_RATE, now)
         assert budget.total_budget == pytest.approx(0.05)
-        assert budget.consumed > 0
+        assert budget.consumed == pytest.approx(0.03)
+
+    @pytest.mark.asyncio
+    async def test_budget_is_sample_count_weighted(self) -> None:
+        registry = SLORegistry(
+            targets=(SLOTarget(sli=SLI.OUTCOME_SUCCESS_RATE, target=0.95),),
+        )
+        now = datetime.now(UTC)
+        # A tiny bad batch must not outweigh a large healthy batch: the
+        # unweighted average (0.85) would consume the whole budget.
+        await registry.record(
+            SLOMeasurement(
+                sli=SLI.OUTCOME_SUCCESS_RATE,
+                value=0.90,
+                window_start=now - timedelta(days=1),
+                window_end=now,
+                sample_count=10,
+            )
+        )
+        await registry.record(
+            SLOMeasurement(
+                sli=SLI.OUTCOME_SUCCESS_RATE,
+                value=0.99,
+                window_start=now - timedelta(days=1),
+                window_end=now,
+                sample_count=990,
+            )
+        )
+        budget = await registry.compute_budget(SLI.OUTCOME_SUCCESS_RATE, now)
+        weighted = (0.90 * 10 + 0.99 * 990) / 1000
+        assert budget.consumed == pytest.approx(max(0.0, 0.95 - weighted))
+        assert budget.consumed < 0.01
+
+    @pytest.mark.asyncio
+    async def test_lte_targets_consume_excess_above_threshold(self) -> None:
+        registry = SLORegistry(
+            targets=(SLOTarget(sli=SLI.ACTION_UNKNOWN_RATE, target=0.01, operator="lte"),),
+        )
+        now = datetime.now(UTC)
+        await registry.record(
+            SLOMeasurement(
+                sli=SLI.ACTION_UNKNOWN_RATE,
+                value=0.04,
+                window_start=now - timedelta(days=1),
+                window_end=now,
+                sample_count=50,
+            )
+        )
+        budget = await registry.compute_budget(SLI.ACTION_UNKNOWN_RATE, now)
+        assert budget.consumed == pytest.approx(0.03)
+
+    @pytest.mark.asyncio
+    async def test_zero_sample_measurements_never_fabricate_consumption(self) -> None:
+        registry = SLORegistry(
+            targets=(SLOTarget(sli=SLI.OUTCOME_SUCCESS_RATE, target=0.95),),
+        )
+        now = datetime.now(UTC)
+        await registry.record(
+            SLOMeasurement(
+                sli=SLI.OUTCOME_SUCCESS_RATE,
+                value=0.10,
+                window_start=now - timedelta(days=1),
+                window_end=now,
+            )
+        )
+        budget = await registry.compute_budget(SLI.OUTCOME_SUCCESS_RATE, now)
+        assert budget.consumed == 0.0
+        assert budget.remaining == pytest.approx(0.05)
 
     @pytest.mark.asyncio
     async def test_empty_registry_full_budget(self) -> None:

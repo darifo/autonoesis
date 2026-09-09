@@ -3,3 +3,19 @@
 .pulse{background:#e2a72b;box-shadow:0 0 0 4px #e2a72b1a}.identity b{background:#fff3d8;color:#8a6210}.prototype-banner{min-height:38px;padding:8px 34px;background:#fff7e5;border-bottom:1px solid #efd18f;color:#74520b;display:flex;align-items:center;gap:10px;font-size:11px}.prototype-banner strong{font:700 10px 'Manrope';letter-spacing:.08em;text-transform:uppercase;background:#e6ad32;color:#fff;padding:3px 7px;border-radius:4px}
 @media(max-width:1050px){.hero-grid{grid-template-columns:repeat(3,1fr)}.hero-card{grid-column:1/-1}.sidebar{transform:translateX(-100%);transition:.2s}.sidebar.open{transform:none}.close-nav,.menu,.scrim{display:block}main{margin-left:0}.topbar{padding:0 20px}.topbar .menu{display:block}.prototype-banner{padding:8px 20px}.page{padding:26px 20px}}
 @media(max-width:720px){.hero-grid,.dashboard-grid,.section-grid{grid-template-columns:1fr}.page-header h1{font-size:24px}.identity span{display:none}.flow{overflow:auto;gap:12px}.table-head,.table-row{grid-template-columns:1.2fr 1fr}.table-head span:last-child,.table-row small{display:none}}
+
+/* Live console additions */
+.connection-bar { padding: 14px 18px; margin-bottom: 18px; }
+.connection-bar .link-button { background: none; border: none; color: var(--accent, #6ea8fe); cursor: pointer; padding: 0; font-size: 13px; }
+.connection-form { display: grid; gap: 10px; margin-top: 12px; }
+.connection-form label, .confirm-dialog label, .inline-field { display: grid; gap: 4px; font-size: 12px; color: var(--muted, #98a2b3); }
+.connection-form input, .confirm-dialog input, .inline-field select {
+  padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border, #2a3245);
+  background: var(--surface, #141a28); color: inherit; font-size: 13px;
+}
+.confirm-dialog { display: grid; gap: 10px; padding: 14px; margin-top: 12px; border: 1px solid var(--border, #2a3245); border-radius: 10px; }
+.confirm-dialog .confirm-title { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 13px; }
+.confirm-dialog button { justify-self: start; padding: 8px 14px; border-radius: 8px; border: none; background: #d64545; color: white; cursor: pointer; font-size: 13px; }
+.confirm-dialog button:disabled { opacity: 0.5; cursor: not-allowed; }
+.state-note { padding: 12px 16px; font-size: 13px; color: var(--muted, #98a2b3); }
+.state-note.error { color: #ff9d9d; display: flex; align-items: center; gap: 6px; }

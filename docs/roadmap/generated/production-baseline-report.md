@@ -9,7 +9,7 @@
 |---|---|
 | `environment.yml` | `217cde3c5f49080c1b35f5a65051770ad2f9952f9cb6aad4a1c1d9a3696c3119` |
 | `pyproject.toml` | `5d38d54e8885bf564eecb9e3978068874c0f52d1a26776273a020624e1fb0e1f` |
-| `uv.lock` | `fe3762b5c8cceef9bc644672daa38742849b0692981517b0e365e4b7f2a71f87` |
+| `uv.lock` | `e72ae43b52d046f0eb871b5df85dd4c2c1a293e775ef1916b3fb0c914f319bcd` |
 | `package.json` | `50cb64a759a95e84c47f1cf5fe1cafa0167aa030bf0d5c806bda00eb48cfbf8a` |
 | `pnpm-lock.yaml` | `929ae26bb7e72d59b69b08d5d55c355a963004622e28fdcac443298b7a7bca30` |
 | `versions.lock` | `2eba0942a897865d9933b07445a45e030682b03c200c041cc159d6d753e08644` |
@@ -36,9 +36,9 @@ Configured Compose images (configuration inventory only; not integration evidenc
 
 - Application contract version: `0.1.0`
 - OpenAPI dialect: `3.1.x`; frozen consumer contract: `openapi-v1`
-- Frozen OpenAPI digest: `sha256:8a5de7dabea91c48b396af88c50797530094b3565867081a75ab3fa23f2ee8ed`
-- Route source digest: `sha256:b3de625c8cd1893ed3502b40347cfe494ee24bcf25bf43d3faab2ecfa9de071d`
-- Declared operations (52):
+- Frozen OpenAPI digest: `sha256:d0468d823fb14f401373f05e4b4ac13513917245e4f33aaf8f0a2e8453710c61`
+- Route source digest: `sha256:11504928d1b96baf88e837fc5072d5eeb0ebc6dee88540725c1783d99e9db249`
+- Declared operations (60):
 
   - `DELETE /v1/kill-switches`
   - `DELETE /v1/platform/break-glass/kill-switch`
@@ -53,17 +53,23 @@ Configured Compose images (configuration inventory only; not integration evidenc
   - `GET /v1/deployments/{deployment_id}/route`
   - `GET /v1/evaluation-suites`
   - `GET /v1/evidence`
+  - `GET /v1/finops/goals/{goal_id}`
+  - `GET /v1/finops/runs/{run_id}`
   - `GET /v1/goals`
   - `GET /v1/goals/{goal_id}`
   - `GET /v1/improvement-proposals`
   - `GET /v1/kill-switches`
   - `GET /v1/policies`
   - `GET /v1/releases`
+  - `GET /v1/runs`
   - `GET /v1/runs/{run_id}`
+  - `GET /v1/runs/{run_id}/actions`
   - `GET /v1/runs/{run_id}/events`
   - `GET /v1/skills`
+  - `GET /v1/slos`
   - `GET /v1/tools`
   - `GET /v1/trials`
+  - `POST /v1/actions/{action_id}/reconcile`
   - `POST /v1/agents`
   - `POST /v1/approvals/{approval_id}/decision`
   - `POST /v1/budgets`
@@ -90,6 +96,8 @@ Configured Compose images (configuration inventory only; not integration evidenc
   - `POST /v1/platform/break-glass/kill-switch`
   - `POST /v1/policies`
   - `POST /v1/releases/{release_id}/rollback`
+  - `POST /v1/runs/{run_id}/cancel`
+  - `POST /v1/runs/{run_id}/takeover`
   - `POST /v1/skills`
   - `POST /v1/tools`
 
@@ -103,7 +111,7 @@ Configured Compose images (configuration inventory only; not integration evidenc
 ## Maturity Guard Result
 
 - README engineering-preview disclosure: present.
-- Cockpit Prototype/Demo and static-data disclosure: present.
+- Cockpit Prototype/Demo and live-API/no-sample-fallback disclosure: present.
 - Highest allowed current maturity: `integrated` (PostgreSQL authority, Goal/Run Application use cases, Governed Tool Gateway, Temporal orchestration, and the Evidence/Outcome/Audit trust chain).
 - Real-component integration evidence: CI PostgreSQL 17 migration, Temporal replay/recovery, OPA policy, KMS-backed MinIO retention/version tests, trusted readback, Evidence Saga recovery, chained-audit transaction tests, and the Field Service reference Verified-Goal E2E.
 - Supply-chain gates: Python/npm dependency audit, exact-fingerprint secret scan, and 30-day hash-manifest CI evidence artifacts.

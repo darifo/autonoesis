@@ -11,6 +11,7 @@ from autonoesis_adapters import (
     PostgreSQLPlatformStore,
     SandboxedPackSubjectRuntime,
 )
+from autonoesis_adapters.telemetry import configure_json_logging, configure_telemetry
 from autonoesis_application import CandidateLifecycleService
 from autonoesis_evaluation import RepeatedTrialPolicy
 from autonoesis_runtime import IsolationRiskPool, TenantNamespaces
@@ -178,7 +179,15 @@ async def run_worker() -> None:
         "AUTONOESIS_TEMPORAL_TASK_QUEUE",
         boundaries.workflow_task_queue(risk_pool) if boundaries and risk_pool else "autonoesis",
     )
-    client = await Client.connect(target, namespace=namespace)
+    configure_json_logging("autonoesis-worker")
+    otlp_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+    configure_telemetry("autonoesis-worker", otlp_endpoint)
+    interceptors = []
+    if otlp_endpoint:
+        from temporalio.contrib.opentelemetry import TracingInterceptor
+
+        interceptors = [TracingInterceptor()]
+    client = await Client.connect(target, namespace=namespace, interceptors=interceptors)
     dispatch_database_url = os.environ["AUTONOESIS_DISPATCH_DATABASE_URL"]
     dispatch_engine = create_async_engine(dispatch_database_url, pool_pre_ping=True)
     dispatch_store = PostgreSQLRunDispatchStore(

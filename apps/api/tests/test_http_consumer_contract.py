@@ -38,7 +38,13 @@ def test_all_public_mutations_require_idempotency_and_no_outcome_bypass_exists()
             if parameter.get("in") == "header"
         }
         assert "Idempotency-Key" in headers, operation
-    assert all("actions" not in path or method == "GET" for method, path in operations)
+    # Unknown reconciliation is the one sanctioned action mutation: it resolves
+    # an UNKNOWN execution from authoritative receipts and never fabricates an
+    # outcome directly (the Application layer owns that transition + audit).
+    assert all(
+        "actions" not in path or method == "GET" or path.endswith("/reconcile")
+        for method, path in operations
+    )
     assert all("outcomes" not in path or method == "GET" for method, path in operations)
 
 

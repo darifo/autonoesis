@@ -23,9 +23,18 @@ from autonoesis_adapters import (
     StrictSupplyChainVerifier,
     cached_oidc_validator,
 )
+from autonoesis_adapters.observability import AuditEventSloProjector, CostPhaseLedger
+from autonoesis_adapters.telemetry import (
+    configure_json_logging,
+    configure_telemetry,
+)
+from autonoesis_adapters.telemetry import (
+    tracer as platform_tracer,
+)
 from autonoesis_application import (
     ActivateGoal,
     AuditEvent,
+    CancelRun,
     CandidateLifecycleService,
     CapabilityPackService,
     CommandContext,
@@ -38,10 +47,12 @@ from autonoesis_application import (
     PackArtifactVerifier,
     PackLifecycleCommand,
     ProposeImprovement,
+    ReconcileUnknownAction,
     RecordNotFound,
     RecordObservation,
     RegisterCandidate,
     RequestRun,
+    TakeOverRun,
     TenantBoundaryViolation,
 )
 from autonoesis_capability import ManifestError, load_manifest, parse_manifest
@@ -74,6 +85,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from starlette.middleware.base import BaseHTTPMiddleware
 from temporalio.client import Client
 
 from autonoesis_api.release_dispatch import (
@@ -118,6 +130,17 @@ class AgentRequest(StrictRequest):
 
 class CapabilityPackRequest(StrictRequest):
     manifest: dict[str, Any]
+
+
+class RunControlRequest(StrictRequest):
+    reason: str = Field(min_length=8, max_length=1000)
+
+
+class ReconcileRequest(StrictRequest):
+    invocation_id: UUID
+    succeeded: bool
+    receipt_ref: str = Field(min_length=1, max_length=500)
+    failure_reason: str | None = Field(default=None, max_length=1000)
 
 
 class PackReasonRequest(StrictRequest):
@@ -305,6 +328,12 @@ def build_app(
         if breakglass_engine is not None:
             await breakglass_engine.dispose()
 
+    configure_json_logging("autonoesis-api")
+    configure_telemetry(
+        "autonoesis-api",
+        os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT"),
+    )
+
     app = FastAPI(
         title="Autonoesis API",
         description="Engineering preview of a goal-driven governed agent platform",
@@ -318,6 +347,23 @@ def build_app(
             for status in (400, 401, 403, 404, 409, 422, 500)
         },
     )
+
+    async def bind_request_trace(request: Request, call_next: Any) -> Any:
+        with platform_tracer("autonoesis.api").start_as_current_span(
+            f"{request.method} {request.url.path}",
+            attributes={
+                "http.request.method": request.method,
+                "url.path": request.url.path,
+                "autonoesis.tenant.id": request.headers.get("X-Tenant-ID", "unknown"),
+                "autonoesis.correlation.id": request.headers.get("X-Correlation-ID", "unknown"),
+            },
+        ) as span:
+            response = await call_next(request)
+            span.set_attribute("http.response.status_code", response.status_code)
+            response.headers["X-Trace-ID"] = format(span.get_span_context().trace_id, "032x")
+            return response
+
+    app.add_middleware(BaseHTTPMiddleware, dispatch=bind_request_trace)
     app.state.store = platform_store
     app.state.kill_switch = (
         SqlKillSwitchStore(platform_store.repository.sessions)
@@ -1077,6 +1123,130 @@ def build_app(
             yield "event: snapshot-complete\ndata: {}\n\n"
 
         return StreamingResponse(stream(), media_type="text/event-stream")
+
+    @app.get("/v1/runs", tags=["runs"])
+    async def list_runs(context: Identity, goal_id: UUID | None = None) -> list[dict[str, Any]]:
+        return [
+            run_view(item) for item in await platform_store.list_runs(context.tenant_id, goal_id)
+        ]
+
+    @app.post("/v1/runs/{run_id}/takeover", status_code=202, tags=["runs"])
+    async def take_over_run(
+        run_id: UUID,
+        body: RunControlRequest,
+        request: Request,
+        context: Identity,
+        _: WriteKey,
+    ) -> dict[str, Any]:
+        require_role(context, {"platform_admin", "tenant_admin", "operator"})
+        run = await execution.take_over_run(
+            command_context(request, context, f"takeover:{run_id}", body),
+            TakeOverRun(run_id, body.reason),
+        )
+        return run_view(run)
+
+    @app.post("/v1/runs/{run_id}/cancel", status_code=202, tags=["runs"])
+    async def cancel_run(
+        run_id: UUID,
+        body: RunControlRequest,
+        request: Request,
+        context: Identity,
+        _: WriteKey,
+    ) -> dict[str, Any]:
+        require_role(context, {"platform_admin", "tenant_admin", "operator"})
+        run = await execution.cancel_run(
+            command_context(request, context, f"cancel:{run_id}", body),
+            CancelRun(run_id, body.reason),
+        )
+        return run_view(run)
+
+    @app.get("/v1/runs/{run_id}/actions", tags=["runs"])
+    async def list_run_actions(run_id: UUID, context: Identity) -> list[dict[str, Any]]:
+        await platform_store.get_run(context.tenant_id, run_id)
+        actions: list[dict[str, Any]] = []
+        for action in await platform_store.list_actions(context.tenant_id, run_id):
+            attempts = await platform_store.list_action_attempts(
+                context.tenant_id, action.action_id
+            )
+            actions.append(
+                {
+                    "action_id": action.action_id,
+                    "run_id": action.run_id,
+                    "tool_name": action.tool_name,
+                    "status": action.status.value,
+                    "risk_level": action.risk_level.value,
+                    "attempts": [
+                        {
+                            "attempt_id": attempt.attempt_id,
+                            "status": attempt.status.value,
+                        }
+                        for attempt in attempts
+                    ],
+                }
+            )
+        return actions
+
+    @app.post("/v1/actions/{action_id}/reconcile", status_code=202, tags=["actions"])
+    async def reconcile_unknown_action(
+        action_id: UUID,
+        body: ReconcileRequest,
+        request: Request,
+        context: Identity,
+        _: WriteKey,
+    ) -> dict[str, Any]:
+        require_role(context, {"platform_admin", "tenant_admin", "operator"})
+        action = await execution.reconcile_unknown_action(
+            command_context(request, context, f"reconcile:{action_id}", body),
+            ReconcileUnknownAction(
+                action_id=action_id,
+                invocation_id=body.invocation_id,
+                succeeded=body.succeeded,
+                receipt_ref=body.receipt_ref,
+                executor_identity=str(context.principal_id),
+                failure_reason=body.failure_reason,
+            ),
+        )
+        return {"action_id": action_id, "status": action.status.value}
+
+    @app.get("/v1/slos", tags=["observability"])
+    async def service_levels(context: Identity) -> list[dict[str, Any]]:
+        """Sample-weighted error budgets computed from persisted audit events."""
+        projector = AuditEventSloProjector(platform_store.list_audit_events)
+        registry = await projector.project(context.tenant_id)
+        budgets = []
+        for budget in await registry.all_budgets():
+            budgets.append(
+                {
+                    "sli": budget.sli.value,
+                    "total_budget": budget.total_budget,
+                    "consumed": budget.consumed,
+                    "remaining": budget.remaining,
+                    "exhausted": budget.exhausted,
+                }
+            )
+        return budgets
+
+    @app.get("/v1/finops/runs/{run_id}", tags=["observability"])
+    async def run_finops(run_id: UUID, context: Identity) -> dict[str, Any]:
+        await platform_store.get_run(context.tenant_id, run_id)
+        phases = await CostPhaseLedger(platform_store).summarize_run(context.tenant_id, run_id)
+        return {
+            "run_id": run_id,
+            "phases": phases,
+            "settled_total": phases["settle"],
+            "waste_total": phases["retry_waste"],
+        }
+
+    @app.get("/v1/finops/goals/{goal_id}", tags=["observability"])
+    async def goal_finops(goal_id: UUID, context: Identity) -> dict[str, Any]:
+        ledger = CostPhaseLedger(platform_store)
+        totals = {phase: 0 for phase in ("estimate", "reserve", "settle", "retry_waste")}
+        runs = await platform_store.list_runs(context.tenant_id, goal_id)
+        for run in runs:
+            phases = await ledger.summarize_run(context.tenant_id, run.run_id)
+            for phase in totals:
+                totals[phase] += phases[phase]
+        return {"goal_id": goal_id, "phases": totals, "runs_counted": len(runs)}
 
     @app.get("/v1/approvals", tags=["governance"])
     async def list_approvals(context: Identity) -> list[dict[str, object]]:

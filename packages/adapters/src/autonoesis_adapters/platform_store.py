@@ -6,6 +6,8 @@ from uuid import UUID
 from autonoesis_application import AuditEvent
 from autonoesis_capability import CapabilityPackManifest, GoalTypeManifest
 from autonoesis_domain import (
+    Action,
+    ActionAttempt,
     AgentVersion,
     ApprovalRequest,
     CandidateEvaluation,
@@ -170,6 +172,19 @@ class PostgreSQLPlatformStore:
 
     async def list_runs(self, tenant_id: UUID, goal_id: UUID | None = None) -> tuple[Run, ...]:
         return await self.repository.list_runs(tenant_id, goal_id)
+
+    async def list_actions(self, tenant_id: UUID, run_id: UUID) -> tuple[Action, ...]:
+        return await self.repository.list_actions(tenant_id, run_id)
+
+    async def list_action_attempts(
+        self, tenant_id: UUID, action_id: UUID
+    ) -> tuple[ActionAttempt, ...]:
+        return await self.repository.list_action_attempts(tenant_id, action_id)
+
+    async def list_budget_entries(
+        self, tenant_id: UUID, run_id: UUID
+    ) -> tuple[dict[str, object], ...]:
+        return await self.repository.list_budget_entries(tenant_id, run_id)
 
     async def list_audit_events(self, tenant_id: UUID) -> tuple[AuditEvent, ...]:
         return await self.repository.list_audit_events(tenant_id)

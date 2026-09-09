@@ -194,12 +194,15 @@ and an independent Release Executor workflow owning Canary entry, Stable promoti
 P1-06 has completed all 7 implementation items: signed content-addressed packs with SBOMs,
 fail-closed install verification, a control-plane execution boundary, subprocess sandboxed
 subjects, declarative-only registration, tenant-scoped enablement/revocation/stable channels,
-and transactional dependency-checked lifecycle operations.
+and transactional dependency-checked lifecycle operations. P1-07 completes P1: OpenTelemetry
+across API/worker/repository/gateway, redacting structured logs, audit-event-driven weighted
+SLO budgets, a four-phase FinOps ledger, and a live operations console with typed-confirmation
+high-risk actions. P1 exit gates pass at their current CI evidence level.
 
 | Remediation Stage | Checklist Progress | Current Boundary |
 |---|---:|---|
 | **P0** | 146 / 146 | Integrated controlled-execution reference slice |
-| **P1** | 52 / 68 | Governance foundation integrated; evaluation gates, canary routing, and independent release execution persisted |
+| **P1** | 68 / 68 | Governance foundation integrated; evaluation gates, canary routing, and independent release execution persisted |
 | **P2** | 0 / 38 | Production operations and scale work not started |
 
 Checklist progress is an implementation indicator, not a production-readiness percentage.
