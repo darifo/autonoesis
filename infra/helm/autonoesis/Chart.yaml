@@ -1,0 +1,12 @@
+apiVersion: v2
+name: autonoesis
+description: |
+  Autonoesis governed self-evolving agent operating system (engineering
+  preview). Deploys the API control plane, Temporal worker, and Cockpit
+  console with least-privilege service accounts, default-deny egress, and
+  hardened pod security contexts.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+annotations:
+  autonoesis.io/maturity: "specified"  # chart is CI-lintable only; no production deployment evidence yet

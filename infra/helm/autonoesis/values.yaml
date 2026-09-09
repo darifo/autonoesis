@@ -1,0 +1,85 @@
+# Default values for the Autonoesis engineering-preview chart.
+#
+# SECURITY POSTURE (P2-01): every workload runs as a dedicated non-root
+# ServiceAccount, with a read-only root filesystem, dropped capabilities,
+# seccomp RuntimeDefault, and default-deny egress restricted to the explicit
+# dependencies below. Override per environment; production must provision
+# credentials through a secret manager (externalSecrets), never plain values.
+
+global:
+  imageRegistry: ""            # e.g. ghcr.io/darifo
+  imagePullPolicy: IfNotPresent
+  # Rollout strategy: production should run >=3 replicas across availability
+  # zones with podAntiAffinity (topologyKey: topology.kubernetes.io/zone).
+  availabilityZones: []        # ["eu-central-1a", "eu-central-1b", "eu-central-1c"]
+
+api:
+  enabled: true
+  image: autonoesis-api
+  tag: "0.1.0"
+  replicas: 2
+  resources:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits: { cpu: "2", memory: 2Gi }
+  env:
+    AUTONOESIS_TEMPORAL_START: "true"
+    OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector.observability:4318"
+  service:
+    type: ClusterIP
+    port: 8000
+
+worker:
+  enabled: true
+  image: autonoesis-worker
+  tag: "0.1.0"
+  replicas: 2
+  resources:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits: { cpu: "2", memory: 2Gi }
+
+cockpit:
+  enabled: true
+  image: autonoesis-cockpit
+  tag: "0.1.0"
+  replicas: 2
+  service:
+    type: ClusterIP
+    port: 80
+
+# External dependencies (used by NetworkPolicy allowlists and env wiring).
+dependencies:
+  postgresHost: postgres.data.svc.cluster.local
+  postgresPort: 5432
+  temporalHost: temporal.temporal.svc.cluster.local
+  temporalPort: 7233
+  otelCollectorHost: otel-collector.observability.svc.cluster.local
+  otelCollectorHttpPort: 4318
+  objectStoreEndpoint: http://minio.data.svc.cluster.local:9000
+  opaHost: opa.policy.svc.cluster.local
+  opaPort: 8181
+  # DNS egress is required for service discovery in the allowlist policy.
+  dnsServer: kube-system.kube-dns
+
+# Credentials are referenced from externally provisioned secrets
+# (P2-01: Secret Manager / Vault ownership; the chart never sets raw values).
+secretRefs:
+  database: autonoesis-database
+  temporal: autonoesis-temporal
+  objectStore: autonoesis-object-store
+  packSigning: autonoesis-pack-signing
+
+networkPolicy:
+  enabled: true
+  # Default deny all egress; workloads may only reach the dependencies above.
+
+podSecurity:
+  runAsNonRoot: true
+  runAsUser: 10001
+  readOnlyRootFilesystem: true
+  seccompProfile: RuntimeDefault
+  dropCapabilities: ["ALL"]
+
+resourceQuota:
+  enabled: false
+  requests: { cpu: "8", memory: 16Gi }
+  limits: { cpu: "16", memory: 32Gi }

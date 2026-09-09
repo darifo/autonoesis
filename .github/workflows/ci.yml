@@ -169,6 +169,19 @@ jobs:
           pnpm audit --prod --audit-level high
           --registry=https://registry.npmjs.org --json
           > .artifacts/pnpm-audit.json
+      - name: Generate Python SBOM (CycloneDX)
+        run: >-
+          uvx --from cyclonedx-bom cyclonedx-py requirements
+          .artifacts/python-requirements.txt
+          --output-format JSON
+          --output .artifacts/python-sbom.cdx.json
+      - name: Generate Node SBOM (CycloneDX)
+        run: >-
+          pnpm --filter @autonoesis/cockpit exec cyclonedx-npm
+          --output-file ../../.artifacts/cockpit-sbom.cdx.json
+          --spec-version 1.5 || true
+      - name: Generate Capability Pack SBOM (CycloneDX)
+        run: python tools/security/pack_sbom.py --output .artifacts/capability-packs.cdx.json
       - name: Build security evidence manifest
         if: always()
         run: >-
@@ -177,6 +190,9 @@ jobs:
           --artifact .artifacts/python-requirements.txt
           --artifact .artifacts/pip-audit.json
           --artifact .artifacts/pnpm-audit.json
+          --artifact .artifacts/python-sbom.cdx.json
+          --artifact .artifacts/cockpit-sbom.cdx.json
+          --artifact .artifacts/capability-packs.cdx.json
           --artifact .secret-baseline.toml
       - name: Archive security evidence
         if: always()

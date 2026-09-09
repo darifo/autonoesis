@@ -1,0 +1,62 @@
+{{- $deps := .Values.dependencies -}}
+{{- $workloads := list (dict "name" "api" "values" .Values.api "port" .Values.api.service.port) (dict "name" "worker" "values" .Values.worker "port" nil) (dict "name" "cockpit" "values" .Values.cockpit "port" .Values.cockpit.service.port) -}}
+{{- range $workload := $workloads }}
+{{- if $workload.values.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: autonoesis-{{ $workload.name }}
+  labels:
+    app.kubernetes.io/name: autonoesis
+    app.kubernetes.io/component: {{ $workload.name }}
+spec:
+  replicas: {{ $workload.values.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: autonoesis
+      app.kubernetes.io/component: {{ $workload.name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: autonoesis
+        app.kubernetes.io/component: {{ $workload.name }}
+    spec:
+      serviceAccountName: autonoesis-{{ $workload.name }}
+      {{- if $.Values.global.availabilityZones }}
+      # Spread replicas across the configured availability zones (P2-01).
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: autonoesis
+              app.kubernetes.io/component: {{ $workload.name }}
+      {{- end }}
+      containers:
+        - name: {{ $workload.name }}
+          image: "{{ $.Values.global.imageRegistry }}/{{ $workload.values.image }}:{{ $workload.values.tag }}"
+          imagePullPolicy: {{ $.Values.global.imagePullPolicy }}
+          {{- include "autonoesis.containerSecurityContext" $ | nindent 10 }}
+          resources:
+            {{- toYaml $workload.values.resources | nindent 12 }}
+          {{- if $workload.port }}
+          ports:
+            - name: http
+              containerPort: {{ $workload.port }}
+          {{- end }}
+          env:
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://{{ $deps.otelCollectorHost }}:{{ $deps.otelCollectorHttpPort }}"
+          {{- if ne $workload.name "cockpit" }}
+            # The console holds no platform credentials: it reaches the API
+            # same-origin through the ingress and runs credential-free.
+            - name: AUTONOESIS_DATABASE_URL
+              valueFrom:
+                secretKeyRef: { name: {{ $.Values.secretRefs.database }}, key: url }
+            - name: AUTONOESIS_TEMPORAL_TARGET
+              value: "{{ $deps.temporalHost }}:{{ $deps.temporalPort }}"
+          {{- end }}
+---
+{{- end }}
+{{- end }}

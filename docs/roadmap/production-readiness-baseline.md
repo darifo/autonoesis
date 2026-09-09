@@ -77,8 +77,13 @@ P1-02 企业身份治理、P1-03 可信 Context/Memory 的 `integrated` 声明�
   （JSON IPC + 超时 + 无凭证）执行 Pack Subject；参考 e2e 以仓库内开发密钥
   （infra/supply-chain，仅测试）安装签名 Field Service Pack。生产签名流水线、漏洞/SBOM
   扫描、OS 级沙箱（容器隔离/seccomp）与真实供应链演练仍未完成；
-- Python/npm 依赖审计和精确 Secret 基线已成为 CI 门禁，但尚无签名制品、SBOM、镜像扫描、
-  Provenance 或生产发布供应链证明。
+- Python/npm 依赖审计和精确 Secret 基线已成为 CI 门禁；CI 现生成 Python、Node（Cockpit）
+  与 Capability Pack（签名清单图）的 CycloneDX SBOM 并随安全证据归档；但镜像签名、
+  SAST/IaC 扫描、Provenance 证明与生产发布供应链门禁仍未完成；
+- Kubernetes Helm Chart 已按 P2-01 安全域要求交付（专用 ServiceAccount、默认拒绝
+  Egress 的 NetworkPolicy、只读根文件系统与 seccomp、外部 Secret 引用、配额与跨 AZ
+  topology spread），成熟度 `specified`：未经生产集群部署、滚动升级与 HA/DR 演练；
+  P2 全部检查项保持未勾选，等待真实环境验收。
 
 ## 版本权威
 

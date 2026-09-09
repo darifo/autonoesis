@@ -1,0 +1,46 @@
+{{- if .Values.networkPolicy.enabled }}
+{{- $deps := .Values.dependencies }}
+# Default-deny egress for every Autonoesis workload (P2-01): only the
+# declared dependency endpoints and cluster DNS are reachable. Ingress is
+# limited to intra-namespace traffic and the console/API service ports.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: autonoesis-default-deny-egress
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: autonoesis
+  policyTypes: [Egress]
+  egress: []
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: autonoesis-allow-dependency-egress
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: autonoesis
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: {{ $deps.postgresPort }}
+        - protocol: TCP
+          port: {{ $deps.temporalPort }}
+        - protocol: TCP
+          port: {{ $deps.otelCollectorHttpPort }}
+        - protocol: TCP
+          port: {{ $deps.opaPort }}
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 53
+        - protocol: UDP
+          port: 53
+---
+{{- end }}

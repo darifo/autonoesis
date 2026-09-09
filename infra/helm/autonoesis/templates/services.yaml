@@ -1,0 +1,22 @@
+{{- $workloads := list (dict "name" "api" "values" .Values.api) (dict "name" "cockpit" "values" .Values.cockpit) -}}
+{{- range $workload := $workloads }}
+{{- if $workload.values.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: autonoesis-{{ $workload.name }}
+  labels:
+    app.kubernetes.io/name: autonoesis
+    app.kubernetes.io/component: {{ $workload.name }}
+spec:
+  type: {{ $workload.values.service.type }}
+  selector:
+    app.kubernetes.io/name: autonoesis
+    app.kubernetes.io/component: {{ $workload.name }}
+  ports:
+    - name: http
+      port: {{ $workload.values.service.port }}
+      targetPort: http
+---
+{{- end }}
+{{- end }}
