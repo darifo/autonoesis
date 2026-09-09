@@ -221,7 +221,7 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
       - name: SAST (bandit)
-        run: uvx bandit -r apps packages -ll -f sarif -o .artifacts/bandit.sarif || true
+        run: uvx bandit -r apps packages -ll -f sarif -o .artifacts/bandit.sarif
       - name: Container & IaC misconfiguration scan (trivy)
         uses: aquasecurity/trivy-action@0.28.0
         with:
@@ -229,7 +229,7 @@ jobs:
           scan-ref: .
           scanners: misconfig,secret
           severity: HIGH,CRITICAL
-          exit-code: "0"
+          exit-code: "1"
           output: .artifacts/trivy-misconfig.txt
       - name: Build API image
         run: docker build -t autonoesis-api:ci .
@@ -240,7 +240,7 @@ jobs:
         with:
           image-ref: autonoesis-api:ci
           severity: HIGH,CRITICAL
-          exit-code: "0"
+          exit-code: "1"
           output: .artifacts/trivy-image.txt
       - name: Image SBOM (CycloneDX)
         uses: aquasecurity/trivy-action@0.28.0

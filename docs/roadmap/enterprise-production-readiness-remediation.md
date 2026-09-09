@@ -634,17 +634,17 @@ Tenant Authority 的初始化使用独立管理连接，不参与任何隔离断
 
 ### P2-05 运营与客户交付准备
 
-- [ ] 完成 Provider Failure、Action Unknown、Approval Backlog、Tenant Leakage、Memory Poisoning 和 Rollback Runbook；
-- [ ] 为每个 Runbook 建立定期演练记录；
-- [ ] 建立值班、告警分级、事件响应和客户通知流程；
-- [ ] 建立租户开通、升级、暂停、导出、删除和退出流程；
-- [ ] 发布支持版本、升级窗口、弃用策略和安全响应承诺；
-- [ ] 建立生产变更审批和紧急回滚机制。
+- [x] 完成 Provider Failure、Action Unknown、Approval Backlog、Tenant Leakage、Memory Poisoning 和 Rollback Runbook；
+- [x] 为每个 Runbook 建立定期演练记录；
+- [x] 建立值班、告警分级、事件响应和客户通知流程；
+- [x] 建立租户开通、升级、暂停、导出、删除和退出流程；
+- [x] 发布支持版本、升级窗口、弃用策略和安全响应承诺；
+- [x] 建立生产变更审批和紧急回滚机制。
 
 #### P2 退出门槛
 
 - [ ] 生产基础设施、HA、备份和恢复演练通过；
-- [ ] 供应链签名、SBOM 和安全扫描进入发布门禁；
+- [x] 供应链签名、SBOM 和安全扫描进入发布门禁；
 - [ ] 关键 SLO 有真实指标、告警和 Error Budget Policy；
 - [ ] 容量和混沌测试达到既定门槛；
 - [ ] 运行手册已由非开发人员成功执行；

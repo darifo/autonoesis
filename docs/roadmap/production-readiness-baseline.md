@@ -83,7 +83,8 @@ P1-02 企业身份治理、P1-03 可信 Context/Memory 的 `integrated` 声明�
 - Kubernetes Helm Chart 已按 P2-01 安全域要求交付（专用 ServiceAccount、默认拒绝
   Egress 的 NetworkPolicy、只读根文件系统与 seccomp、外部 Secret 引用、配额与跨 AZ
   topology spread），成熟度 `specified`：未经生产集群部署、滚动升级与 HA/DR 演练；
-  P2 全部检查项保持未勾选，等待真实环境验收。
+  P2 实施项已全部交付并在仓库内验证；退出门槛中生产基础设施/HA、真实告警接线、
+  生产容量门槛、非开发人员 Runbook 执行与试点放行仍待生产环境验收。
 
 ## 版本权威
 

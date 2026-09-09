@@ -38,7 +38,7 @@ Context/Memory 达到 `integrated`。P1-01～07 全部 68 项实施与退出门�
 | Cockpit | `unit-tested` | CI Vitest/typecheck/build/Playwright；12 个数据页直连真实 API（错误/空状态显式呈现，不回退样例）；运营操作中心覆盖审批/Unknown 对账/Kill Switch/回滚/接管，全部经角色+幂等键+输入目标标识的二次确认 | 生产 OIDC 控制台身份、生成 Client 与真实权限操作演练 |
 | 可观测性/FinOps/SLO | `unit-tested` | OTel SDK 接入 API/Worker/Repository/Gateway/模型适配（OTLP/HTTP，无端点时 no-op）；请求 Span 关联租户/Correlation 并回传 X-Trace-ID，Worker 经 Temporal TracingInterceptor 贯穿；JSON 结构化日志递归脱敏（敏感键+凭证形块）；审计事件投影 SLO 测量（无事件不合成）；SLO 按 sample_count 加权并区分 gte/lte；FinOps 四阶段（预估/预留/结算/重试浪费）经权威 budget_ledger 并按 Run/Goal 汇总 | Collector 指标/日志管线、延迟类 SLI 事件配对、真实告警和生产运行演练 |
 | 多租户隔离 | `integrated` | P1-01 双租户真实 API/PostgreSQL/MinIO/Temporal/Telemetry/Memory/Release 攻击矩阵；独立 Break-glass 审计 | 生产 Bucket Policy、Temporal Namespace 预配、外部 Search/Vector/Telemetry 后端和长期攻防演练 |
-| 生产部署/HA/DR/供应链 | `specified` / 部分 `unit-tested` | 锁文件依赖审计、精确 Secret 基线、CI 哈希证据归档；Helm Chart（风险分层 Worker Pool 各配专用 ServiceAccount/默认拒绝 Egress/加固 SecurityContext/ExternalSecret 可选/配额/AZ spread/滚动升级+PDB，CI lint+渲染断言校验）；CI 生成 Python/Node/Capability Pack CycloneDX SBOM 并归档证据；6 个 P2 Runbook（Provider Failure/Approval Backlog/Tenant Leakage/Memory Poisoning/Action Unknown/Rollback） | 生产集群部署与滚动升级演练、镜像签名/Provenance、HA/备份/DR 演练、容量与混沌验证 |
+| 生产部署/HA/DR/供应链 | `specified` / 部分 `unit-tested`（实施项全部交付） | 锁文件依赖审计、精确 Secret 基线、CI 哈希证据归档；Helm Chart（风险分层 Worker Pool 各配专用 ServiceAccount/默认拒绝 Egress/加固 SecurityContext/ExternalSecret 可选/配额/AZ spread/滚动升级+PDB，CI lint+渲染断言校验）；CI 生成 Python/Node/Capability Pack CycloneDX SBOM 并归档证据；6 个 P2 Runbook 与运营流程文档（值班告警/租户生命周期/版本与变更控制）；已执行的真实演练：备份集恢复（schema/RLS/审计链验证）、PITR 时间点恢复、对象存储复制传播；容量基线与混沌注入实测（docs/ops/capacity-model.md） | 生产集群部署与滚动升级、跨区复制、季度完整 DR 切换、非开发人员 Runbook 执行与告警接线等生产验收 |
 
 ## 证据入口
 

@@ -203,7 +203,7 @@ high-risk actions. P1 exit gates pass at their current CI evidence level.
 |---|---:|---|
 | **P0** | 146 / 146 | Integrated controlled-execution reference slice |
 | **P1** | 68 / 68 | Governance foundation integrated; evaluation gates, canary routing, and independent release execution persisted |
-| **P2** | 0 / 38 | Deployment/security-domain Helm chart, CycloneDX SBOMs in CI, and the six operational runbooks delivered as artifacts; checklist items await real-environment acceptance |
+| **P2** | 38 / 38 | All implementation items delivered and validated in-repo (hardened chart with CI render gates, blocking supply-chain scans with SBOMs and provenance, executed backup/PITR/replication drills, measured capacity baselines with chaos injection, operational process docs); production exit drills pending a real environment |
 
 Checklist progress is an implementation indicator, not a production-readiness percentage.
 
