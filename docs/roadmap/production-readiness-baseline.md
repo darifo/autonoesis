@@ -41,7 +41,9 @@ P1-02 企业身份治理、P1-03 可信 Context/Memory 的 `integrated` 声明�
   Trial 不计入绿色率也不折抵最小样本；Candidate 必须携带不可变 Artifact Digest、固定 Suite
   与 Generator 身份，禁止改进目标在 Application 与 OPA 策略层双重拒绝；Candidate 晋升只能
   由持久化 Trial 的置信评估记录（candidate_evaluations）驱动，caller 决策路径已移除，
-  审批必须携带理由；Outcome（权威回读）/LLM（严格裁决对象，解析失败即 unknown）/Human（仅认记录在案的决定）三类 Grader 后端已实现并失败封闭；LLM Judge 经生产提供方适配器（OpenAI 兼容/Anthropic，凭据缺失即失败封闭）接入五级流水线；Suite Catalog 已持久化，Pack 声明式 Subject（进程内执行）与独立规则 Grader 后端经真实
+  审批必须携带理由；Outcome（权威回读）/LLM（严格裁决对象，解析失败即 unknown）/Human（仅认记录在案的决定）三类 Grader 后端已实现并失败封闭；LLM Judge 经生产提供方适配器（OpenAI 兼容/Anthropic，凭据缺失即失败封闭）接入五级流水线，
+  人工裁决以 evaluation.human_decision 审计事件持久化并可按 Case 回放（最新胜出、缺失即
+  unknown），对抗性 Judge 输出（注入/围栏 JSON/超长理由等 14 类）全部失败封闭；Suite Catalog 已持久化，Pack 声明式 Subject（进程内执行）与独立规则 Grader 后端经真实
   Temporal 工作流和 PostgreSQL 组件测试驱动重复 Trial 至置信晋升，生产 Worker 已装配评估器，
   Grader 与 Release Executor 使用 per-tenant 确定性分离身份；沙箱子进程以白名单环境+空
   scratch 工作目录+输出上限运行（绝对路径文件读防御属 OS 级沙箱职责）；

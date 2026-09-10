@@ -15,6 +15,8 @@ from uuid import UUID
 from autonoesis_domain import EvaluationCase, GraderKind, GraderStatus
 from autonoesis_evaluation.pipeline import GraderAssessment, GraderBackend
 
+_MAX_JUDGE_RATIONALE_CHARS = 2000
+
 
 class OutcomeReadback(Protocol):
     """Verify one case's expected outcome against authoritative state."""
@@ -79,6 +81,13 @@ class LlmGraderBackend(GraderBackend):
                 status=GraderStatus.UNKNOWN,
                 score=None,
                 rationale="llm judge verdict must carry a boolean passed and rationale",
+                evidence_refs=(case.case_id,),
+            )
+        if len(rationale) > _MAX_JUDGE_RATIONALE_CHARS:
+            return GraderAssessment(
+                status=GraderStatus.UNKNOWN,
+                score=None,
+                rationale=(f"llm judge rationale exceeds {_MAX_JUDGE_RATIONALE_CHARS} characters"),
                 evidence_refs=(case.case_id,),
             )
         return GraderAssessment(
