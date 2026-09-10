@@ -9,6 +9,12 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { apiDelete, apiPost, newIdempotencyKey } from "./api";
+import type {
+  ApprovalDecisionRequest,
+  HumanDecisionRequest,
+  ReconcileRequest,
+  RunControlRequest,
+} from "./contract";
 import { ConfirmDialog, PageHeader, useApiQuery } from "./pages";
 
 type ApprovalRow = {
@@ -76,12 +82,22 @@ export function OperationsPage() {
             requireText="APPROVE"
             fields={[
               { key: "approval_id", label: "Approval ID", placeholder: "从上方列表复制" },
+              {
+                key: "action_digest",
+                label: "Action 摘要（action_digest，二次确认素材）",
+                placeholder: "从上方列表复制",
+              },
               { key: "reason", label: "决策理由（必填）" },
             ]}
             onSubmit={async (values, key) => {
+              const body: ApprovalDecisionRequest = {
+                approved: true,
+                action_digest: values.action_digest,
+                reason: values.reason,
+              };
               const result = await apiPost(
                 `/v1/approvals/${values.approval_id}/decision`,
-                { approved: true, reason: values.reason },
+                body,
                 key,
               );
               refresh();
@@ -131,14 +147,15 @@ export function OperationsPage() {
               { key: "failure_reason", label: "失败原因（失败时填写）" },
             ]}
             onSubmit={async (values, key) => {
+              const body: ReconcileRequest = {
+                invocation_id: values.invocation_id,
+                succeeded: values.succeeded === "true",
+                receipt_ref: values.receipt_ref,
+                failure_reason: values.failure_reason || null,
+              };
               const result = await apiPost(
                 `/v1/actions/${values.action_id}/reconcile`,
-                {
-                  invocation_id: values.invocation_id,
-                  succeeded: values.succeeded === "true",
-                  receipt_ref: values.receipt_ref,
-                  failure_reason: values.failure_reason || null,
-                },
+                body,
                 key,
               );
               refresh();
@@ -213,11 +230,8 @@ export function OperationsPage() {
             { key: "reason", label: "接管理由（必填）" },
           ]}
           onSubmit={async (values, key) => {
-            const result = await apiPost(
-              `/v1/runs/${values.run_id}/takeover`,
-              { reason: values.reason },
-              key,
-            );
+            const body: RunControlRequest = { reason: values.reason };
+            const result = await apiPost(`/v1/runs/${values.run_id}/takeover`, body, key);
             refresh();
             return result;
           }}
@@ -230,11 +244,8 @@ export function OperationsPage() {
             { key: "reason", label: "取消理由（必填）" },
           ]}
           onSubmit={async (values, key) => {
-            const result = await apiPost(
-              `/v1/runs/${values.run_id}/cancel`,
-              { reason: values.reason },
-              key,
-            );
+            const body: RunControlRequest = { reason: values.reason };
+            const result = await apiPost(`/v1/runs/${values.run_id}/cancel`, body, key);
             refresh();
             return result;
           }}

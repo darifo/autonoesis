@@ -26,7 +26,7 @@ Context/Memory 达到 `integrated`。P1-01～07 全部 68 项实施与退出门�
 | 领域语言与基础状态机 | `integrated` | P0-02 冻结契约；CI 参考 E2E 真实推进 Goal/Run/Task/Action/Evidence/Outcome | 属性测试、长期兼容与生产异常状态演练 |
 | Capability Pack Manifest | `integrated` | Field Service Pack（签名+Digest+SBOM）经真实 API 安装并驱动参考 E2E；来源允许列表/ed25519 签名/内容寻址/同版本内容冲突拒绝/租户 enable-disable-revoke 与 Stable Channel（迁移 0015，事务+审计+Outbox）；API 控制面禁止执行 Pack 代码（架构测试）；Worker 默认子进程沙箱执行 Subject | 生产密钥流水线、漏洞/SBOM 扫描、OS 级沙箱（容器/seccomp）与真实供应链演练 |
 | Goal/Run Application 用例 | `integrated` | PostgreSQL 事务/恢复组件测试；真实 Temporal/Tool/OPA/Evidence 参考 E2E | 真实第三方系统、网络故障和多进程容量演练 |
-| HTTP API/SDK | `integrated` | 冻结 OpenAPI 3.1、Consumer Contract、统一错误 Envelope；参考 E2E 从真实 ASGI API 发起 | 生成 SDK、多副本 API、OIDC 与外部 Consumer 验证 |
+| HTTP API/SDK | `integrated` | 冻结 OpenAPI 3.1、Consumer Contract、统一错误 Envelope；参考 E2E 从真实 ASGI API 发起；Cockpit 经 openapi-typescript 生成 SDK 绑定契约（operations/components 类型 + tsc 断言 + CI 重生成漂移门禁） | 多副本 API、外部 Consumer 验证与独立发布的多语言 SDK |
 | PostgreSQL 权威存储 | `integrated` | CI PostgreSQL 17；Alembic `0001 → 0009`；全租户表强制 RLS 与双租户攻击矩阵 | 备份恢复、故障注入、容量/升级演练和长期运行证据 |
 | Temporal 耐久编排 | `integrated` | CI 真实 Temporal：Outbox/Reconciler、重启/Replay，以及租户化 Workflow ID、Queue、Worker Pool 攻击测试 | Namespace 预配自动化、HA/备份、容量、网络分区和滚动升级演练 |
 | Governed Tool Gateway | `integrated` | PostgreSQL 原子预算/幂等 Reservation、真实 OPA、凭证租约、受控出口和故障语义组件测试 | 生产 Credential Broker、网络层出口策略和第三方系统故障演练 |

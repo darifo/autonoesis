@@ -273,6 +273,11 @@ jobs:
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: Regenerate console SDK and fail on contract drift
+        run: |
+          pnpm --filter @autonoesis/cockpit run gen:api
+          git diff --exit-code apps/cockpit/src/generated/api-schema.ts || \
+            { echo "::error::frozen OpenAPI contract and generated console SDK have drifted; run pnpm --filter @autonoesis/cockpit gen:api and commit both"; exit 1; }
       - name: Prepare evidence directory
         run: mkdir -p .artifacts
       - name: Type check
