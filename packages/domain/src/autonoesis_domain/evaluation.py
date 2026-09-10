@@ -39,6 +39,45 @@ class CaseVisibility(StrEnum):
 
 
 @dataclass(frozen=True, slots=True)
+class TrajectoryStep:
+    """One recorded execution step of an evaluated Subject (ADR-0008 stage 3)."""
+
+    kind: str  # e.g. "tool", "decision", "observation"
+    name: str
+    outcome: str  # "succeeded" | "failed" | "skipped"
+    order: int
+
+    def __post_init__(self) -> None:
+        if not self.kind.strip() or not self.name.strip():
+            raise ValueError("trajectory step requires a kind and a name")
+        if self.order < 0:
+            raise ValueError("trajectory step order cannot be negative")
+
+
+@dataclass(frozen=True, slots=True)
+class TrajectoryRule:
+    """One trajectory expectation: required or forbidden steps, or ordering.
+
+    `forbidden` steps fail on presence; `required` steps fail on absence;
+    `order` rules fail when `before` does not precede `after`.
+    """
+
+    rule_type: str  # "required" | "forbidden" | "order"
+    step: str = ""
+    before: str = ""
+    after: str = ""
+
+    def __post_init__(self) -> None:
+        allowed = {"required", "forbidden", "order"}
+        if self.rule_type not in allowed:
+            raise ValueError(f"trajectory rule type must be one of {sorted(allowed)}")
+        if self.rule_type in {"required", "forbidden"} and not self.step.strip():
+            raise ValueError(f"{self.rule_type} trajectory rule requires a step name")
+        if self.rule_type == "order" and (not self.before.strip() or not self.after.strip()):
+            raise ValueError("order trajectory rule requires before and after steps")
+
+
+@dataclass(frozen=True, slots=True)
 class EvaluationCase:
     case_id: str
     input_payload: dict[str, Any]

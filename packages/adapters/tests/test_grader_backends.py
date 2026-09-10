@@ -318,3 +318,77 @@ class TestHumanDecisionWorkflow:
             "rev",
         )
         assert await source.decision_for(tenant, "c2") is None
+
+
+class TestTrajectoryGrader:
+    @staticmethod
+    def _steps(*names: str) -> tuple[Any, ...]:
+        from autonoesis_domain import TrajectoryStep
+
+        return tuple(
+            TrajectoryStep("tool", name, "succeeded", index) for index, name in enumerate(names)
+        )
+
+    @pytest.mark.asyncio
+    async def test_required_forbidden_and_order_rules(self) -> None:
+        from autonoesis_adapters.graders import (
+            StaticTrajectorySource,
+            TrajectoryGraderBackend,
+        )
+        from autonoesis_domain import TrajectoryRule
+
+        source = StaticTrajectorySource({"c1": self._steps("lookup", "verify", "write")})
+        backend = TrajectoryGraderBackend(
+            source,
+            uuid4(),
+            rules=(
+                TrajectoryRule("required", step="verify"),
+                TrajectoryRule("forbidden", step="shell-exec"),
+                TrajectoryRule("order", before="verify", after="write"),
+            ),
+        )
+        passed = await backend.evaluate(_case(), {})
+        assert passed.status is GraderStatus.PASS
+
+        violated = TrajectoryGraderBackend(
+            source,
+            uuid4(),
+            rules=(
+                TrajectoryRule("required", step="approval"),
+                TrajectoryRule("forbidden", step="write"),
+                TrajectoryRule("order", before="write", after="lookup"),
+            ),
+        )
+        failed = await violated.evaluate(_case(), {})
+        assert failed.status is GraderStatus.FAIL
+        assert "required step missing: approval" in failed.rationale
+        assert "forbidden step present: write" in failed.rationale
+        assert "order violated" in failed.rationale
+
+    @pytest.mark.asyncio
+    async def test_missing_recording_is_unknown_and_ruleless_cases_pass(self) -> None:
+        from autonoesis_adapters.graders import (
+            StaticTrajectorySource,
+            TrajectoryGraderBackend,
+        )
+        from autonoesis_domain import TrajectoryRule
+
+        missing = TrajectoryGraderBackend(
+            StaticTrajectorySource({}), uuid4(), rules=(TrajectoryRule("required", step="x"),)
+        )
+        assert (await missing.evaluate(_case(), {})).status is GraderStatus.UNKNOWN
+
+        ruleless = TrajectoryGraderBackend(StaticTrajectorySource({}), uuid4(), rules=())
+        result = await ruleless.evaluate(_case(), {})
+        assert result.status is GraderStatus.PASS
+        assert "no trajectory expectations" in result.rationale
+
+    def test_malformed_rules_are_rejected_at_construction(self) -> None:
+        from autonoesis_domain import TrajectoryRule
+
+        with pytest.raises(ValueError, match="rule type"):
+            TrajectoryRule("sometimes")
+        with pytest.raises(ValueError, match="step name"):
+            TrajectoryRule("required", step=" ")
+        with pytest.raises(ValueError, match="before and after"):
+            TrajectoryRule("order", before="a")

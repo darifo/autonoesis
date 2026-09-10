@@ -35,7 +35,8 @@ P1-02 企业身份治理、P1-03 可信 Context/Memory 的 `integrated` 声明�
   Memory、Evaluation 和 Release 的双租户隔离，并建立独立 Break-glass 路径；外部
   Search/Vector/Telemetry 后端、生产 Bucket Policy 与长期攻防演练仍未完成；
 - Evaluation Harness 已在单元层执行固定 Subject Version、记录完整 Trial 条件并对缺失执行、
-  基础设施错误和不确定评分失败关闭；五级 Grader 按治理顺序、独立身份和短路门禁执行，
+  基础设施错误和不确定评分失败关闭；五级 Grader 全部实装（确定性、Outcome 权威回读、Trajectory 规则判定——未记录轨迹对有规则的
+  Case 判 unknown、LLM 严格裁决、人工审计链裁决）并按治理顺序、独立身份和短路门禁执行，
   隐藏/生产回放 Case 不向 Generator 暴露；重复 Trial 以 Wilson 双侧置信区间门禁——下界达标即
   MET，上界低于阈值才 NOT_MET，跨阈值区间保持采样而非误判拒绝（ADR-0024 修正），Invalid
   Trial 不计入绿色率也不折抵最小样本；Candidate 必须携带不可变 Artifact Digest、固定 Suite

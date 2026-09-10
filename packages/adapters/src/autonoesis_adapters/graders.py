@@ -12,7 +12,13 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 from uuid import UUID
 
-from autonoesis_domain import EvaluationCase, GraderKind, GraderStatus
+from autonoesis_domain import (
+    EvaluationCase,
+    GraderKind,
+    GraderStatus,
+    TrajectoryRule,
+    TrajectoryStep,
+)
 from autonoesis_evaluation.pipeline import GraderAssessment, GraderBackend
 
 _MAX_JUDGE_RATIONALE_CHARS = 2000
@@ -328,3 +334,89 @@ __all__ += [
     "RecordedHumanGraderBackend",
     "record_human_decision",
 ]
+
+
+class TrajectorySource(Protocol):
+    """Recorded execution trajectories for evaluated cases (ADR-0008)."""
+
+    async def trajectory_for(
+        self, tenant_id: UUID, case_id: str
+    ) -> tuple[TrajectoryStep, ...] | None: ...
+
+
+@dataclass(frozen=True, slots=True)
+class StaticTrajectorySource:
+    """Test/dev source mapping case ids to recorded steps."""
+
+    trajectories: dict[str, tuple[TrajectoryStep, ...]]
+
+    async def trajectory_for(
+        self, tenant_id: UUID, case_id: str
+    ) -> tuple[TrajectoryStep, ...] | None:
+        _ = tenant_id
+        return self.trajectories.get(case_id)
+
+
+@dataclass(frozen=True, slots=True)
+class TrajectoryGraderBackend(GraderBackend):
+    """Grade execution paths against case-declared trajectory rules.
+
+    Cases without rules pass trivially (no trajectory expectation). With
+    rules, a missing recording fails to `unknown` — an unobserved path is
+    never assumed compliant.
+    """
+
+    source: TrajectorySource
+    tenant_id: UUID
+    rules: tuple[TrajectoryRule, ...]
+
+    async def evaluate(
+        self, case: EvaluationCase, actual_output: dict[str, Any]
+    ) -> GraderAssessment:
+        _ = actual_output
+        if not self.rules:
+            return GraderAssessment(
+                status=GraderStatus.PASS,
+                score=1.0,
+                rationale="case declares no trajectory expectations",
+                evidence_refs=(case.case_id,),
+            )
+        steps = await self.source.trajectory_for(self.tenant_id, case.case_id)
+        if not steps:
+            return GraderAssessment(
+                status=GraderStatus.UNKNOWN,
+                score=None,
+                rationale="no recorded trajectory for a case with trajectory rules",
+                evidence_refs=(case.case_id,),
+            )
+        names = [step.name for step in steps]
+        positions = {name: index for index, name in enumerate(names)}
+        violations: list[str] = []
+        for rule in self.rules:
+            if rule.rule_type == "required" and rule.step not in positions:
+                violations.append(f"required step missing: {rule.step}")
+            elif rule.rule_type == "forbidden" and rule.step in positions:
+                violations.append(f"forbidden step present: {rule.step}")
+            elif (
+                rule.rule_type == "order"
+                and rule.before in positions
+                and rule.after in positions
+                and positions[rule.before] > positions[rule.after]
+            ):
+                violations.append(f"order violated: {rule.before} after {rule.after}")
+        if violations:
+            return GraderAssessment(
+                status=GraderStatus.FAIL,
+                score=0.0,
+                rationale="; ".join(violations),
+                evidence_refs=(case.case_id,),
+            )
+        return GraderAssessment(
+            status=GraderStatus.PASS,
+            score=1.0,
+            rationale=f"trajectory satisfies {len(self.rules)} rule(s) over {len(steps)} steps",
+            evidence_refs=(case.case_id,),
+        )
+
+
+__all__ += ["StaticTrajectorySource", "TrajectoryGraderBackend", "TrajectorySource"]

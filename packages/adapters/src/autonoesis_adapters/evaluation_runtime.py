@@ -341,6 +341,7 @@ class HarnessCandidateEvaluator:
         llm_judge: Any = None,
         llm_rubric_version: str = "default-rubric@1",
         human_decisions: Any = None,
+        trajectory_grader: Any = None,
     ) -> None:
         self._store = store
         self._subject_runtime = subject_runtime
@@ -348,6 +349,7 @@ class HarnessCandidateEvaluator:
         self._llm_judge = llm_judge
         self._llm_rubric_version = llm_rubric_version
         self._human_decisions = human_decisions
+        self._trajectory_grader = trajectory_grader
 
     async def evaluate(self, tenant_id: UUID, candidate_id: UUID) -> Any:
         from autonoesis_domain import Trial
@@ -383,6 +385,18 @@ class HarnessCandidateEvaluator:
                         "llm-judge",
                         self._llm_rubric_version,
                         LlmGraderBackend(self._llm_judge, self._llm_rubric_version),
+                    ),
+                )
+            )
+        if self._trajectory_grader is not None:
+            stages.append(
+                GraderStage(
+                    GraderKind.TRAJECTORY,
+                    IndependentGrader(
+                        GraderKind.TRAJECTORY,
+                        "trajectory-rules",
+                        "1",
+                        self._trajectory_grader,
                     ),
                 )
             )
