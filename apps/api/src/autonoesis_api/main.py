@@ -23,7 +23,11 @@ from autonoesis_adapters import (
     StrictSupplyChainVerifier,
     cached_oidc_validator,
 )
-from autonoesis_adapters.observability import AuditEventSloProjector, CostPhaseLedger
+from autonoesis_adapters.observability import (
+    AuditEventSloProjector,
+    CanaryRunRouter,
+    CostPhaseLedger,
+)
 from autonoesis_adapters.telemetry import (
     configure_json_logging,
     configure_telemetry,
@@ -386,6 +390,7 @@ def build_app(
         platform_store.repository,
         platform_store,
         shadow_write_guard=SqlShadowWriteGuard(platform_store),
+        run_deployment_router=CanaryRunRouter(platform_store),
     )
     evolution = CandidateLifecycleService(platform_store, improvement_policy)
     resolved_evaluation_policy = evaluation_policy or configured_evaluation_policy()

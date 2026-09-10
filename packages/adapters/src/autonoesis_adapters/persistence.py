@@ -1841,6 +1841,17 @@ class SqlAlchemyPlatformRepository:
     async def get_deployment(self, tenant_id: UUID, deployment_id: UUID) -> Deployment:
         return deployment_from_row(await self._get_row(deployments, tenant_id, deployment_id))
 
+    async def list_deployments(
+        self, tenant_id: UUID, status: DeploymentStatus | None = None
+    ) -> tuple[Deployment, ...]:
+        async with self._sessions() as session:
+            await self._scope_tenant(session, tenant_id)
+            query = select(deployments).where(deployments.c.tenant_id == str(tenant_id))
+            if status is not None:
+                query = query.where(deployments.c.status == status.value)
+            rows = (await session.execute(query)).mappings()
+            return tuple(deployment_from_row(dict(row)) for row in rows)
+
     async def save_deployment(self, deployment: Deployment) -> None:
         await self._save_versioned(
             deployments,

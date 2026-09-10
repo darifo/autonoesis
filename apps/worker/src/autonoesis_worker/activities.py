@@ -15,6 +15,7 @@ from typing import Protocol
 from uuid import UUID
 
 from autonoesis_adapters import (
+    CanaryRunRouter,
     InMemoryPlatformStore,
     PostgreSQLPlatformStore,
     SqlShadowWriteGuard,
@@ -118,7 +119,10 @@ def build_activity_dependencies(
         store=store,
         application=application
         or GoalExecutionApplication(
-            store.repository, store, shadow_write_guard=SqlShadowWriteGuard(store)
+            store.repository,
+            store,
+            shadow_write_guard=SqlShadowWriteGuard(store),
+            run_deployment_router=CanaryRunRouter(store),
         ),
         evolution=evolution,
         planner=planner,

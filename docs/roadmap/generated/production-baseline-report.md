@@ -37,7 +37,7 @@ Configured Compose images (configuration inventory only; not integration evidenc
 - Application contract version: `0.1.0`
 - OpenAPI dialect: `3.1.x`; frozen consumer contract: `openapi-v1`
 - Frozen OpenAPI digest: `sha256:d0468d823fb14f401373f05e4b4ac13513917245e4f33aaf8f0a2e8453710c61`
-- Route source digest: `sha256:11504928d1b96baf88e837fc5072d5eeb0ebc6dee88540725c1783d99e9db249`
+- Route source digest: `sha256:569baee7deaa9df0e569915a4d00f8034c21ad189abc32e1a4d14339962cc805`
 - Declared operations (60):
 
   - `DELETE /v1/kill-switches`

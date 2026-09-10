@@ -814,6 +814,15 @@ class InMemoryPlatformStore:
     async def add_deployment(self, deployment: Deployment) -> None:
         self.deployments[deployment.deployment_id] = deployment
 
+    async def list_deployments(
+        self, tenant_id: UUID, status: DeploymentStatus | None = None
+    ) -> tuple[Deployment, ...]:
+        return tuple(
+            item
+            for _id, item in sorted(self.deployments.items(), key=lambda entry: entry[0])
+            if item.tenant_id == tenant_id and (status is None or item.status is status)
+        )
+
     async def get_deployment(self, tenant_id: UUID, deployment_id: UUID) -> Deployment:
         try:
             deployment = self.deployments[deployment_id]

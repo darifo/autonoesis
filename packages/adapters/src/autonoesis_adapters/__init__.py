@@ -55,6 +55,11 @@ from autonoesis_adapters.models import (
     OpenAICompatibleAdapter,
     OpenAIResponsesAdapter,
 )
+from autonoesis_adapters.observability import (
+    AuditEventSloProjector,
+    CanaryRunRouter,
+    CostPhaseLedger,
+)
 from autonoesis_adapters.outbox import InboxConsumer, OutboxRelay, OutboxWriter
 from autonoesis_adapters.persistence import (
     SqlAlchemyPlatformRepository,
@@ -71,7 +76,10 @@ from autonoesis_adapters.supply_chain import (
 
 __all__ = [
     "AnthropicMessagesAdapter",
+    "AuditEventSloProjector",
     "Boto3ObjectStore",
+    "CanaryRunRouter",
+    "CostPhaseLedger",
     "DevelopmentPolicy",
     "EphemeralCredentialBroker",
     "ExactMatchGraderBackend",

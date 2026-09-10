@@ -170,6 +170,11 @@ class PostgreSQLPlatformStore:
     async def save_run(self, run: Run, expected_version: int) -> None:
         await self.repository.save_run(run, expected_version)
 
+    async def list_deployments(
+        self, tenant_id: UUID, status: DeploymentStatus | None = None
+    ) -> tuple[Deployment, ...]:
+        return await self.repository.list_deployments(tenant_id, status)
+
     async def list_runs(self, tenant_id: UUID, goal_id: UUID | None = None) -> tuple[Run, ...]:
         return await self.repository.list_runs(tenant_id, goal_id)
 

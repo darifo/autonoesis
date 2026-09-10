@@ -238,3 +238,63 @@ class TestApprovalLatencyPairing:
         budget = await registry.compute_budget(SLI.APPROVAL_LATENCY_P95, now)
         # Latency budgets flag exhaustion (consumption is capped to [0, 1]).
         assert budget.exhausted is True
+
+
+class TestCanaryRunRouter:
+    @staticmethod
+    def _canary_deployment(tenant: UUID, percent: int) -> Any:
+        from autonoesis_domain import Deployment, DeploymentStatus, TrafficAllocation
+
+        deployment = Deployment(
+            tenant_id=tenant,
+            candidate_id=uuid4(),
+            status=DeploymentStatus.SHADOW,
+        )
+        return deployment.enter_canary(
+            TrafficAllocation("router-salt", percent), actor_id=uuid4(), reason="test"
+        )
+
+    @pytest.mark.asyncio
+    async def test_candidate_routes_bind_and_stable_routes_do_not(self) -> None:
+        from autonoesis_adapters import CanaryRunRouter
+
+        tenant = uuid4()
+        store = InMemoryPlatformStore()
+        # A 100% canary binds every run; a 0-traffic rule is rejected by the
+        # domain, so use 1% and separate deterministic assertions instead.
+        deployment = self._canary_deployment(tenant, 100)
+        store.deployments[deployment.deployment_id] = deployment
+
+        router = CanaryRunRouter(store)
+        bound = [
+            run_id for run_id in (uuid4() for _ in range(5)) if await router.resolve(tenant, run_id)
+        ]
+        assert len(bound) == 5
+
+    @pytest.mark.asyncio
+    async def test_stable_route_runs_stay_unbound(self) -> None:
+
+        from autonoesis_adapters import CanaryRunRouter
+
+        tenant = uuid4()
+        store = InMemoryPlatformStore()
+        deployment = self._canary_deployment(tenant, 1)
+        store.deployments[deployment.deployment_id] = deployment
+
+        router = CanaryRunRouter(store)
+        # Deterministic replay: find run ids on both sides of the 1% split.
+        candidate_ids = []
+        stable_ids = []
+        for run_id in (uuid4() for _ in range(400)):
+            if await router.resolve(tenant, run_id):
+                candidate_ids.append(run_id)
+            else:
+                stable_ids.append(run_id)
+        assert candidate_ids and stable_ids
+
+    @pytest.mark.asyncio
+    async def test_no_canary_means_unbound(self) -> None:
+        from autonoesis_adapters import CanaryRunRouter
+
+        router = CanaryRunRouter(InMemoryPlatformStore())
+        assert await router.resolve(uuid4(), uuid4()) is None

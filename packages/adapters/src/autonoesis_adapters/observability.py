@@ -203,4 +203,40 @@ class AuditEventSloProjector:
             )
 
 
-__all__ = ["AuditEventSloProjector", "CostPhase", "CostPhaseLedger"]
+__all__ = [
+    "AuditEventSloProjector",
+    "CanaryRunRouter",
+    "CostPhase",
+    "CostPhaseLedger",
+]
+
+
+class CanaryRunRouter:
+    """Bind Runs to the tenant's active Canary deployment (ADR-0033).
+
+    Picks the tenant's canary deployments deterministically (sorted id), then
+    replays the persisted TrafficAllocation for the run id: only candidate
+    routes bind. Runs on the stable path stay unbound.
+    """
+
+    def __init__(self, store: Any) -> None:
+        self._store = store
+
+    async def resolve(self, tenant_id: UUID, run_id: UUID) -> UUID | None:
+        from autonoesis_domain import DeploymentStatus
+
+        canaries = sorted(
+            [
+                deployment
+                for deployment in await self._store.list_deployments(
+                    tenant_id, DeploymentStatus.CANARY
+                )
+                if deployment.traffic_allocation is not None
+            ],
+            key=lambda deployment: deployment.deployment_id,
+        )
+        if not canaries:
+            return None
+        deployment = canaries[0]
+        route = deployment.assign_request(run_id)
+        return deployment.deployment_id if route.value == "candidate" else None

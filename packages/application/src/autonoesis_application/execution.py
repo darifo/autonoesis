@@ -78,6 +78,16 @@ _WRITE_RISKS = frozenset(
 )
 
 
+class RunDeploymentRouter(Protocol):
+    """Resolve whether a Run executes under a governed deployment.
+
+    Returns the deployment id to bind (Canary candidate route) or None for the
+    stable path. Implementations must be deterministic per run id (ADR-0033).
+    """
+
+    async def resolve(self, tenant_id: UUID, run_id: UUID) -> UUID | None: ...
+
+
 class ShadowWriteGuard(Protocol):
     """Execution-time gate that keeps shadow deployments from producing side effects."""
 
@@ -318,6 +328,7 @@ class GoalExecutionApplication:
         evidence_policy: EvidenceAdmissionPolicy | None = None,
         context_assembler: ContextAssembler | None = None,
         shadow_write_guard: ShadowWriteGuard | None = None,
+        run_deployment_router: RunDeploymentRouter | None = None,
     ) -> None:
         self._repository = repository
         self._catalog = catalog
@@ -328,6 +339,7 @@ class GoalExecutionApplication:
         self._evidence_policy = evidence_policy or EvidenceAdmissionPolicy()
         self._context_assembler = context_assembler or ContextAssembler()
         self._shadow_write_guard = shadow_write_guard
+        self._run_deployment_router = run_deployment_router
         self._outcome_verifier = (
             TrustedOutcomeVerifier(authoritative_readback, evidence_artifacts)
             if authoritative_readback is not None and evidence_artifacts is not None
@@ -407,7 +419,19 @@ class GoalExecutionApplication:
             agent = await self._catalog.get_stable_agent(
                 context.identity.tenant_id, goal_type.agent
             )
-            run = Run(context.identity.tenant_id, goal.goal_id, agent.agent_version_id)
+            run_id = uuid4()
+            deployment_id = (
+                await self._run_deployment_router.resolve(context.identity.tenant_id, run_id)
+                if self._run_deployment_router is not None
+                else None
+            )
+            run = Run(
+                context.identity.tenant_id,
+                goal.goal_id,
+                agent.agent_version_id,
+                run_id=run_id,
+                deployment_id=deployment_id,
+            )
             await self._repository.add_run(run, self._audit(context, "run.requested", run))
             await self._remember(context, key, run.run_id)
             return run
