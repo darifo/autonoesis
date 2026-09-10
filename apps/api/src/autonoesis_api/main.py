@@ -136,6 +136,12 @@ class CapabilityPackRequest(StrictRequest):
     manifest: dict[str, Any]
 
 
+class HumanDecisionRequest(StrictRequest):
+    case_id: str = Field(min_length=1, max_length=200)
+    passed: bool
+    rationale: str = Field(min_length=8, max_length=2000)
+
+
 class RunControlRequest(StrictRequest):
     reason: str = Field(min_length=8, max_length=1000)
 
@@ -1283,6 +1289,33 @@ def build_app(
         return [
             evidence_view(item) for item in await platform_store.list_evidence(context.tenant_id)
         ]
+
+    @app.post("/v1/evaluation/human-decisions", status_code=201, tags=["evaluation"])
+    async def record_human_decision(
+        body: HumanDecisionRequest, context: Identity, _: WriteKey
+    ) -> dict[str, Any]:
+        """Record an authoritative human grading verdict into the audit chain."""
+        require_role(context, {"grader", "approver"})
+        from autonoesis_adapters.graders import (
+            HUMAN_DECISION_EVENT,
+        )
+        from autonoesis_adapters.graders import (
+            record_human_decision as build_event,
+        )
+
+        event = build_event(
+            context.tenant_id,
+            str(body.case_id),
+            passed=body.passed,
+            rationale=body.rationale,
+            reviewer_principal=str(context.principal_id),
+        )
+        await platform_store.record_audit(event)
+        return {
+            "case_id": body.case_id,
+            "event_type": HUMAN_DECISION_EVENT,
+            "status": "recorded",
+        }
 
     @app.get("/v1/evaluation-suites", tags=["evaluation"])
     async def evaluation_suites(context: Identity) -> list[str]:

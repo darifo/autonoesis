@@ -6,6 +6,7 @@ from uuid import uuid4
 import pytest
 from autonoesis_adapters import (
     HumanGraderBackend,
+    InMemoryPlatformStore,
     LlmGraderBackend,
     OutcomeGraderBackend,
 )
@@ -246,3 +247,74 @@ class TestJudgeFactory:
         judge, rubric = built
         assert isinstance(judge, ModelGatewayJudge)
         assert rubric == "default-rubric@1"
+
+
+class TestHumanDecisionWorkflow:
+    @pytest.mark.asyncio
+    async def test_recorded_decisions_grade_and_absent_stay_unknown(self) -> None:
+        from autonoesis_adapters.graders import (
+            AuditHumanDecisionSource,
+            RecordedHumanGraderBackend,
+            record_human_decision,
+        )
+
+        store = InMemoryPlatformStore()
+        tenant = uuid4()
+        await store.record_audit(
+            record_human_decision(
+                tenant, "c1", passed=True, rationale="aligned", reviewer_principal="rev-1"
+            )
+        )
+
+        source = AuditHumanDecisionSource(store)
+        backend = RecordedHumanGraderBackend(source, tenant)
+        graded = await backend.evaluate(_case(), {})
+        assert graded.status is GraderStatus.PASS
+        assert "rev-1" in graded.rationale
+
+        missing = RecordedHumanGraderBackend(AuditHumanDecisionSource(store), uuid4())
+        assert (await missing.evaluate(_case(), {})).status is GraderStatus.UNKNOWN
+
+    @pytest.mark.asyncio
+    async def test_latest_decision_wins_and_malformed_records_stay_unknown(self) -> None:
+        from autonoesis_adapters.graders import (
+            HUMAN_DECISION_EVENT,
+            AuditHumanDecisionSource,
+        )
+        from autonoesis_application import AuditEvent
+
+        store = InMemoryPlatformStore()
+        tenant = uuid4()
+        for passed, rationale in ((True, "first yes"), (False, "superseded by re-review")):
+            await store.record_audit(
+                AuditEvent(
+                    tenant_id=tenant,
+                    actor_id=uuid4(),
+                    principal_id=uuid4(),
+                    event_type=HUMAN_DECISION_EVENT,
+                    object_type="evaluation_case",
+                    object_id="c1",
+                    correlation_id=uuid4(),
+                    details={"passed": passed, "rationale": rationale, "reviewer": "rev"},
+                )
+            )
+        # A malformed record (no reviewer) for another case must not grade.
+        await store.record_audit(
+            AuditEvent(
+                tenant_id=tenant,
+                actor_id=uuid4(),
+                principal_id=uuid4(),
+                event_type=HUMAN_DECISION_EVENT,
+                object_type="evaluation_case",
+                object_id="c2",
+                correlation_id=uuid4(),
+                details={"passed": True, "rationale": "anon"},
+            )
+        )
+        source = AuditHumanDecisionSource(store)
+        assert await source.decision_for(tenant, "c1") == (
+            False,
+            "superseded by re-review",
+            "rev",
+        )
+        assert await source.decision_for(tenant, "c2") is None

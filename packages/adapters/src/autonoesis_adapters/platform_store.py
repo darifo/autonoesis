@@ -191,6 +191,9 @@ class PostgreSQLPlatformStore:
     ) -> tuple[dict[str, object], ...]:
         return await self.repository.list_budget_entries(tenant_id, run_id)
 
+    async def record_audit(self, audit: AuditEvent) -> None:
+        await self.repository.record_audit(audit)
+
     async def list_audit_events(self, tenant_id: UUID) -> tuple[AuditEvent, ...]:
         return await self.repository.list_audit_events(tenant_id)
 

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Protocol
+from uuid import UUID
 
 from autonoesis_domain import EvaluationCase, GraderKind, GraderStatus
 from autonoesis_evaluation.pipeline import GraderAssessment, GraderBackend
@@ -219,3 +220,102 @@ def judge_from_environment() -> tuple[Any, str] | None:
     else:
         return None
     return ModelGatewayJudge(adapter, model=model, rubric=rubric), rubric
+
+
+HUMAN_DECISION_EVENT = "evaluation.human_decision"
+
+
+class AuditHumanDecisionSource:
+    """Read authority-recorded human verdicts from the tenant audit chain.
+
+    A case's decision is the latest `evaluation.human_decision` event for its
+    object id; older decisions are superseded, and the hash chain makes every
+    verdict attributable and tamper-evident.
+    """
+
+    def __init__(self, store: Any) -> None:
+        self._store = store
+
+    async def decision_for(self, tenant_id: UUID, case_id: str) -> tuple[bool, str, str] | None:
+        latest = None
+        for event in await self._store.list_audit_events(tenant_id):
+            if event.event_type != HUMAN_DECISION_EVENT or str(event.object_id) != case_id:
+                continue
+            if latest is None or (event.created_at or latest.created_at) >= (
+                latest.created_at or event.created_at
+            ):
+                latest = event
+        if latest is None:
+            return None
+        details = latest.details or {}
+        passed = details.get("passed")
+        rationale = str(details.get("rationale") or "")
+        reviewer = str(details.get("reviewer") or "")
+        if not isinstance(passed, bool) or not rationale.strip() or not reviewer:
+            return None
+        return passed, rationale, reviewer
+
+
+class RecordedHumanGraderBackend(GraderBackend):
+    """Grade from audit-recorded human decisions; absent records stay unknown."""
+
+    def __init__(self, source: AuditHumanDecisionSource, tenant_id: UUID) -> None:
+        self._source = source
+        self._tenant_id = tenant_id
+
+    async def evaluate(
+        self, case: EvaluationCase, actual_output: dict[str, Any]
+    ) -> GraderAssessment:
+        decision = await self._source.decision_for(self._tenant_id, case.case_id)
+        if decision is None:
+            return GraderAssessment(
+                status=GraderStatus.UNKNOWN,
+                score=None,
+                rationale="no authority-recorded human decision for this case",
+                evidence_refs=(case.case_id,),
+            )
+        passed, rationale, reviewer = decision
+        return GraderAssessment(
+            status=GraderStatus.PASS if passed else GraderStatus.FAIL,
+            score=1.0 if passed else 0.0,
+            rationale=f"[reviewer {reviewer}] {rationale}",
+            evidence_refs=(case.case_id, f"audit://{HUMAN_DECISION_EVENT}/{case.case_id}"),
+        )
+
+
+def record_human_decision(
+    tenant_id: UUID,
+    case_id: str,
+    *,
+    passed: bool,
+    rationale: str,
+    reviewer_principal: str,
+) -> Any:
+    """Build the authority audit event for one recorded human verdict."""
+    from datetime import UTC, datetime
+
+    from autonoesis_application import AuditEvent
+
+    return AuditEvent(
+        tenant_id=tenant_id,
+        actor_id=UUID(int=0),
+        principal_id=UUID(int=0),
+        event_type=HUMAN_DECISION_EVENT,
+        object_type="evaluation_case",
+        object_id=case_id,
+        correlation_id=UUID(int=0),
+        details={
+            "passed": passed,
+            "rationale": rationale,
+            "reviewer": reviewer_principal,
+            "recorded_at": datetime.now(UTC).isoformat(),
+        },
+    )
+
+
+__all__ += [
+    "HUMAN_DECISION_EVENT",
+    "AuditHumanDecisionSource",
+    "RecordedHumanGraderBackend",
+    "record_human_decision",
+]
