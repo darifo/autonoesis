@@ -261,3 +261,74 @@ def test_verifier_requires_configuration() -> None:
         StrictSupplyChainVerifier(allowed_sources=(), public_keys_hex=("ab" * 32,))
     with pytest.raises(ValueError, match="public key"):
         StrictSupplyChainVerifier(allowed_sources=("artifact://packs/",), public_keys_hex=())
+
+
+@pytest.mark.asyncio
+async def test_sandbox_child_environment_carries_no_platform_credentials(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ADR-0035 attack matrix: pack code cannot read platform secrets from env."""
+    monkeypatch.setenv("AUTONOESIS_DATABASE_URL", "postgresql://secret:leak@db/autonoesis")
+    monkeypatch.setenv("AUTONOESIS_PACK_SIGNING_KEYS", "cafebabe" * 8)
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-malicious-target")
+    pack_module = tmp_path / "env_probe_pack"
+    pack_module.mkdir()
+    (pack_module / "plugin.py").write_text(
+        "import os\n"
+        "def subject(input_payload, random_seed):\n"
+        '    return {"env_keys": sorted(os.environ)}\n'
+    )
+    _prepend_pythonpath(monkeypatch, tmp_path)
+    store = InMemoryPlatformStore()
+    tenant = uuid4()
+    await store.add_capability_pack(
+        tenant, parse_manifest(_raw_manifest("env-probe-pack", "1.0.0"))
+    )
+
+    result = await SandboxedPackSubjectRuntime(store).execute_artifact(
+        "pack://env-probe-pack/1.0.0", tenant, uuid4(), {}, 1
+    )
+    leaked = [
+        key
+        for key in result.output_payload["env_keys"]
+        if key.startswith("AUTONOESIS_") or key.endswith("_API_KEY")
+    ]
+    assert leaked == [], f"sandbox env leaked platform variables: {leaked}"
+
+
+@pytest.mark.asyncio
+async def test_sandbox_blocks_oversized_subject_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pack_module = tmp_path / "flood_pack"
+    pack_module.mkdir()
+    (pack_module / "plugin.py").write_text(
+        'def subject(input_payload, random_seed):\n    return {"blob": "x" * (2 * 1024 * 1024)}\n'
+    )
+    _prepend_pythonpath(monkeypatch, tmp_path)
+    store = InMemoryPlatformStore()
+    tenant = uuid4()
+    await store.add_capability_pack(tenant, parse_manifest(_raw_manifest("flood-pack", "1.0.0")))
+    with pytest.raises(RuntimeError, match="exceeded"):
+        await SandboxedPackSubjectRuntime(store).execute_artifact(
+            "pack://flood-pack/1.0.0", tenant, uuid4(), {}, 1
+        )
+
+
+@pytest.mark.asyncio
+async def test_sandbox_refuses_subject_returning_non_object(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pack_module = tmp_path / "scalar_pack"
+    pack_module.mkdir()
+    (pack_module / "plugin.py").write_text(
+        "def subject(input_payload, random_seed):\n    return 42\n"
+    )
+    _prepend_pythonpath(monkeypatch, tmp_path)
+    store = InMemoryPlatformStore()
+    tenant = uuid4()
+    await store.add_capability_pack(tenant, parse_manifest(_raw_manifest("scalar-pack", "1.0.0")))
+    with pytest.raises(RuntimeError, match="sandboxed subject failed"):
+        await SandboxedPackSubjectRuntime(store).execute_artifact(
+            "pack://scalar-pack/1.0.0", tenant, uuid4(), {}, 1
+        )

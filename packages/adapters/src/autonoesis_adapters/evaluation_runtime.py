@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import importlib
 import inspect
 import json
@@ -153,6 +154,18 @@ class PackSubjectRuntime:
         return resolved
 
 
+_MAX_SUBJECT_OUTPUT_BYTES = 1_048_576
+
+_SANDBOX_ENV_ALLOWLIST = ("PATH", "PYTHONPATH", "LANG", "HOME", "TMPDIR")
+
+
+def _scrubbed_child_environment() -> dict[str, str]:
+    """Minimal child environment: everything platform-shaped is withheld."""
+    import os
+
+    return {key: value for key, value in os.environ.items() if key in _SANDBOX_ENV_ALLOWLIST}
+
+
 class SandboxedPackSubjectRuntime:
     """Execute pack subjects in a disposable subprocess with a hard timeout.
 
@@ -194,6 +207,10 @@ class SandboxedPackSubjectRuntime:
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            # The sandbox child holds no platform credentials: only the bare
+            # interpreter environment survives, never database URLs, provider
+            # keys, or telemetry endpoints (ADR-0035 attack surface).
+            env=_scrubbed_child_environment(),
         )
         command = json.dumps({"input_payload": input_payload, "random_seed": random_seed})
         try:
@@ -206,6 +223,14 @@ class SandboxedPackSubjectRuntime:
             raise RuntimeError(
                 f"sandboxed subject timed out after {self._timeout}s: {artifact_ref}"
             ) from exc
+        if len(stdout) > _MAX_SUBJECT_OUTPUT_BYTES:
+            with contextlib.suppress(ProcessLookupError):
+                process.kill()
+                await process.wait()
+            raise RuntimeError(
+                f"sandboxed subject output exceeded {_MAX_SUBJECT_OUTPUT_BYTES} bytes "
+                f"for {artifact_ref}"
+            )
         if process.returncode != 0:
             detail = stderr.decode("utf-8", errors="replace").strip() or "no stderr"
             raise RuntimeError(
