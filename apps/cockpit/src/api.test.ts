@@ -114,3 +114,55 @@ describe("console api client", () => {
     expect(newIdempotencyKey("rollback")).toMatch(/^rollback-[0-9a-f-]{36}$/);
   });
 });
+
+describe("console oidc bearer identity", () => {
+  beforeEach(() => {
+    installLocalStorage();
+    vi.unstubAllGlobals();
+  });
+
+  it("sends only the bearer header when a token is configured", async () => {
+    installLocalStorage({
+      "autonoesis.console.settings": JSON.stringify({
+        baseUrl: "http://api.test",
+        bearerToken: "ey.jwt.token",
+        tenantId: "should-be-ignored",
+        actorId: "ignored-too",
+      }),
+    });
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL, _init?: RequestInit) =>
+        new Response("[]", {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    await apiGet("/v1/goals");
+    const headers = new Headers((fetchMock.mock.calls as Array<[RequestInfo | URL, RequestInit]>)[0][1].headers);
+    expect(headers.get("Authorization")).toBe("Bearer ey.jwt.token");
+    expect(headers.get("X-Tenant-ID")).toBeNull();
+  });
+
+  it("still works with development headers when no token is set", async () => {
+    installLocalStorage({
+      "autonoesis.console.settings": JSON.stringify({
+        baseUrl: "http://api.test",
+        tenantId: "t-1",
+        actorId: "a-1",
+      }),
+    });
+    const fetchMock = vi.fn(
+      async (_input: RequestInfo | URL, _init?: RequestInit) =>
+        new Response("[]", {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    await apiGet("/v1/goals");
+    const headers = new Headers((fetchMock.mock.calls as Array<[RequestInfo | URL, RequestInit]>)[0][1].headers);
+    expect(headers.get("Authorization")).toBeNull();
+    expect(headers.get("X-Tenant-ID")).toBe("t-1");
+  });
+});

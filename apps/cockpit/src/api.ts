@@ -13,6 +13,12 @@ export type ApiSettings = {
   actorId: string;
   principalId: string;
   roles: string;
+  /**
+   * OIDC access token for production deployments (AUTONOESIS_AUTH_MODE=oidc).
+   * When set it replaces the development identity headers entirely; the
+   * platform derives tenant, actor, and roles from the verified token.
+   */
+  bearerToken: string;
 };
 
 const SETTINGS_KEY = "autonoesis.console.settings";
@@ -23,6 +29,7 @@ export const DEFAULT_SETTINGS: ApiSettings = {
   actorId: "",
   principalId: "",
   roles: "tenant_admin,operator,approver,release_executor",
+  bearerToken: "",
 };
 
 export function loadSettings(): ApiSettings {
@@ -53,11 +60,11 @@ export class ApiError extends Error {
 
 function requireSettings(): ApiSettings {
   const settings = loadSettings();
-  if (!settings.tenantId || !settings.actorId) {
+  if (!settings.bearerToken && (!settings.tenantId || !settings.actorId)) {
     throw new ApiError(
       0,
       "console_not_configured",
-      "请先在“连接设置”中填写租户与操作者身份（X-Tenant-ID / X-Actor-ID）。",
+      "请先在“连接设置”中填写 OIDC 令牌（生产）或租户与操作者身份（本地开发）。",
     );
   }
   return settings;
@@ -102,6 +109,10 @@ export async function apiDelete<T>(path: string, idempotencyKey?: string): Promi
 }
 
 function identityHeaders(settings: ApiSettings): Record<string, string> {
+  if (settings.bearerToken) {
+    // OIDC mode: the verified token is the sole identity source.
+    return { Authorization: `Bearer ${settings.bearerToken}` };
+  }
   return {
     "X-Tenant-ID": settings.tenantId,
     "X-Actor-ID": settings.actorId,

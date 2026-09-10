@@ -102,6 +102,7 @@ export function ConnectionBar() {
           {(
             [
               ["baseUrl", "API 地址"],
+              ["bearerToken", "OIDC 令牌（生产模式；填写后忽略下列开发头）"],
               ["tenantId", "租户 ID (X-Tenant-ID)"],
               ["actorId", "操作者 (X-Actor-ID)"],
               ["principalId", "Principal ID"],
@@ -128,9 +129,9 @@ export function ConnectionBar() {
           </button>
         </div>
       )}
-      {!settings.tenantId && (
+      {!settings.bearerToken && !settings.tenantId && (
         <p className="state-note error">
-          未配置租户身份：所有真实数据页面将显示错误状态（不会回退到样例数据）。
+          未配置身份（OIDC 令牌或开发头）：所有真实数据页面将显示错误状态（不会回退到样例数据）。
         </p>
       )}
     </div>

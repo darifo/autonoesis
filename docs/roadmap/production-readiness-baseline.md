@@ -59,7 +59,8 @@ P1-02 企业身份治理、P1-03 可信 Context/Memory 的 `integrated` 声明�
   Outbox 对账和 Goal/Run 创建实时路由绑定仍未完成；
 - Cockpit 数据页直连真实 API（未配置身份时显式错误状态而非样例回退），运营操作中心
   覆盖审批/Unknown 对账/Kill Switch/回滚/接管（角色+幂等键+输入目标标识二次确认）；
-  总览页仍为静态演示；控制台身份仍是浏览器本地 dev 头，未接 OIDC；
+  总览页仍为静态演示；控制台已支持 OIDC Bearer 令牌（配置后取代开发头并走平台既有
+  OIDC 验证），令牌获取流程（IdP 登录跳转）仍需部署环境；
 - OTel 追踪（API 请求 Span/Worker Temporal 拦截器/权威事实与网关子 Span）、JSON 脱敏
   日志、审计事件投影的加权 SLO 与四阶段 FinOps 账本均已落地并为 CI 组件测试覆盖；
   Collector 指标（Prometheus :8889）/日志管线与 SEV 分级告警规则已定义
