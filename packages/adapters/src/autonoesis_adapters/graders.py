@@ -176,3 +176,46 @@ class ModelGatewayJudge:
         )
         output: str = response.output_text
         return output
+
+
+def judge_from_environment() -> tuple[Any, str] | None:
+    """Build a production LLM judge from provider environment (fail closed).
+
+    Requires an explicit judge model plus matching provider credentials:
+    OpenAI-compatible (``AUTONOESIS_LLM_JUDGE_PROVIDER=openai`` with
+    ``OPENAI_API_KEY``, optional ``OPENAI_BASE_URL``) or Anthropic
+    (``provider=anthropic`` with ``ANTHROPIC_API_KEY``). Any missing piece
+    returns None — the pipeline stays deterministic-only rather than grading
+    with a synthetic model.
+    """
+    import os
+
+    model = os.getenv("AUTONOESIS_LLM_JUDGE_MODEL", "").strip()
+    if not model:
+        return None
+    provider = os.getenv("AUTONOESIS_LLM_JUDGE_PROVIDER", "openai").strip().lower()
+    rubric = os.getenv("AUTONOESIS_LLM_JUDGE_RUBRIC", "default-rubric@1")
+
+    adapter: Any
+    if provider == "openai":
+        api_key = os.getenv("OPENAI_API_KEY", "").strip()
+        if not api_key:
+            return None
+        from openai import AsyncOpenAI
+
+        from autonoesis_adapters.models import OpenAICompatibleAdapter
+
+        client = AsyncOpenAI(api_key=api_key, base_url=os.getenv("OPENAI_BASE_URL") or None)
+        adapter = OpenAICompatibleAdapter(client)
+    elif provider == "anthropic":
+        api_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
+        if not api_key:
+            return None
+        from anthropic import AsyncAnthropic
+
+        from autonoesis_adapters.models import AnthropicMessagesAdapter
+
+        adapter = AnthropicMessagesAdapter(AsyncAnthropic(api_key=api_key))
+    else:
+        return None
+    return ModelGatewayJudge(adapter, model=model, rubric=rubric), rubric

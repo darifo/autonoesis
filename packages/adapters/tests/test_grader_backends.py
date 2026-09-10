@@ -214,3 +214,35 @@ class TestModelGatewayJudge:
         # Both grader kinds ran and recorded results.
         kinds = {result.kind for result in trial.case_results[0].grader_results}
         assert kinds == {GraderKind.DETERMINISTIC, GraderKind.LLM}
+
+
+class TestJudgeFactory:
+    def test_no_config_yields_no_judge(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from autonoesis_adapters.graders import judge_from_environment
+
+        monkeypatch.delenv("AUTONOESIS_LLM_JUDGE_MODEL", raising=False)
+        assert judge_from_environment() is None
+
+    def test_missing_provider_credentials_fail_closed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from autonoesis_adapters.graders import judge_from_environment
+
+        monkeypatch.setenv("AUTONOESIS_LLM_JUDGE_MODEL", "gpt-judge")
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        for provider in ("openai", "anthropic", "unknown"):
+            monkeypatch.setenv("AUTONOESIS_LLM_JUDGE_PROVIDER", provider)
+            assert judge_from_environment() is None
+
+    def test_openai_credentials_build_gateway_judge(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from autonoesis_adapters.graders import ModelGatewayJudge, judge_from_environment
+
+        monkeypatch.setenv("AUTONOESIS_LLM_JUDGE_MODEL", "gpt-judge")
+        monkeypatch.setenv("AUTONOESIS_LLM_JUDGE_PROVIDER", "openai")
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test-only")
+        built = judge_from_environment()
+        assert built is not None
+        judge, rubric = built
+        assert isinstance(judge, ModelGatewayJudge)
+        assert rubric == "default-rubric@1"

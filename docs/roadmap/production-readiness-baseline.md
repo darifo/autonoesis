@@ -41,10 +41,10 @@ P1-02 企业身份治理、P1-03 可信 Context/Memory 的 `integrated` 声明�
   Trial 不计入绿色率也不折抵最小样本；Candidate 必须携带不可变 Artifact Digest、固定 Suite
   与 Generator 身份，禁止改进目标在 Application 与 OPA 策略层双重拒绝；Candidate 晋升只能
   由持久化 Trial 的置信评估记录（candidate_evaluations）驱动，caller 决策路径已移除，
-  审批必须携带理由；Outcome（权威回读）/LLM（严格裁决对象，解析失败即 unknown）/Human（仅认记录在案的决定）三类 Grader 后端已实现并失败封闭；Suite Catalog 已持久化，Pack 声明式 Subject（进程内执行）与独立规则 Grader 后端经真实
+  审批必须携带理由；Outcome（权威回读）/LLM（严格裁决对象，解析失败即 unknown）/Human（仅认记录在案的决定）三类 Grader 后端已实现并失败封闭；LLM Judge 经生产提供方适配器（OpenAI 兼容/Anthropic，凭据缺失即失败封闭）接入五级流水线；Suite Catalog 已持久化，Pack 声明式 Subject（进程内执行）与独立规则 Grader 后端经真实
   Temporal 工作流和 PostgreSQL 组件测试驱动重复 Trial 至置信晋升，生产 Worker 已装配评估器，
-  Grader 与 Release Executor 使用 per-tenant 确定性分离身份；Pack 代码沙箱隔离与
-  Outcome/LLM/Human Grader 后端仍未完成；
+  Grader 与 Release Executor 使用 per-tenant 确定性分离身份；沙箱子进程以白名单环境+空
+  scratch 工作目录+输出上限运行（绝对路径文件读防御属 OS 级沙箱职责）；
 - Candidate/Shadow/Canary 已持久化 Deployment/Release、Active Stable 唯一约束与乐观版本 CAS；
   Canary 晋升受观察窗口、最小样本和指标缺失拒绝门禁约束，Guardrail 越界自动回滚且按
   (租户, 部署, 阶段, 指标) 隔离，并发晋升唯一胜出有组件测试；Shadow 写抑制已落地——Run 可选
@@ -55,8 +55,8 @@ P1-02 企业身份治理、P1-03 可信 Context/Memory 的 `integrated` 声明�
   salt+request 分桶，持久化于 Deployment definition 并可按 request 重放路由）；独立
   `ReleaseExecutionWorkflow` 是 Canary/Stable/Rollback 的唯一执行路径——API 仅做状态预检与
   Dispatch（202 + Workflow ID），未配置 Executor 时 503 失败封闭，真实 Temporal + PostgreSQL
-  组件测试验证 Shadow→Canary 规则绑定；生产 Shadow Runtime、Candidate 沙箱、Shadow/Release
-  Outbox 对账和 Goal/Run 创建实时路由绑定仍未完成；
+  组件测试验证 Shadow→Canary 规则绑定；生产 Shadow Runtime、Candidate OS 级沙箱与 Shadow/Release
+  Outbox 对账仍未完成（Goal/Run 创建实时路由绑定已落地：Run 按 Canary 规则确定性绑定部署）；
 - Cockpit 数据页直连真实 API（未配置身份时显式错误状态而非样例回退），运营操作中心
   覆盖审批/Unknown 对账/Kill Switch/回滚/接管（角色+幂等键+输入目标标识二次确认）；
   总览页仍为静态演示；控制台已支持 OIDC Bearer 令牌（配置后取代开发头并走平台既有

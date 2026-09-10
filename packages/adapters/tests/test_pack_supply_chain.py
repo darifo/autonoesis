@@ -332,3 +332,28 @@ async def test_sandbox_refuses_subject_returning_non_object(
         await SandboxedPackSubjectRuntime(store).execute_artifact(
             "pack://scalar-pack/1.0.0", tenant, uuid4(), {}, 1
         )
+
+
+@pytest.mark.asyncio
+async def test_sandbox_relative_file_access_lands_in_empty_scratch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Relative reads must not reach repository files (ADR-0035 hardening)."""
+    pack_module = tmp_path / "cwd_probe_pack"
+    pack_module.mkdir()
+    (pack_module / "plugin.py").write_text(
+        "import os\n"
+        "def subject(input_payload, random_seed):\n"
+        '    return {"cwd": os.getcwd(), "listing": sorted(os.listdir(\'.\'))}\n'
+    )
+    _prepend_pythonpath(monkeypatch, tmp_path)
+    store = InMemoryPlatformStore()
+    tenant = uuid4()
+    await store.add_capability_pack(
+        tenant, parse_manifest(_raw_manifest("cwd-probe-pack", "1.0.0"))
+    )
+    result = await SandboxedPackSubjectRuntime(store).execute_artifact(
+        "pack://cwd-probe-pack/1.0.0", tenant, uuid4(), {}, 1
+    )
+    assert "autonoesis-sandbox-" in result.output_payload["cwd"]
+    assert result.output_payload["listing"] == []

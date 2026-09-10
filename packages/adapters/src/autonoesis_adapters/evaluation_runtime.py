@@ -187,6 +187,14 @@ class SandboxedPackSubjectRuntime:
         self._store = store
         self._python = python_executable or sys.executable
         self._timeout = timeout_seconds
+        self._scratch: str | None = None
+
+    def _scratch_directory(self) -> str:
+        import tempfile
+
+        if self._scratch is None:
+            self._scratch = tempfile.mkdtemp(prefix="autonoesis-sandbox-")
+        return self._scratch
 
     async def execute_artifact(
         self,
@@ -209,8 +217,12 @@ class SandboxedPackSubjectRuntime:
             stderr=asyncio.subprocess.PIPE,
             # The sandbox child holds no platform credentials: only the bare
             # interpreter environment survives, never database URLs, provider
-            # keys, or telemetry endpoints (ADR-0035 attack surface).
+            # keys, or telemetry endpoints (ADR-0035 attack surface). The
+            # working directory is an empty scratch dir so relative file
+            # access cannot reach repository state; absolute-path reads
+            # remain an OS-level sandbox responsibility.
             env=_scrubbed_child_environment(),
+            cwd=self._scratch_directory(),
         )
         command = json.dumps({"input_payload": input_payload, "random_seed": random_seed})
         try:
