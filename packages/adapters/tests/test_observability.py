@@ -195,3 +195,46 @@ class TestAuditEventSloProjector:
         budget = await registry.compute_budget(SLI.OUTCOME_SUCCESS_RATE)
         assert budget.consumed == 0.0
         assert budget.remaining == pytest.approx(0.05)
+
+
+class TestApprovalLatencyPairing:
+    @staticmethod
+    def _audit(tenant: UUID, event_type: str, when: datetime, object_id: str) -> AuditEvent:
+        return AuditEvent(
+            tenant_id=tenant,
+            actor_id=uuid4(),
+            principal_id=uuid4(),
+            event_type=event_type,
+            object_type="approval",
+            object_id=object_id,
+            correlation_id=uuid4(),
+            details={},
+            created_at=when,
+        )
+
+    @pytest.mark.asyncio
+    async def test_p95_latency_pairs_requests_with_decisions(self) -> None:
+        tenant = uuid4()
+        now = datetime.now(UTC)
+        events = [
+            # Paired: requested 10 minutes ago, approved 4 minutes ago -> 6 min.
+            self._audit(tenant, "approval.requested", now - timedelta(minutes=10), "a-1"),
+            self._audit(tenant, "approval.approved", now - timedelta(minutes=4), "a-1"),
+            # Orphan request (no decision yet) must not contribute.
+            self._audit(tenant, "approval.requested", now - timedelta(minutes=2), "a-2"),
+            # Decision without a request cannot be timed.
+            self._audit(tenant, "approval.rejected", now - timedelta(minutes=1), "a-3"),
+        ]
+
+        async def sourced(_: UUID) -> tuple[Any, ...]:
+            return tuple(events)
+
+        registry = await AuditEventSloProjector(sourced).project(tenant, now=now)
+        measurements = registry._measurements[SLI.APPROVAL_LATENCY_P95]
+        assert len(measurements) == 1
+        # Exactly one paired decision contributes; orphans never fabricate samples.
+        assert measurements[0].sample_count == 1
+        assert measurements[0].value == pytest.approx(6 * 60 * 1000)  # 6 minutes in ms
+        budget = await registry.compute_budget(SLI.APPROVAL_LATENCY_P95, now)
+        # Latency budgets flag exhaustion (consumption is capped to [0, 1]).
+        assert budget.exhausted is True

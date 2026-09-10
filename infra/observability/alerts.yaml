@@ -1,0 +1,38 @@
+# Alert rules over the metrics the platform already exports (P2 exit-gate
+# groundwork): deploy with the Prometheus scrape of the collector (:8889).
+groups:
+  - name: autonoesis-platform
+    rules:
+      - alert: AutonoesisApiDown
+        expr: up{job="autonoesis-api"} == 0
+        for: 1m
+        labels: {severity: SEV-1}
+        annotations:
+          summary: "Autonoesis API 无法访问"
+          runbook: docs/runbooks/kill-switch.md
+      - alert: AutonoesisHttpErrorRateHigh
+        expr: |
+          sum(rate(http_server_request_server_error_count{job="autonoesis-api"}[5m]))
+          / sum(rate(http_server_request_count{job="autonoesis-api"}[5m])) > 0.05
+        for: 5m
+        labels: {severity: SEV-2}
+        annotations:
+          summary: "API 5xx 比例超过 5%"
+          runbook: docs/runbooks/provider-failure.md
+      - alert: AutonoesisHttpLatencyP95High
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(http_server_request_duration_seconds_bucket{job="autonoesis-api"}[5m])) by (le)
+          ) > 2
+        for: 10m
+        labels: {severity: SEV-3}
+        annotations:
+          summary: "API p95 延迟超过 2 秒"
+          runbook: docs/ops/capacity-model.md
+      - alert: AutonoesisWorkerSpanAbsent
+        expr: sum(rate(traces_span_processor_spans{job="autonoesis-worker"}[10m])) == 0
+        for: 15m
+        labels: {severity: SEV-2}
+        annotations:
+          summary: "Worker 遥测消失（可能崩溃或断连）"
+          runbook: docs/runbooks/temporal-run-recovery.md

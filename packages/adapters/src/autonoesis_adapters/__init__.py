@@ -37,6 +37,11 @@ from autonoesis_adapters.governance import (
     OPAPolicyAdapter,
     cached_oidc_validator,
 )
+from autonoesis_adapters.graders import (
+    HumanGraderBackend,
+    LlmGraderBackend,
+    OutcomeGraderBackend,
+)
 from autonoesis_adapters.kill_switch_store import SqlKillSwitchStore, SqlPlatformKillSwitchStore
 from autonoesis_adapters.mcp import MCPServerAdapter, MCPToolDefinition
 from autonoesis_adapters.memory import (
@@ -73,6 +78,7 @@ __all__ = [
     "FakeModelAdapter",
     "HarnessCandidateEvaluator",
     "HttpAuthoritativeReadback",
+    "HumanGraderBackend",
     "InMemoryAtomicExecutionReservations",
     "InMemoryBudgetLedger",
     "InMemoryDelegationStore",
@@ -84,6 +90,7 @@ __all__ = [
     "InProcessSubjectRuntime",
     "InboxConsumer",
     "JsonSchemaValidator",
+    "LlmGraderBackend",
     "MCPServerAdapter",
     "MCPToolDefinition",
     "MinioEvidenceStore",
@@ -96,6 +103,7 @@ __all__ = [
     "OpenAIResponsesAdapter",
     "OutboxRelay",
     "OutboxWriter",
+    "OutcomeGraderBackend",
     "PackSubjectRuntime",
     "PostgreSQLAtomicExecutionReservations",
     "PostgreSQLDelegationStore",

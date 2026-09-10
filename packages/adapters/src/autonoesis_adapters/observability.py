@@ -102,8 +102,9 @@ class AuditEventSloProjector:
 
     Only SLIs with a real event mapping are produced: outcome success rate
     (verified vs recorded outcomes), action unknown rate (reconciled vs
-    governed executions), and approval volume. SLIs without instrumentation
-    are simply absent — never synthesized from sample data.
+    governed executions), and approval p95 latency (requested→decided event
+    pairing). SLIs without instrumentation are simply absent — never
+    synthesized from sample data.
     """
 
     def __init__(self, list_events: AuditEventSource) -> None:
@@ -127,6 +128,7 @@ class AuditEventSloProjector:
             targets=(
                 SLOTarget(SLI.OUTCOME_SUCCESS_RATE, target=0.95, window=window),
                 SLOTarget(SLI.ACTION_UNKNOWN_RATE, target=0.01, window=window, operator="lte"),
+                SLOTarget(SLI.APPROVAL_LATENCY_P95, target=5000.0, window=window, operator="lte"),
             )
         )
         recorded = sum(1 for e in events if e.event_type == "outcome.recorded")
@@ -156,7 +158,49 @@ class AuditEventSloProjector:
                     recorded_at=now,
                 )
             )
+        await self._record_approval_latency(events, registry, window_start, now)
         return registry
+
+    @staticmethod
+    async def _record_approval_latency(
+        events: list[Any],
+        registry: SLORegistry,
+        window_start: datetime,
+        now: datetime,
+    ) -> None:
+        """Pair approval requests with their decisions to measure latency.
+
+        Only decided approvals contribute; pending requests are excluded rather
+        than counted as zero latency. Decisions without a matching request are
+        ignored (they cannot be timed).
+        """
+        requested: dict[str, datetime] = {}
+        latencies_seconds: list[float] = []
+        for event in events:
+            occurred = event.created_at
+            if occurred is None:
+                continue
+            if event.event_type == "approval.requested":
+                requested[str(event.object_id)] = occurred
+            elif (
+                event.event_type in {"approval.approved", "approval.rejected"}
+                and str(event.object_id) in requested
+            ):
+                started = requested.pop(str(event.object_id))
+                latencies_seconds.append(max((occurred - started).total_seconds(), 0.0))
+        if latencies_seconds:
+            latencies_ms = sorted(value * 1000 for value in latencies_seconds)
+            p95 = latencies_ms[min(int(len(latencies_ms) * 0.95), len(latencies_ms) - 1)]
+            await registry.record(
+                SLOMeasurement(
+                    sli=SLI.APPROVAL_LATENCY_P95,
+                    value=p95,
+                    window_start=window_start,
+                    window_end=now,
+                    sample_count=len(latencies_ms),
+                    recorded_at=now,
+                )
+            )
 
 
 __all__ = ["AuditEventSloProjector", "CostPhase", "CostPhaseLedger"]

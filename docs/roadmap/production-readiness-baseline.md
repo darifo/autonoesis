@@ -41,7 +41,7 @@ P1-02 企业身份治理、P1-03 可信 Context/Memory 的 `integrated` 声明�
   Trial 不计入绿色率也不折抵最小样本；Candidate 必须携带不可变 Artifact Digest、固定 Suite
   与 Generator 身份，禁止改进目标在 Application 与 OPA 策略层双重拒绝；Candidate 晋升只能
   由持久化 Trial 的置信评估记录（candidate_evaluations）驱动，caller 决策路径已移除，
-  审批必须携带理由；Suite Catalog 已持久化，Pack 声明式 Subject（进程内执行）与独立规则 Grader 后端经真实
+  审批必须携带理由；Outcome（权威回读）/LLM（严格裁决对象，解析失败即 unknown）/Human（仅认记录在案的决定）三类 Grader 后端已实现并失败封闭；Suite Catalog 已持久化，Pack 声明式 Subject（进程内执行）与独立规则 Grader 后端经真实
   Temporal 工作流和 PostgreSQL 组件测试驱动重复 Trial 至置信晋升，生产 Worker 已装配评估器，
   Grader 与 Release Executor 使用 per-tenant 确定性分离身份；Pack 代码沙箱隔离与
   Outcome/LLM/Human Grader 后端仍未完成；
@@ -62,7 +62,9 @@ P1-02 企业身份治理、P1-03 可信 Context/Memory 的 `integrated` 声明�
   总览页仍为静态演示；控制台身份仍是浏览器本地 dev 头，未接 OIDC；
 - OTel 追踪（API 请求 Span/Worker Temporal 拦截器/权威事实与网关子 Span）、JSON 脱敏
   日志、审计事件投影的加权 SLO 与四阶段 FinOps 账本均已落地并为 CI 组件测试覆盖；
-  Collector 指标/日志管线、延迟 SLI 事件配对和生产告警演练仍未完成；
+  Collector 指标（Prometheus :8889）/日志管线与 SEV 分级告警规则已定义
+  （infra/observability），审批 p95 延迟经 requested→decided 事件配对计算；
+  告警通道接线与生产运行演练仍未完成；
 - Compose 含本地默认凭证和公开测试 KMS key；MinIO 镜像已固定摘要，但配置不满足生产
   Secret/KMS 与供应链要求；
 - 完整 Goal → Plan → Task → Action → Evidence → Verified Outcome → Satisfied Goal 已在
