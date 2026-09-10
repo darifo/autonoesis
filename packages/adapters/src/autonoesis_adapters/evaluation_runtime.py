@@ -301,10 +301,14 @@ class HarnessCandidateEvaluator:
         subject_runtime: SubjectRuntime,
         *,
         harness_version: str = "2",
+        llm_judge: Any = None,
+        llm_rubric_version: str = "default-rubric@1",
     ) -> None:
         self._store = store
         self._subject_runtime = subject_runtime
         self._harness_version = harness_version
+        self._llm_judge = llm_judge
+        self._llm_rubric_version = llm_rubric_version
 
     async def evaluate(self, tenant_id: UUID, candidate_id: UUID) -> Any:
         from autonoesis_domain import Trial
@@ -318,19 +322,32 @@ class HarnessCandidateEvaluator:
         )
 
         executor = _ArtifactBoundExecutor(self._subject_runtime, tenant_id, candidate.artifact_ref)
-        pipeline = GraderPipeline(
-            (
-                GraderStage(
+        stages: list[GraderStage] = [
+            GraderStage(
+                GraderKind.DETERMINISTIC,
+                IndependentGrader(
                     GraderKind.DETERMINISTIC,
-                    IndependentGrader(
-                        GraderKind.DETERMINISTIC,
-                        "rule-engine",
-                        "1",
-                        ExactMatchGraderBackend(),
-                    ),
+                    "rule-engine",
+                    "1",
+                    ExactMatchGraderBackend(),
                 ),
             )
-        )
+        ]
+        if self._llm_judge is not None:
+            from autonoesis_adapters.graders import LlmGraderBackend
+
+            stages.append(
+                GraderStage(
+                    GraderKind.LLM,
+                    IndependentGrader(
+                        GraderKind.LLM,
+                        "llm-judge",
+                        self._llm_rubric_version,
+                        LlmGraderBackend(self._llm_judge, self._llm_rubric_version),
+                    ),
+                )
+            )
+        pipeline = GraderPipeline(tuple(stages))
         harness = EvaluationHarness(
             subject_executor=executor,
             grader_pipeline=pipeline,

@@ -128,3 +128,51 @@ __all__ = [
     "LlmGraderBackend",
     "OutcomeGraderBackend",
 ]
+
+
+class ModelGatewayJudge:
+    """Adapt a governed model adapter into the LlmJudge contract.
+
+    The judge prompt carries the case's expected outcome and actual output and
+    demands one strict verdict object; the model's raw output is returned
+    unmodified so LlmGraderBackend's fail-closed parsing stays authoritative.
+    """
+
+    def __init__(self, adapter: Any, *, model: str, rubric: str) -> None:
+        self._adapter = adapter
+        self._model = model
+        self._rubric = rubric
+
+    async def judge(self, case: EvaluationCase, actual_output: dict[str, Any]) -> str:
+        import json as _json
+
+        from autonoesis_runtime import ModelRequest
+
+        instruction = (
+            "You are an independent evaluation grader. Compare the actual output "
+            "against the expected outcome under the rubric and reply with exactly "
+            'one JSON object: {"passed": <bool>, "rationale": <non-empty string>}.'
+        )
+        input_text = _json.dumps(
+            {
+                "case_id": case.case_id,
+                "rubric": self._rubric,
+                "expected_outcome": case.expected_outcome,
+                "actual_output": actual_output,
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+        response = await self._adapter.generate(
+            self._model,
+            ModelRequest(
+                instruction=instruction,
+                input_text=input_text,
+                required_capabilities=("json-output",),
+                data_region="global",
+                risk_tier="low",
+                max_output_tokens=512,
+            ),
+        )
+        output: str = response.output_text
+        return output

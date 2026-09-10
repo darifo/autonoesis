@@ -120,7 +120,7 @@ async def test_runs_bind_to_canary_candidate_routes_only() -> None:
     store.register_agent("example-agent", agent)
     identity = IdentityContext(tenant_id, actor_id, actor_id, frozenset({"operator"}))
 
-    goal = await CreateGoalHandler(store, store)(
+    await CreateGoalHandler(store, store)(
         identity,
         CreateGoal(
             "example.deliver",

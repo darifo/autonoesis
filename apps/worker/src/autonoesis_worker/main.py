@@ -85,6 +85,23 @@ def _get_dependencies() -> ActivityDependencies:
         # P1-06: pack subjects execute in a disposable subprocess sandbox, not
         # in the worker process. In-process execution remains available only
         # through an explicit development escape hatch.
+        # Optional LLM grader stage: enabled only with an explicit judge model
+        # (AUTONOESIS_LLM_JUDGE_MODEL) and provider key wiring; absent config
+        # keeps the deterministic-only pipeline (fail closed, no synthetic
+        # judgments).
+        llm_judge = None
+        judge_model = os.getenv("AUTONOESIS_LLM_JUDGE_MODEL")
+        if judge_model:
+            from autonoesis_adapters import FakeModelAdapter
+            from autonoesis_adapters.graders import ModelGatewayJudge
+
+            # Production judge adapters replace this dev provider via the
+            # model gateway; the harness contract is identical.
+            llm_judge = ModelGatewayJudge(
+                FakeModelAdapter(),
+                model=judge_model,
+                rubric=os.getenv("AUTONOESIS_LLM_JUDGE_RUBRIC", "default-rubric@1"),
+            )
         sandbox_mode = os.getenv("AUTONOESIS_PACK_SANDBOX", "process").strip().lower()
         subject_runtime = (
             SandboxedPackSubjectRuntime(store)
@@ -94,7 +111,9 @@ def _get_dependencies() -> ActivityDependencies:
         _process_dependencies = build_activity_dependencies(
             store,
             CandidateLifecycleService(store),
-            candidate_evaluator=HarnessCandidateEvaluator(store, subject_runtime),
+            candidate_evaluator=HarnessCandidateEvaluator(
+                store, subject_runtime, llm_judge=llm_judge
+            ),
             evaluation_policy=_configured_evaluation_policy(),
         )
     return _process_dependencies
