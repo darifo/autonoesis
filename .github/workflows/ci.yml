@@ -249,7 +249,7 @@ jobs:
           format: cyclonedx
           output: .artifacts/image-sbom.cdx.json
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-name: autonoesis-api:ci
           subject-digest: sha256:$(docker inspect --format='{{index .RepoDigests 0}}' autonoesis-api:ci 2>/dev/null | sed 's/.*@//' || docker images --no-trunc -q autonoesis-api:ci | sed 's/sha256://')
