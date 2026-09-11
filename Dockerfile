@@ -1,7 +1,7 @@
 # Per-application runtime image (P2-03): builds exactly one workspace package
 # with dev dependencies excluded; the repo's build context is filtered by
 # .dockerignore (no tests, docs, git history, or dev signing material).
-FROM python:3.12-slim
+FROM python:3.14-slim
 
 ARG AUTONOESIS_PACKAGE=autonoesis-api
 ENV PYTHONDONTWRITEBYTECODE=1 \
