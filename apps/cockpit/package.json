@@ -14,20 +14,20 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
-    "@tanstack/react-query": "^5.83.0",
-    "@tanstack/react-router": "^1.130.0",
-    "lucide-react": "^0.468.0",
+    "@tanstack/react-query": "^5.102.8",
+    "@tanstack/react-router": "^1.170.33",
+    "lucide-react": "^1.43.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
   },
   "devDependencies": {
-    "@playwright/test": "^1.54.0",
+    "@playwright/test": "^1.63.0",
     "@types/react": "^19.1.0",
-    "@types/react-dom": "^19.1.0",
-    "@vitejs/plugin-react": "^4.6.0",
+    "@types/react-dom": "^19.2.7",
+    "@vitejs/plugin-react": "^6.1.1",
     "openapi-typescript": "^7.13.0",
-    "typescript": "^5.8.0",
-    "vite": "^7.0.0",
-    "vitest": "^3.2.4"
+    "typescript": "^7.0.2",
+    "vite": "^8.2.2",
+    "vitest": "^5.0.0"
   }
 }
